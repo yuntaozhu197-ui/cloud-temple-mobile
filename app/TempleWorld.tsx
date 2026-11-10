@@ -19,7 +19,10 @@ type Landmark = { name: string; x: number; z: number };
 type WorldProps = {
   action: string;
   actionPulse: number;
+  cameraMode?: "first" | "third";
   incensePulse?: number;
+  flowerPulse?: number;
+  ritualPulse?: number;
   auto: boolean;
   meditating: boolean;
   seat: number | null;
@@ -39,6 +42,8 @@ type MonkInstance = {
 };
 
 const remoteColors = [0x96a78d, 0xb39274, 0x8ba7a0, 0xbd9c83, 0xaca17d];
+// Keep a monk-radius clearance inside every wall, including the open mountain gate.
+const TEMPLE_BOUNDS = { minX: -23.5, maxX: 23.5, minZ: -23.5, maxZ: 23.5 };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
@@ -93,8 +98,11 @@ export default function TempleWorld(props: WorldProps) {
         const camera = new T.PerspectiveCamera(42, 1, 0.1, 90);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
-        let cameraRadius = mobile ? 9.6 : 11.5;
-        let cameraHeight = mobile ? 11 : 12.5;
+        let cameraRadius = mobile ? 7.8 : 10;
+        let cameraHeight = mobile ? 7.4 : 9.4;
+        let cameraMode = latest.current.cameraMode ?? "third";
+        let firstPersonPitch = -0.06;
+        let firstPersonHeight = 1.1;
         const cameraTarget = new T.Vector3(0, 0.65, 2.9);
         const cameraGoal = new T.Vector3();
         camera.position.set(Math.sin(yaw) * cameraRadius, cameraHeight, 9 + Math.cos(yaw) * cameraRadius);
@@ -106,12 +114,12 @@ export default function TempleWorld(props: WorldProps) {
         sunlight.target.position.set(0, 0, -2);
         sunlight.castShadow = true;
         sunlight.shadow.mapSize.set(mobile ? 1024 : 1536, mobile ? 1024 : 1536);
-        sunlight.shadow.camera.left = -19;
-        sunlight.shadow.camera.right = 19;
-        sunlight.shadow.camera.top = 19;
-        sunlight.shadow.camera.bottom = -19;
+        sunlight.shadow.camera.left = -30;
+        sunlight.shadow.camera.right = 30;
+        sunlight.shadow.camera.top = 30;
+        sunlight.shadow.camera.bottom = -30;
         sunlight.shadow.camera.near = 0.5;
-        sunlight.shadow.camera.far = 45;
+        sunlight.shadow.camera.far = 80;
         sunlight.shadow.bias = -0.00025;
         sunlight.shadow.normalBias = 0.025;
         scene.add(skyLight, sunlight, sunlight.target);
@@ -127,7 +135,7 @@ export default function TempleWorld(props: WorldProps) {
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
         const selfLabel = document.createElement("div");
-        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:3px 9px;border-radius:12px;background:rgba(252,251,238,.94);border:1px solid rgba(111,136,96,.26);color:#52694c;font:600 11px system-ui;white-space:nowrap;box-shadow:0 2px 7px #52694c12;will-change:transform";
+        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:5px 10px;border-radius:12px;background:rgba(252,251,238,.94);border:1px solid rgba(111,136,96,.26);color:#42573d;font:700 14px system-ui;white-space:nowrap;box-shadow:0 2px 7px #52694c12;will-change:transform";
         selfLabel.textContent = "● 你的小和尚";
         labels.appendChild(selfLabel);
 
@@ -222,6 +230,8 @@ export default function TempleWorld(props: WorldProps) {
         let localAction = latest.current.action;
         let actionStart = 0;
         let incensePulse = latest.current.incensePulse ?? 0;
+        let flowerPulse = latest.current.flowerPulse ?? 0;
+        let ritualPulse = latest.current.ritualPulse ?? 0;
         let approachingIncense = false;
         let incensePrayerUntil = 0;
         let currentPlace = "静心庭院";
@@ -232,10 +242,10 @@ export default function TempleWorld(props: WorldProps) {
         let lastTime = performance.now();
         const started = lastTime;
         const cameraLook = new T.Vector3();
-        const pointerState = { id: -1, x: 0, y: 0, lastX: 0, dragged: false, self: false, held: false, orbit: false };
+        const pointerState = { id: -1, x: 0, y: 0, lastX: 0, lastY: 0, dragged: false, self: false, held: false, orbit: false };
 
         function blocked(x: number, z: number) {
-          if (Math.abs(x) > 14.5 || Math.abs(z) > 14.5) return true;
+          if (x < TEMPLE_BOUNDS.minX || x > TEMPLE_BOUNDS.maxX || z < TEMPLE_BOUNDS.minZ || z > TEMPLE_BOUNDS.maxZ) return true;
           const radius = 0.26;
           return world.colliders.some(box => x > box.minX - radius && x < box.maxX + radius && z > box.minZ - radius && z < box.maxZ + radius);
         }
@@ -250,7 +260,10 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function pathTo(requestedX: number, requestedZ: number) {
-          let target = { x: clamp(requestedX, -14.3, 14.3), z: clamp(requestedZ, -14.3, 14.3) };
+          let target = {
+            x: clamp(requestedX, TEMPLE_BOUNDS.minX, TEMPLE_BOUNDS.maxX),
+            z: clamp(requestedZ, TEMPLE_BOUNDS.minZ, TEMPLE_BOUNDS.maxZ),
+          };
           const origin = actor.group.position;
           if (blocked(target.x, target.z)) {
             let found = false;
@@ -266,9 +279,9 @@ export default function TempleWorld(props: WorldProps) {
           if (clearLine(origin.x, origin.z, target.x, target.z)) return [target];
 
           // A small navigation grid routes taps around the hall, pond, and trees.
-          const size = 49;
+          const size = 81;
           const spacing = 0.6;
-          const half = 14.4;
+          const half = 24;
           const position = (index: number) => ({ x: (index % size) * spacing - half, z: Math.floor(index / size) * spacing - half });
           const indexOf = (x: number, z: number) => clamp(Math.round((z + half) / spacing), 0, size - 1) * size + clamp(Math.round((x + half) / spacing), 0, size - 1);
           const walkable = new Uint8Array(size * size);
@@ -375,9 +388,10 @@ export default function TempleWorld(props: WorldProps) {
           pointerState.x = event.clientX;
           pointerState.y = event.clientY;
           pointerState.lastX = event.clientX;
+          pointerState.lastY = event.clientY;
           pointerState.dragged = false;
           pointerState.held = false;
-          pointerState.self = raycaster.intersectObject(actor.group, true).length > 0;
+          pointerState.self = latest.current.cameraMode !== "first" && raycaster.intersectObject(actor.group, true).length > 0;
           pointerState.orbit = event.pointerType === "mouse" || event.clientX - bounds.left > bounds.width * 0.32;
           renderer.domElement.setPointerCapture(event.pointerId);
           if (pointerState.self && !latest.current.auto && !latest.current.meditating) {
@@ -396,8 +410,12 @@ export default function TempleWorld(props: WorldProps) {
             pointerState.dragged = true;
             if (holdTimer) clearTimeout(holdTimer);
           }
-          if (pointerState.dragged && pointerState.orbit) yaw -= (event.clientX - pointerState.lastX) * 0.006;
+          if (pointerState.dragged && pointerState.orbit) {
+            yaw -= (event.clientX - pointerState.lastX) * 0.006;
+            if (latest.current.cameraMode === "first") firstPersonPitch = clamp(firstPersonPitch - (event.clientY - pointerState.lastY) * 0.004, -0.85, 0.85);
+          }
           pointerState.lastX = event.clientX;
+          pointerState.lastY = event.clientY;
         }
 
         function pointerUp(event: PointerEvent) {
@@ -419,7 +437,7 @@ export default function TempleWorld(props: WorldProps) {
 
         function keyDown(event: KeyboardEvent) {
           const target = event.target as HTMLElement;
-          if (target.closest("input,textarea,select,[contenteditable='true']") || target.closest("[role='dialog']")) return;
+          if (target.closest("input,textarea,select,[contenteditable='true']") || document.querySelector("[role='dialog']")) return;
           if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
             event.preventDefault();
             keys.add(event.code);
@@ -452,8 +470,8 @@ export default function TempleWorld(props: WorldProps) {
           const height = host.clientHeight;
           if (!width || !height) return;
           mobile = width < 640;
-          cameraRadius = mobile ? 9.6 : 11.5;
-          cameraHeight = mobile ? 11 : 12.5;
+          cameraRadius = mobile ? 7.8 : 10;
+          cameraHeight = mobile ? 7.4 : 9.4;
           camera.aspect = width / height;
           camera.updateProjectionMatrix();
           renderer.setSize(width, height, false);
@@ -485,8 +503,8 @@ export default function TempleWorld(props: WorldProps) {
           });
           visitors.forEach(person => {
             const seatPosition = person.seat === null ? null : world.cushions[person.seat];
-            const x = seatPosition?.x ?? person.x ?? 0;
-            const z = seatPosition?.z ?? person.z ?? 9;
+            const x = clamp(seatPosition?.x ?? person.x ?? 0, TEMPLE_BOUNDS.minX, TEMPLE_BOUNDS.maxX);
+            const z = clamp(seatPosition?.z ?? person.z ?? 9, TEMPLE_BOUNDS.minZ, TEMPLE_BOUNDS.maxZ);
             let existing = remote.get(person.id);
             if (!existing) {
               const colorIndex = Array.from(person.id).reduce((sum, letter) => sum + letter.charCodeAt(0), 0) % remoteColors.length;
@@ -494,7 +512,7 @@ export default function TempleWorld(props: WorldProps) {
               monk.group.position.set(x, seatPosition ? 0.12 : 0, z);
               scene.add(monk.group);
               const label = document.createElement("div");
-              label.style.cssText = "position:absolute;top:0;left:0;padding:2px 7px;border-radius:9px;background:rgba(252,251,238,.81);color:#657060;font:10px system-ui;white-space:nowrap;will-change:transform";
+              label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;will-change:transform";
               labels!.appendChild(label);
               existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time };
               remote.set(person.id, existing);
@@ -516,6 +534,7 @@ export default function TempleWorld(props: WorldProps) {
           const time = (now - started) / 1000;
           const state = latest.current;
           const position = actor.group.position;
+          const firstPerson = state.cameraMode === "first";
 
           if ((state.incensePulse ?? 0) !== incensePulse) {
             incensePulse = state.incensePulse ?? 0;
@@ -524,6 +543,14 @@ export default function TempleWorld(props: WorldProps) {
               walkTo(0, -6.95);
               approachingIncense = true;
             }
+          }
+          if ((state.flowerPulse ?? 0) !== flowerPulse) {
+            flowerPulse = state.flowerPulse ?? 0;
+            world.offerFlowers();
+          }
+          if ((state.ritualPulse ?? 0) !== ritualPulse) {
+            ritualPulse = state.ritualPulse ?? 0;
+            world.startRitual();
           }
 
           if (state.selfId && hydratedIdentity !== state.selfId) {
@@ -550,15 +577,17 @@ export default function TempleWorld(props: WorldProps) {
             route = [];
           }
 
-          let inputX = joystick.current.x;
-          let inputY = joystick.current.y;
+          const dialogOpen = Boolean(document.querySelector("[role='dialog']"));
+          if (dialogOpen) keys.clear();
+          let inputX = dialogOpen ? 0 : joystick.current.x;
+          let inputY = dialogOpen ? 0 : joystick.current.y;
           if (keys.has("KeyA") || keys.has("ArrowLeft")) inputX -= 1;
           if (keys.has("KeyD") || keys.has("ArrowRight")) inputX += 1;
           if (keys.has("KeyW") || keys.has("ArrowUp")) inputY -= 1;
           if (keys.has("KeyS") || keys.has("ArrowDown")) inputY += 1;
           let dx = 0;
           let dz = 0;
-          if (!state.auto && !state.meditating) {
+          if (!state.auto && !state.meditating && !dialogOpen) {
             const strength = Math.min(1, Math.hypot(inputX, inputY));
             if (strength > 0.1) {
               approachingIncense = false;
@@ -604,6 +633,7 @@ export default function TempleWorld(props: WorldProps) {
           position.y = seated ? 0.12 : 0;
           if (walking) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(dx, dz)) * Math.min(1, dt * 13);
           else if (seated || incensePrayer) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.PI) * Math.min(1, dt * 5);
+          else if (firstPerson) actor.group.rotation.y = yaw + Math.PI;
 
           if (state.actionPulse !== actionPulse || state.action !== localAction) {
             actionPulse = state.actionPulse;
@@ -614,28 +644,52 @@ export default function TempleWorld(props: WorldProps) {
           actor.update(pose, time, walking, pose === "bow" ? Math.min((time - actionStart) / 1.0, 1) : undefined);
           selfRing.position.set(position.x, 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
-          selfRing.visible = !seated;
+          selfRing.visible = !seated && !firstPerson;
+          actor.group.visible = !firstPerson;
 
           if (time - lastRemoteSync > 0.3) { syncRemote(time); lastRemoteSync = time; }
           remote.forEach(person => {
             const distance = person.monk.group.position.distanceTo(person.target);
             person.monk.group.position.lerp(person.target, 1 - Math.exp(-dt * 7));
             person.monk.group.rotation.y += angleDelta(person.monk.group.rotation.y, person.heading) * Math.min(1, dt * 8);
-            person.monk.update(person.action, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min(time - person.actionStart, 1) : undefined);
+            person.monk.update(person.action, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min((time - person.actionStart) % 1.25, 1) : undefined);
           });
           world.animate(time);
           offering?.animate(time);
 
           const indoors = Math.abs(position.x) < 4.4 && position.z < -3.5 && position.z > -10.8;
-          cameraLook.set(position.x, indoors ? 0.95 : 0.65, position.z - (indoors ? 0.2 : 6.1));
-          cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-          if (indoors) {
-            cameraGoal.set(clamp(position.x + Math.sin(yaw) * 3.8, -4.25, 4.25), 2.5, clamp(position.z + Math.cos(yaw) * 3.8, -10.4, -3.75));
-            if (Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) < 1.8) cameraGoal.x = position.x > 0 ? -1.8 : 1.8;
-          } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius, cameraHeight, position.z + Math.cos(yaw) * cameraRadius);
-          camera.position.lerp(cameraGoal, 1 - Math.exp(-dt * 5));
+          const nextCameraMode = state.cameraMode ?? "third";
+          const cameraChanged = nextCameraMode !== cameraMode;
+          if (cameraChanged || camera.fov !== (firstPerson ? 64 : 42)) {
+            cameraMode = nextCameraMode;
+            camera.fov = firstPerson ? 64 : 42;
+            camera.near = firstPerson ? 0.06 : 0.1;
+            camera.updateProjectionMatrix();
+          }
+          if (firstPerson) {
+            const eyeHeight = pose === "idle" ? 1.1 : 0.85;
+            firstPersonHeight += (eyeHeight - firstPersonHeight) * Math.min(1, dt * 8);
+            camera.position.set(position.x, position.y + firstPersonHeight, position.z);
+            cameraLook.set(
+              position.x - Math.sin(yaw) * Math.cos(firstPersonPitch),
+              camera.position.y + Math.sin(firstPersonPitch),
+              position.z - Math.cos(yaw) * Math.cos(firstPersonPitch),
+            );
+            cameraTarget.copy(cameraLook);
+          } else {
+            cameraLook.set(position.x, indoors ? 0.95 : 0.8, position.z - (indoors ? 0.2 : 0.8));
+            if (cameraChanged) cameraTarget.copy(cameraLook);
+            else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
+            if (indoors) {
+              cameraGoal.set(clamp(position.x + Math.sin(yaw) * 3.8, -4.25, 4.25), 2.5, clamp(position.z + Math.cos(yaw) * 3.8, -10.4, -3.75));
+              if (Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) < 1.8) cameraGoal.x = position.x > 0 ? -1.8 : 1.8;
+            } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius, cameraHeight, position.z + Math.cos(yaw) * cameraRadius);
+            if (cameraChanged) camera.position.copy(cameraGoal);
+            else camera.position.lerp(cameraGoal, 1 - Math.exp(-dt * 5));
+          }
           camera.lookAt(cameraTarget);
-          if (time - lastOcclusionCheck > 0.08) {
+          if (firstPerson) obscuredRoofs.clear();
+          else if (time - lastOcclusionCheck > 0.08) {
             occlusionDirection.copy(position);
             occlusionDirection.y += 0.85;
             occlusionDirection.sub(camera.position);
@@ -652,7 +706,8 @@ export default function TempleWorld(props: WorldProps) {
             material.depthWrite = material.opacity > 0.98;
           });
           renderer.render(scene, camera);
-          positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
+          if (firstPerson) selfLabel.style.display = "none";
+          else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
 
           if (state.selfId && time - lastSent > 0.2 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05)) {
@@ -705,23 +760,23 @@ export default function TempleWorld(props: WorldProps) {
 
   return <div ref={hostRef} className="temple-world" style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#dce6d8", touchAction: "none" }}>
     <div ref={labelsRef} aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
-    {!ready && !error && <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", color: "#657456", fontSize: 13, gap: 12 }}><span style={{ fontSize: 28 }}>✳</span><span>正在推开三维寺庙的门…</span></div>}
-    {error && <div role="alert" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", padding: 28, textAlign: "center", color: "#526347", fontSize: 14, background: "#e4eadc", gap: 14 }}><span style={{ fontSize: 32 }}>✳</span><strong>三维庭院暂时没有打开</strong><span style={{ fontSize: 12, lineHeight: 1.8 }}>请使用手机 Safari 或 Chrome 重新打开，再试一次。</span><button onClick={() => setRetry(value => value + 1)} style={{ border: 0, padding: "11px 22px", borderRadius: 24, background: "#778d62", color: "#fff", cursor: "pointer" }}>重新入寺</button></div>}
+    {!ready && !error && <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, gap: 12 }}><span style={{ fontSize: 28 }}>✳</span><span>正在推开三维寺庙的门…</span></div>}
+    {error && <div role="alert" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", padding: 28, textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, background: "#e4eadc", gap: 14 }}><span style={{ fontSize: 32 }}>✳</span><strong>三维庭院暂时没有打开</strong><span style={{ fontSize: 14, lineHeight: 1.8 }}>请使用手机 Safari 或 Chrome 重新打开，再试一次。</span><button onClick={() => setRetry(value => value + 1)} style={{ border: 0, padding: "11px 22px", borderRadius: 24, background: "#778d62", color: "#fff", cursor: "pointer" }}>重新入寺</button></div>}
     {ready && <>
       <div className="world-joystick" style={{ position: "absolute", left: 18, bottom: 39, display: "grid", justifyItems: "center", gap: 7, opacity: controlsDisabled ? 0.45 : 1 }}>
         <button aria-label="移动小和尚，按住并拖动摇杆" title="按住并拖动移动，电脑也可用WASD或方向键" disabled={controlsDisabled}
           onPointerDown={event => { joystickPointer.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); updateJoystick(event); }}
           onPointerMove={updateJoystick} onPointerUp={endJoystick} onPointerCancel={endJoystick}
           style={{ position: "relative", width: 92, height: 92, borderRadius: "50%", border: "1px solid rgba(89,111,72,.25)", background: "rgba(250,251,238,.64)", boxShadow: "inset 0 0 0 12px #ffffff25,0 3px 14px #344e2520", backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)", padding: 0, touchAction: "none", cursor: controlsDisabled ? "default" : "grab" }}>
-          <span style={{ position: "absolute", top: 4, left: 0, right: 0, fontSize: 11, color: "#7c8b6e" }}>⌃</span>
+          <span style={{ position: "absolute", top: 4, left: 0, right: 0, fontSize: 14, fontWeight: 700, color: "#657650" }}>⌃</span>
           <span style={{ position: "absolute", left: "50%", top: "50%", width: 36, height: 36, marginLeft: -18, marginTop: -18, borderRadius: "50%", background: "#8e9f75", border: "2px solid #e7eddb", boxShadow: "0 3px 8px #415c3930", transform: `translate(${knob.x}px,${knob.y}px)`, pointerEvents: "none" }} />
         </button>
-        <span style={{ fontSize: 10, color: "#647558", textShadow: "0 1px 3px #ffffff" }}>{props.auto || props.meditating ? "安心修行中" : "拖动摇杆 · 自在走走"}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#465b3e", textShadow: "0 1px 3px #ffffff" }}>{props.auto || props.meditating ? "安心修行中" : "摇杆行走"}</span>
       </div>
-      <div style={{ position: "absolute", right: 17, bottom: 43, display: "grid", justifyItems: "end", gap: 9 }}>
-        {placeMenu && <div role="group" aria-label="前往寺庙地点" style={{ display: "grid", gap: 5, padding: 7, borderRadius: 14, background: "rgba(251,251,240,.95)", border: "1px solid #899b7633", boxShadow: "0 4px 20px #314c3020" }}>{places.map((place, index) => <button key={`${place.name}-${index}`} disabled={controlsDisabled} onClick={() => { travel.current(place); setPlaceMenu(false); }} style={{ border: 0, borderRadius: 8, padding: "8px 13px", background: "#edf0e4", color: "#5c7052", fontSize: 12, cursor: "pointer", textAlign: "left" }}>⌖ &nbsp; {place.name}</button>)}</div>}
-        <button aria-label="选择想走去的地点" aria-expanded={placeMenu} disabled={controlsDisabled} onClick={() => setPlaceMenu(value => !value)} style={{ display: "flex", alignItems: "center", gap: 7, border: "1px solid #79916844", borderRadius: 20, background: "rgba(250,251,238,.9)", color: "#5d7150", fontSize: 12, padding: "10px 13px", boxShadow: "0 2px 9px #344e2510", cursor: controlsDisabled ? "default" : "pointer" }}><span style={{ fontSize: 16 }}>⌖</span> 去走走</button>
-        <span style={{ fontSize: 10, color: "#65765c", textShadow: "0 1px 3px #fff" }}>拖动右侧看风景</span>
+      <div className={`world-landmarks ${placeMenu ? "is-open" : ""}`} style={{ position: "absolute", right: 17, bottom: 43, display: "grid", justifyItems: "end", gap: 9 }}>
+        <button aria-label="选择想走去的地点" aria-expanded={placeMenu} disabled={controlsDisabled} onClick={() => setPlaceMenu(value => !value)} style={{ display: "flex", alignItems: "center", gap: 7, border: "1px solid #79916844", borderRadius: 20, background: "rgba(250,251,238,.94)", color: "#465b3e", fontSize: 14, fontWeight: 700, minHeight: 44, padding: "10px 13px", boxShadow: "0 2px 9px #344e2510", cursor: controlsDisabled ? "default" : "pointer" }}><span style={{ fontSize: 16 }}>⌖</span> 去走走</button>
+        {placeMenu && <div role="group" aria-label="前往寺庙地点" style={{ display: "grid", gap: 5, padding: 7, borderRadius: 14, background: "rgba(251,251,240,.95)", border: "1px solid #899b7633", boxShadow: "0 4px 20px #314c3020" }}>{places.map((place, index) => <button key={`${place.name}-${index}`} disabled={controlsDisabled} onClick={() => { travel.current(place); setPlaceMenu(false); }} style={{ border: 0, borderRadius: 8, padding: "10px 13px", minHeight: 44, background: "#edf0e4", color: "#465b3e", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>⌖ &nbsp; {place.name}</button>)}</div>}
+        <span className="world-look-hint" style={{ fontSize: 14, fontWeight: 700, color: "#465b3e", textShadow: "0 1px 3px #fff" }}>拖动右侧看风景</span>
       </div>
     </>}
   </div>;

@@ -67,3 +67,53 @@
 @media (max-width: 800px) { .social-temple { gap: 14px; } .social-card { padding: 20px; } .social-card h2 { font-size: 19px; } .incense-content { gap: 11px; } .incense-illustration { flex-basis: 68px; } .incense-illustration svg { width: 68px; height: 78px; } }
 @media (max-width: 540px) { .social-temple { grid-template-columns: 1fr; margin-top: 19px; gap: 14px; } .social-card { padding: 21px; } .social-card h2 { font-size: 21px; } .social-card-heading { font-size: 11px; } .social-card p { font-size: 12px; } .incense-content { gap: 17px; padding-top: 7px; } .incense-illustration { flex-basis: 78px; } .incense-illustration svg { width: 78px; height: 88px; } .social-main-button { min-height: 48px; font-size: 13px; } .social-card .social-card-foot { font-size: 10px; } .social-backdrop { padding: 0; align-items: end; } .social-sheet { width: 100%; max-height: 88dvh; border-radius: 22px 22px 0 0; } .social-sheet-header { padding: 22px 20px 15px; } .social-tabs { padding: 0 14px; } .social-tabs > button { font-size: 12px; min-height: 48px; gap: 4px; } .social-sheet-body { padding: 13px 18px 20px; min-height: 270px; } .social-person-list > li { gap: 9px; } .social-person-name strong { font-size: 12px; } .social-person-name > span { font-size: 10px; } .social-small-button { padding: 8px 10px; } .social-invitation-actions { gap: 4px; } .social-invitation-actions .social-small-button { padding: 8px; } .social-avatar { width: 38px; height: 38px; } .social-sheet .social-sheet-footer { padding-left: 20px; padding-right: 20px; } }
 @media (prefers-reduced-motion: reduce) { .incense-illustration.is-lit { animation: none; } }
+
+.social-temple-compact { display: block; margin: 0; pointer-events: none; }
+.social-quick-controls { display: flex; gap: 8px; pointer-events: auto; }
+.social-quick-controls > button { position: relative; display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 48px; padding: 10px 14px; border: 1px solid #c5d1b7; border-radius: 18px; background: #fafbf0ef; color: #425c37; font-size: 16px; font-weight: 750; box-shadow: 0 3px 12px #344e251a; }
+.social-quick-badge { position: absolute; top: -5px; right: -4px; min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 5px; border-radius: 50%; background: #a87a48; color: white; font-size: 13px; }
+.social-temple-compact .social-backdrop { pointer-events: auto; }
+.social-temple-compact .social-sheet { max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.social-temple-compact .social-sheet-body { min-height: 0; }
+.social-temple-compact .social-sheet-header h2 { font-size: 26px; font-weight: 750; }
+.social-temple-compact .social-card h2 { font-size: 23px; font-weight: 750; }
+.social-temple-compact .social-tabs > button,
+.social-temple-compact .social-person-name strong,
+.social-temple-compact .social-main-button,
+.social-temple-compact .social-small-button { font-size: 16px; font-weight: 700; }
+.social-temple-compact .social-card p,
+.social-temple-compact .social-card-heading,
+.social-temple-compact .social-soft-label,
+.social-temple-compact .social-unread,
+.social-temple-compact .social-friend-badge,
+.social-temple-compact .social-tabs > button > span,
+.social-temple-compact .social-person-name > span,
+.social-temple-compact .social-empty > p,
+.social-temple-compact .social-connection > p,
+.social-temple-compact .social-overline,
+.social-temple-compact .social-sheet-footer > span,
+.social-temple-compact .social-sheet-footer > small,
+.social-temple-compact .social-list-title,
+.social-temple-compact .social-greetings p,
+.social-temple-compact .social-greetings h3,
+.social-temple-compact .incense-counts { font-size: 14px; font-weight: 600; }
+.social-temple-compact .social-empty > strong,
+.social-temple-compact .social-connection > strong { font-size: 20px; font-weight: 700; }
+.social-temple-compact .social-card .social-card-foot { font-size: 14px; }
+.social-temple-compact .social-trial-note { margin-top: 14px; font-size: 14px; font-weight: 600; }
+.social-temple-compact .incense-counts strong { font-size: 23px; font-weight: 700; }
+.social-temple-compact .incense-sheet .social-card { padding: 18px; }
+
+@media (max-width: 540px) {
+  .social-temple-compact .social-backdrop { padding: 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); align-items: center; }
+  .social-temple-compact .social-sheet { border-radius: 22px; }
+  .social-temple-compact .social-sheet-header { padding: 16px 16px 10px; }
+  .social-temple-compact .social-sheet-body { padding: 12px 14px 18px; }
+  .social-temple-compact .social-tabs { padding: 0 8px; }
+  .social-temple-compact .social-tabs > button { font-size: 15px; }
+  .social-temple-compact .social-person-list > li { flex-wrap: wrap; }
+  .social-temple-compact .social-invitation-actions { margin-left: auto; }
+  .social-temple-compact .incense-content { gap: 10px; }
+  .social-temple-compact .incense-illustration { flex-basis: 60px; }
+  .social-temple-compact .incense-illustration svg { width: 60px; height: 76px; }
+}

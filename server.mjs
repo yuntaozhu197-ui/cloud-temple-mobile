@@ -7,13 +7,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
+import { createTempleLife } from "./temple-life.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
 const MAX_VISITORS = 128;
-const MAX_BODY_BYTES = 1024;
+const MAX_BODY_BYTES = 16_384;
 const ACTIONS = new Set(["idle", "prayer", "bow", "beads", "wood", "meditate"]);
 const POSITION_KEYS = ["x", "z", "heading"];
+const TEMPLE_BOUNDS = { x: [-23.5, 23.5], z: [-23.5, 23.5] };
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -119,7 +121,7 @@ function readJson(request) {
 
 function validateUpdate(body) {
   for (const key of POSITION_KEYS) {
-    const bound = key === "heading" ? Math.PI * 2 : 15;
+    const bound = key === "heading" ? Math.PI * 2 : 50;
     if (Object.hasOwn(body, key) &&
         (typeof body[key] !== "number" || !Number.isFinite(body[key]) || Math.abs(body[key]) > bound)) {
       return { error: "invalid_position", message: "请在寺庙范围内走动。" };
@@ -144,7 +146,9 @@ function validateUpdate(body) {
 function updateVisitor(visitor, body) {
   if (Object.hasOwn(body, "seat")) visitor.seat = body.seat;
   for (const key of POSITION_KEYS) {
-    if (Object.hasOwn(body, key)) visitor[key] = body[key];
+    if (!Object.hasOwn(body, key)) continue;
+    const bounds = TEMPLE_BOUNDS[key];
+    visitor[key] = bounds ? Math.max(bounds[0], Math.min(bounds[1], body[key])) : body[key];
   }
   if (Object.hasOwn(body, "meditating")) {
     visitor.meditating = body.meditating && visitor.seat !== null;
@@ -306,6 +310,7 @@ export function createTempleServer({
   const visitors = new Map();
   const staticRoot = resolve(distDirectory);
   const database = openCommunityDatabase(dataDir);
+  const life = createTempleLife(database, { trialMode });
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
     user: database.prepare("SELECT id, name FROM community_users WHERE id = ?"),
@@ -338,6 +343,9 @@ export function createTempleServer({
 
   function registerUser(identity, timestamp) {
     queries.register.run(identity.id, identity.name, timestamp);
+    identity.name = queries.user.get(identity.id).name;
+    const visitor = visitors.get(identity.id);
+    if (visitor) visitor.name = identity.name;
   }
 
   function incenseCounts(identity, timestamp) {
@@ -498,7 +506,7 @@ export function createTempleServer({
       };
       visitors.set(identity.id, visitor);
     }
-    if (visitor) visitor.lastSeen = timestamp;
+    if (visitor) { visitor.lastSeen = timestamp; visitor.name = identity.name; }
     return visitor;
   }
 
@@ -570,6 +578,38 @@ export function createTempleServer({
       }
       if (pathname === "/api/room") {
         await handleRoom(request, response);
+        return;
+      }
+      if (pathname === "/api/life") {
+        const identity = requestIdentity(request);
+        if (!["GET", "POST"].includes(request.method)) {
+          response.setHeader("Allow", "GET, POST");
+          sendJson(response, { error: "method_not_allowed" }, 405, identity);
+          return;
+        }
+        if (request.method === "POST" && !sameOrigin(request, publicOrigin)) {
+          request.resume();
+          sendJson(response, { error: "invalid_origin", message: "请在寺庙网页内操作。" }, 403, identity);
+          return;
+        }
+        let body;
+        if (request.method === "POST") {
+          try { body = await readJson(request); }
+          catch {
+            sendJson(response, { error: "invalid_request", message: "内容未送达，请检查字数后重试。" }, 400, identity);
+            return;
+          }
+        }
+        const timestamp = now();
+        registerUser(identity, timestamp);
+        const failure = body ? life.act(identity, body, timestamp) : null;
+        if (failure) {
+          const { status, ...error } = failure;
+          sendJson(response, error, status, identity);
+          return;
+        }
+        if (visitors.has(identity.id)) visitors.get(identity.id).name = identity.name;
+        sendJson(response, life.snapshot(identity), 200, identity);
         return;
       }
       if (pathname === "/api/social" || pathname === "/api/incense") {

@@ -1,0 +1,66 @@
+.life-shortcut { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 13px; border: 1px solid #ffffffc4; border-radius: 15px; background: #f9fbedeb; color: #405b39; font-size: 16px; font-weight: 750; line-height: 1.25; white-space: nowrap; box-shadow: 0 3px 14px #344e2518; }
+.life-backdrop { position: fixed; z-index: 90; inset: 0; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: #24392f70; backdrop-filter: blur(7px); overflow: hidden; color: #40553a; font: 600 16px/1.7 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+.life-backdrop * { box-sizing: border-box; }
+.life-sheet { display: flex; flex-direction: column; width: 590px; max-width: 100%; max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); border: 1px solid #e4ead7; border-radius: 22px; background: #fbfcf3; box-shadow: 0 20px 80px #203c3040; overflow: hidden; }
+.life-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-shrink: 0; padding: 20px 22px 12px; }
+.life-header > div > span { font-size: 14px; color: #738766; }
+.life-header h2 { font-size: 26px; line-height: 1.3; font-weight: 800; margin: 4px 0 0; }
+.life-close { width: 46px; height: 46px; display: grid; place-items: center; flex-shrink: 0; border-radius: 50%; color: #526a46; }
+.life-close:hover { background: #e9efdf; }
+.life-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex-shrink: 0; padding: 0 14px; border-bottom: 1px solid #dfe6d5; }
+.life-tabs > button { min-width: 0; min-height: 48px; padding: 9px 5px; border-bottom: 3px solid transparent; font-size: 17px; font-weight: 750; color: #74856a; }
+.life-tabs > button[aria-selected="true"] { color: #3d5e32; border-bottom-color: #6a8a52; }
+.life-body { min-height: 0; padding: 20px 24px 24px; overflow-y: auto; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.life-body h3 { margin: 0 0 12px; font-size: 20px; line-height: 1.5; font-weight: 800; }
+.life-body p { font-size: 16px; line-height: 1.8; margin: 10px 0; }
+.life-body button, .life-body input, .life-body textarea, .life-body select { font-family: inherit; font-size: 16px; font-weight: 650; }
+.life-body input, .life-body textarea, .life-body select { display: block; width: 100%; min-width: 0; min-height: 46px; border: 1px solid #becbaa; border-radius: 10px; padding: 10px 12px; margin-top: 7px; color: #3b5235; background: #fffffa; line-height: 1.7; }
+.life-body textarea { resize: vertical; }
+.life-body input:focus, .life-body textarea:focus, .life-body select:focus { outline: 3px solid #a1bc8180; outline-offset: 1px; }
+.life-body label { display: block; margin: 14px 0; font-size: 16px; font-weight: 750; }
+.life-form { display: grid; gap: 2px; }
+.life-form > label { margin: 7px 0; }
+.life-button { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 11px; border: 1px solid #607e4c; background: #607e4c; color: #fffef4; font-size: 16px; font-weight: 750; line-height: 1.5; }
+.life-button.secondary { background: #eef3e5; color: #536d43; border-color: #cad6bc; }
+.life-button:hover:not(:disabled) { filter: brightness(.96); }
+.life-backdrop button:disabled { opacity: .55; }
+.life-text-button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 5px; color: #506e3e; font-size: 16px; font-weight: 750; }
+.life-text-button.danger { color: #9b6247; }
+.life-toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.life-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px; margin: 20px 0 5px; }
+.life-section-heading h3 { margin: 0; }
+.life-entry-list { display: grid; gap: 14px; }
+.life-entry { padding: 17px; border: 1px solid #dce4ce; border-radius: 14px; background: #fffef7; }
+.life-entry h3 { margin: 9px 0; }
+.life-entry > p { white-space: pre-wrap; }
+.life-entry-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; color: #788a69; font-size: 14px; }
+.life-entry-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border-top: 1px solid #e8ecdf; margin-top: 10px; padding-top: 5px; }
+.life-body .life-hint { font-size: 14px; color: #738568; }
+.life-body .life-error { padding: 12px; border-radius: 10px; background: #f7e8dc; border: 1px solid #e6c5ab; color: #8f573d; font-size: 16px; }
+.life-body .life-trial { margin-top: 22px; padding: 12px 14px; border: 1px solid #e1d7b9; border-radius: 12px; background: #f4efdf; color: #827046; font-size: 14px; }
+.life-offering { border: 1px solid #d9e3c9; border-radius: 15px; padding: 19px; margin-bottom: 16px; background: #fffef6; }
+.life-offering > svg { color: #8b9d71; margin-bottom: 7px; }
+.life-offering > .life-button, .life-leave-button { width: 100%; }
+.life-choice-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 16px 0; }
+.life-choice-row > button { min-height: 46px; border: 1px solid #c7d3b8; border-radius: 10px; background: #f3f5e9; color: #61794d; font-size: 20px; font-weight: 750; }
+.life-choice-row > button.selected { border-color: #7e9c62; color: #3f5e30; background: #e0ebd0; }
+.life-body .life-count { font-size: 15px; color: #70805e; }
+.life-ritual { display: grid; justify-items: center; gap: 9px; padding: 21px 12px; border-radius: 16px; background: #e8f0dc; text-align: center; }
+.life-ritual > span { font-size: 23px; font-weight: 800; }
+.life-ritual > strong { font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.life-ritual small { margin-left: 7px; font-size: 16px; }
+.life-complete { padding: 12px; background: #edf2e3; border-radius: 10px; }
+.life-leave-button { margin-top: 12px; }
+.life-loading, .life-empty { padding: 18px 0; text-align: center; }
+@media (max-width: 540px) {
+  .life-header { padding: 16px 16px 10px; }
+  .life-body { padding: 16px 16px 20px; }
+  .life-offering { padding: 16px; }
+  .life-entry { padding: 14px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .life-header { padding: 10px 18px 6px; }
+  .life-header > div > span { display: none; }
+  .life-header h2 { font-size: 23px; }
+  .life-tabs > button { min-height: 44px; }
+}
