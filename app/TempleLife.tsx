@@ -29,6 +29,8 @@ type LifeSnapshot = {
 type Props = {
   selfId?: string;
   exitRequest?: number;
+  flowerRequest?: number;
+  ritualRequest?: number;
   onNotice: (message: string) => void;
   onProfileChange: () => void;
   onOffering: (kind: "flower" | "ritual" | "sponsor") => void;
@@ -44,7 +46,7 @@ const tabs: { key: Tab; label: string }[] = [
   { key: "leave", label: "离寺" },
 ];
 
-async function lifeRequest(body?: Record<string, unknown>): Promise<LifeSnapshot | { ok: boolean }> {
+async function lifeRequest(body?: Record<string, unknown>, expectedUser?: string): Promise<LifeSnapshot | { ok: boolean }> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 12_000);
   try {
@@ -52,7 +54,7 @@ async function lifeRequest(body?: Record<string, unknown>): Promise<LifeSnapshot
       method: body ? "POST" : "GET",
       credentials: "same-origin",
       cache: "no-store",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(expectedUser ? { "X-Temple-User": expectedUser } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
@@ -74,9 +76,10 @@ function validLength(value: string, minimum: number, maximum: number) {
   return length >= minimum && length <= maximum;
 }
 
-export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfileChange, onOffering, onLeave }: Props) {
+export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0, ritualRequest = 0, onNotice, onProfileChange, onOffering, onLeave }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("diary");
+  const [ritualOnly, setRitualOnly] = useState(false);
   const [snapshot, setSnapshot] = useState<LifeSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -118,7 +121,7 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
     setLoading(true);
     setError("");
     try {
-      const result = await lifeRequest();
+      const result = await lifeRequest(undefined, selfId);
       if (mounted.current && version === requestVersion.current && "mine" in result) {
         setSnapshot(result);
         setName(current => current || result.self.name);
@@ -140,6 +143,9 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
     setOpen(true);
     setError("");
   }, [exitRequest]);
+
+  useEffect(() => { if (flowerRequest) void offerFlower(); }, [flowerRequest]);
+  useEffect(() => { if (ritualRequest) { setRitualOnly(true); setTab("offerings"); setOpen(true); } }, [ritualRequest]);
 
   useEffect(() => {
     if (!open) return;
@@ -193,7 +199,7 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
     setBusy(action);
     setError("");
     try {
-      const result = await lifeRequest({ action, ...payload });
+      const result = await lifeRequest({ action, ...payload }, selfId);
       if (mounted.current && "mine" in result) setSnapshot(result);
       return true;
     } catch (failure) {
@@ -313,7 +319,7 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
   const breath = (30 - ritualRemaining) % 10 < 4 ? "慢慢吸气" : "轻轻呼气";
 
   return <div className="temple-life">
-    <button className="life-shortcut" onClick={() => setOpen(true)} aria-label="打开心居日记与随喜"><BookOpen size={20} /><span>心居</span></button>
+    <button className="life-shortcut" onClick={() => { setRitualOnly(false); setOpen(true); }} aria-label="打开心居日记与随喜"><BookOpen size={20} /><span>心居</span></button>
     {open && createPortal(<div className="life-backdrop" onClick={() => setOpen(false)}>
       <section ref={dialogRef} className="life-sheet" role="dialog" aria-modal="true" aria-labelledby="life-title" onClick={event => event.stopPropagation()}>
         <header className="life-header"><div><span>把这一刻，轻轻留下</span><h2 id="life-title">云间心居</h2></div><button className="life-close" onClick={() => setOpen(false)} aria-label="关闭心居"><X size={24} /></button></header>
@@ -329,7 +335,7 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
                 <label>标题<input disabled={Boolean(busy)} value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="给这一刻起个名字" required /></label>
                 <label>正文<textarea disabled={Boolean(busy)} value={body} onChange={event => setBody(event.target.value)} maxLength={4000} rows={6} placeholder="此刻的心情、感谢或小小愿望…" required /></label>
                 <label>谁可以看到<select disabled={Boolean(busy)} value={visibility} onChange={event => setVisibility(event.target.value as Diary["visibility"])}><option value="private">仅自己可见</option><option value="public">公开，分享给寺友</option></select></label>
-                <p className="life-hint">{visibility === "private" ? "私人日记只向当前浏览器身份开放。" : "保存后，所有来到寺庙的人都能阅读这篇日记。"}</p>
+                <p className="life-hint">{visibility === "private" ? "私人日记仅当前登录账号可见。" : "保存后，所有来到寺庙的人都能阅读这篇日记。"}</p>
                 <button className="life-button" disabled={Boolean(busy)} type="submit"><Save size={18} />{busy === "saveDiary" ? "正在保存…" : "保存日记"}</button>
               </form>
               <div className="life-section-heading"><h3>已保存的日记</h3><button className="life-text-button" onClick={exportDiaries} disabled={!snapshot?.mine.length}><Download size={17} />导出备份</button></div>
@@ -342,12 +348,12 @@ export default function TempleLife({ selfId, exitRequest = 0, onNotice, onProfil
             </>}
           </>}
           {ready && tab === "offerings" && <>
-            <section className="life-offering"><Flower2 size={29} /><h3>献一朵花</h3><p>把善意留在庭院，愿你我心中有花。</p><p className="life-count">共有 {offerings?.flowers ?? 0} 朵花 · 我献过 {offerings?.mineFlowers ?? 0} 朵</p><button className="life-button" disabled={Boolean(busy) || flowerCooldown > 0} onClick={() => void offerFlower()}><Flower2 size={18} />{flowerCooldown ? `花香渐起 · ${flowerCooldown}秒` : "免费献花"}</button></section>
-            <section className="life-offering"><Heart size={29} /><h3>免费虚拟随喜</h3><p>选择一份心意，累积免费随喜值。</p><div className="life-choice-row">{([10, 50, 100] as const).map(amount => <button className={sponsor === amount ? "selected" : ""} key={amount} onClick={() => setSponsor(amount)} aria-pressed={sponsor === amount}>+{amount}</button>)}</div><p className="life-count">全寺随喜值 {offerings?.totalSponsor ?? 0} · 我的随喜值 {offerings?.mineSponsor ?? 0}</p><button className="life-button" disabled={Boolean(busy)} onClick={() => void offerSponsor()}><Heart size={18} />免费随喜 +{sponsor}</button></section>
+            {!ritualOnly && <><section className="life-offering"><Flower2 size={29} /><h3>献一朵花</h3><p>把善意留在庭院，愿你我心中有花。</p><p className="life-count">共有 {offerings?.flowers ?? 0} 朵花 · 我献过 {offerings?.mineFlowers ?? 0} 朵</p><button className="life-button" disabled={Boolean(busy) || flowerCooldown > 0} onClick={() => void offerFlower()}><Flower2 size={18} />{flowerCooldown ? `花香渐起 · ${flowerCooldown}秒` : "免费献花"}</button></section>
+            <section className="life-offering"><Heart size={29} /><h3>免费虚拟随喜</h3><p>选择一份心意，累积免费随喜值。</p><div className="life-choice-row">{([10, 50, 100] as const).map(amount => <button className={sponsor === amount ? "selected" : ""} key={amount} onClick={() => setSponsor(amount)} aria-pressed={sponsor === amount}>+{amount}</button>)}</div><p className="life-count">全寺随喜值 {offerings?.totalSponsor ?? 0} · 我的随喜值 {offerings?.mineSponsor ?? 0}</p><button className="life-button" disabled={Boolean(busy)} onClick={() => void offerSponsor()}><Heart size={18} />免费随喜 +{sponsor}</button></section></>}
             <section className="life-offering"><h3>法事祈愿 · 三十秒回向</h3><p>线上自助祈愿体验，跟随呼吸，安住此刻。</p><label>仪式<select value={ritualKind} disabled={ritualRemaining > 0} onChange={event => setRitualKind(event.target.value as RitualKind)}>{ritualKinds.map(kind => <option key={kind}>{kind}</option>)}</select></label><label>心愿，可留空<textarea value={intention} disabled={ritualRemaining > 0} onChange={event => setIntention(event.target.value)} maxLength={240} rows={3} placeholder="愿你与在意的人，平安自在。" /></label><p className="life-hint">开始时记录次数，随后跟随30秒呼吸。心愿私密保存，页面只公开累计次数。</p><p className="life-count">全寺祈愿记录 {offerings?.rituals ?? 0} 次 · 我参与 {offerings?.mineRituals ?? 0} 次</p>{ritualRemaining > 0 ? <div className="life-ritual" role="timer"><span>{breath}</span><strong>{ritualRemaining}<small>秒</small></strong><p>让肩膀放松，让心愿落定。</p></div> : <>{ritualCompleted && <p className="life-complete">仪式圆满，带着善意继续生活。</p>}<button className="life-button" disabled={Boolean(busy)} onClick={() => void beginRitual()}>开始{ritualKind}</button></>}</section>
           </>}
           {ready && tab === "profile" && <>
-            <h3>给小和尚起个名字</h3><form className="life-form" onSubmit={event => { event.preventDefault(); void changeName(); }}><label>寺友们会看到这个名字<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={32} required autoComplete="off" /></label><p className="life-hint">2–16个字，名字会同步到庭院和公开心语。</p><button className="life-button" type="submit" disabled={Boolean(busy)}><Save size={18} />保存名字</button></form><section className="life-offering"><h3>我的心意</h3><p>献花 {offerings?.mineFlowers ?? 0} 朵</p><p>随喜值 {offerings?.mineSponsor ?? 0}</p><p>仪式 {offerings?.mineRituals ?? 0} 次</p></section><p className="life-hint">身份保存在当前浏览器。更换浏览器或清除浏览器数据会生成新的身份。</p>
+            <h3>给小和尚起个名字</h3><form className="life-form" onSubmit={event => { event.preventDefault(); void changeName(); }}><label>寺友们会看到这个名字<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={32} required autoComplete="off" /></label><p className="life-hint">2–16个字，名字会同步到庭院和公开心语。</p><button className="life-button" type="submit" disabled={Boolean(busy)}><Save size={18} />保存名字</button></form><section className="life-offering"><h3>我的心意</h3><p>献花 {offerings?.mineFlowers ?? 0} 朵</p><p>随喜值 {offerings?.mineSponsor ?? 0}</p><p>仪式 {offerings?.mineRituals ?? 0} 次</p></section><p className="life-hint">日记和寺友跟随账号。使用共用设备后，可从菜单退出账号。</p>
           </>}
           {tab === "leave" && <>
             <h3>带着安静，回到生活</h3><p>离寺前，可以留下一点感受或建议。</p><form className="life-form" onSubmit={event => { event.preventDefault(); void submitAndLeave(); }}><label>给云间寺的话，选填<textarea value={feedback} onChange={event => setFeedback(event.target.value)} maxLength={2000} rows={5} placeholder="今天的体验、想增加的功能，或一句问候…" /></label><button className="life-button" type="submit" disabled={Boolean(busy) || !ready}><Send size={18} />{busy === "feedback" ? "正在提交…" : "提交并离寺"}</button></form><button className="life-button secondary life-leave-button" disabled={Boolean(busy)} onClick={() => { setOpen(false); callbacks.current.onLeave(); }}><LogOut size={18} />直接离寺</button><p className="life-hint">愿你归去时，心里多一份自在。</p>

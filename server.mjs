@@ -8,6 +8,7 @@ import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { createTempleLife } from "./temple-life.mjs";
+import { createTempleAuth } from "./temple-auth.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
@@ -40,8 +41,8 @@ function secureRequest(request) {
     request.headers["x-forwarded-proto"]?.split(",")[0].trim() === "https";
 }
 
-function requestIdentity(request) {
-  const supplied = request.headers.cookie?.split(";")
+function requestIdentity(request, forceFresh = false) {
+  const supplied = !forceFresh && request.headers.cookie?.split(";")
     .map(part => part.trim())
     .find(part => part.startsWith(`${COOKIE_NAME}=`))
     ?.slice(COOKIE_NAME.length + 1);
@@ -316,6 +317,7 @@ export function createTempleServer({
   const staticRoot = resolve(distDirectory);
   const database = openCommunityDatabase(dataDir);
   const life = createTempleLife(database, { trialMode });
+  const auth = createTempleAuth(database, { now });
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
     user: database.prepare("SELECT id, name FROM community_users WHERE id = ?"),
@@ -429,8 +431,7 @@ export function createTempleServer({
     return null;
   }
 
-  async function handleCommunity(request, response, pathname) {
-    const identity = requestIdentity(request);
+  async function handleCommunity(request, response, pathname, identity) {
     const allowed = pathname === "/api/social" ? ["GET", "POST"] : ["POST"];
     if (!allowed.includes(request.method)) {
       response.setHeader("Allow", allowed.join(", "));
@@ -516,8 +517,7 @@ export function createTempleServer({
     return visitor;
   }
 
-  async function handleRoom(request, response) {
-    const identity = requestIdentity(request);
+  async function handleRoom(request, response, identity) {
     if (request.method !== "GET" && request.method !== "POST") {
       response.setHeader("Allow", "GET, POST");
       sendJson(response, { error: "method_not_allowed" }, 405, identity);
@@ -558,6 +558,11 @@ export function createTempleServer({
       return;
     }
     if (body) {
+      const requestedSeat = Object.hasOwn(body, "seat") ? body.seat : visitor.seat;
+      if (body.action === "bow" && requestedSeat === null) {
+        sendJson(response, { error: "bow_requires_seat", message: "请先坐稳蒲团，再开始礼拜。" }, 400, identity);
+        return;
+      }
       const occupied = body.seat !== null && Object.hasOwn(body, "seat") &&
         [...visitors.values()].some(other => other.id !== identity.id && other.seat === body.seat);
       if (occupied) {
@@ -582,12 +587,54 @@ export function createTempleServer({
         response.writeHead(400).end("Bad request");
         return;
       }
+      if (pathname === "/api/auth") {
+        if (!["GET", "POST"].includes(request.method)) {
+          response.setHeader("Allow", "GET, POST");
+          sendJson(response, { error: "method_not_allowed" }, 405);
+          return;
+        }
+        if (request.method === "POST" && !sameOrigin(request, publicOrigin)) {
+          request.resume();
+          sendJson(response, { error: "invalid_origin", message: "请在寺庙网页内操作。" }, 403);
+          return;
+        }
+        const previousIdentity = auth.resolve(request);
+        if (request.method === "GET") {
+          if (previousIdentity) sendJson(response, { authenticated: true, user: previousIdentity });
+          else sendJson(response, { authenticated: false }, 200, requestIdentity(request));
+          return;
+        }
+        let body;
+        try { body = await readJson(request); }
+        catch {
+          sendJson(response, { error: "invalid_request", message: "账号信息未送达，请检查后重试。" }, 400);
+          return;
+        }
+        const result = await auth.act(request, body, requestIdentity(request));
+        if (result.rotateGuest) result.cookies.push(requestIdentity(request, true).cookie);
+        if (result.signedOutId) visitors.delete(result.signedOutId);
+        if (result.identity && previousIdentity && result.identity.id !== previousIdentity.id) visitors.delete(previousIdentity.id);
+        if (result.status === 429) response.setHeader("Retry-After", result.body.error === "auth_busy" ? "3" : "900");
+        sendJson(response, result.body, result.status, { cookie: result.cookies });
+        return;
+      }
+      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life"].includes(pathname);
+      const identity = requiresAuth ? auth.resolve(request) : undefined;
+      if (requiresAuth && !identity) {
+        request.resume();
+        sendJson(response, { authenticated: false, error: "authentication_required", message: "请先设置账号密码或登录，再进入寺庙。" }, 401);
+        return;
+      }
+      if (requiresAuth && Object.hasOwn(request.headers, "x-temple-user") && request.headers["x-temple-user"] !== identity.id) {
+        request.resume();
+        sendJson(response, { error: "account_changed", message: "账号已在其他页面切换，请重新进入寺庙。" }, 409);
+        return;
+      }
       if (pathname === "/api/room") {
-        await handleRoom(request, response);
+        await handleRoom(request, response, identity);
         return;
       }
       if (pathname === "/api/life") {
-        const identity = requestIdentity(request);
         if (!["GET", "POST"].includes(request.method)) {
           response.setHeader("Allow", "GET, POST");
           sendJson(response, { error: "method_not_allowed" }, 405, identity);
@@ -619,7 +666,7 @@ export function createTempleServer({
         return;
       }
       if (pathname === "/api/social" || pathname === "/api/incense") {
-        await handleCommunity(request, response, pathname);
+        await handleCommunity(request, response, pathname, identity);
         return;
       }
       if (pathname === "/health" && (request.method === "GET" || request.method === "HEAD")) {

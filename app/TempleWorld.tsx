@@ -17,10 +17,11 @@ type Participant = {
 
 type Position = { x: number; z: number; heading: number };
 type Landmark = { name: string; x: number; z: number };
+type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
   action: string;
   actionPulse: number;
-  cameraMode?: "first" | "third";
+  cameraMode?: "first" | "third" | "map";
   incensePulse?: number;
   flowerPulse?: number;
   ritualPulse?: number;
@@ -35,6 +36,9 @@ type WorldProps = {
   onLongPress: () => void;
   onPositionChange: (position: Position) => void;
   onPlaceChange?: (name: string) => void;
+  onContextAction?: (kind: "incense" | "flower" | "ritual") => void;
+  onContextChange?: (context: WorldContext) => void;
+  onSeatedChange?: (seated: boolean) => void;
 };
 
 type MonkInstance = {
@@ -52,6 +56,7 @@ const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from),
 export default function TempleWorld(props: WorldProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
+  const hotspotsRef = useRef<HTMLDivElement>(null);
   const latest = useRef(props);
   latest.current = props;
   const joystick = useRef({ x: 0, y: 0 });
@@ -69,6 +74,8 @@ export default function TempleWorld(props: WorldProps) {
     let disposeWorld = () => {};
     setReady(false);
     setError(false);
+    latest.current.onSeatedChange?.(false);
+    latest.current.onContextChange?.({ nearCushion: false, nearAltar: false, nearFlowers: false, nearRitual: false });
 
     void (async () => {
       try {
@@ -80,7 +87,8 @@ export default function TempleWorld(props: WorldProps) {
         ]);
         const host = hostRef.current;
         const labels = labelsRef.current;
-        if (!alive || !host || !labels) return;
+        const hotspots = hotspotsRef.current;
+        if (!alive || !host || !labels || !hotspots) return;
 
         const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
@@ -91,7 +99,7 @@ export default function TempleWorld(props: WorldProps) {
         renderer.shadowMap.type = T.PCFSoftShadowMap;
         renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
         renderer.domElement.tabIndex = 0;
-        renderer.domElement.setAttribute("aria-label", "三维寺庙。轻点地面行走，拖动视角，长按小和尚自动礼拜。电脑可用方向键或WASD移动。");
+        renderer.domElement.setAttribute("aria-label", "三维寺庙。地图视角可向上下左右拖动，轻点地面行走，走近场景中的地点可互动。电脑可用方向键或WASD移动。");
         host.insertBefore(renderer.domElement, host.firstChild);
 
         const scene = new T.Scene();
@@ -106,6 +114,7 @@ export default function TempleWorld(props: WorldProps) {
         let firstPersonPitch = -0.06;
         let firstPersonHeight = 1.1;
         const cameraTarget = new T.Vector3(0, 0.65, 2.9);
+        const mapFocus = new T.Vector3(0, 0.65, 2.9);
         const cameraGoal = new T.Vector3();
         camera.position.set(Math.sin(yaw) * cameraRadius, cameraHeight, 9 + Math.cos(yaw) * cameraRadius);
         camera.lookAt(cameraTarget);
@@ -134,6 +143,7 @@ export default function TempleWorld(props: WorldProps) {
         let observer: ResizeObserver | undefined;
         const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number; bowSpeed: number }>();
         const cleanupListeners: (() => void)[] = [];
+        const hotspotButtons: HTMLButtonElement[] = [];
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
         const selfLabel = document.createElement("div");
@@ -158,6 +168,7 @@ export default function TempleWorld(props: WorldProps) {
           renderer.forceContextLoss();
           renderer.domElement.remove();
           selfLabel.remove();
+          hotspotButtons.forEach(button => button.remove());
           joystick.current = { x: 0, y: 0 };
           travel.current = () => {};
         };
@@ -169,6 +180,45 @@ export default function TempleWorld(props: WorldProps) {
         local.group.rotation.y = 0;
         const actor = local;
         const world = environment;
+        const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #84976d77;border-radius:22px;background:rgba(255,253,238,.95);color:#405438;font:700 14px system-ui;white-space:nowrap;box-shadow:0 3px 10px #354c2525;pointer-events:auto;touch-action:manipulation;will-change:transform";
+        const interactivePoints = world.interactions.map(point => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "world-hotspot";
+          button.textContent = point.label;
+          button.setAttribute("aria-label", `${point.label.replace(/^[^ ]+ /, "")}，${point.kind === "flower" ? "花园" : point.kind === "ritual" ? "祈愿台" : "大殿"}`);
+          button.style.cssText = hotspotStyle;
+          const activate = (event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const state = latest.current;
+            if (state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
+            state.onContextAction?.(point.kind);
+          };
+          button.addEventListener("click", activate);
+          cleanupListeners.push(() => button.removeEventListener("click", activate));
+          hotspots.appendChild(button);
+          hotspotButtons.push(button);
+          return { ...point, button };
+        });
+        let nearestCushionIndex = -1;
+        const cushionButton = document.createElement("button");
+        cushionButton.type = "button";
+        cushionButton.className = "world-hotspot world-seat-hotspot";
+        cushionButton.textContent = "○ 入座";
+        cushionButton.setAttribute("aria-label", "在附近的空蒲团上坐下");
+        cushionButton.style.cssText = hotspotStyle;
+        const sitOnNearbyCushion = (event: MouseEvent) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const state = latest.current;
+          if (nearestCushionIndex < 0 || state.seat !== null || state.auto || state.meditating) return;
+          state.onSeatSelect(nearestCushionIndex);
+        };
+        cushionButton.addEventListener("click", sitOnNearbyCushion);
+        cleanupListeners.push(() => cushionButton.removeEventListener("click", sitOnNearbyCushion));
+        hotspots.appendChild(cushionButton);
+        hotspotButtons.push(cushionButton);
         offering = createIncenseOffering(scene);
         world.colliders.push({ minX: -0.45, maxX: 0.45, minZ: -8.25, maxZ: -7.55 });
         const roofSurfaces: THREE.Mesh[] = [];
@@ -221,6 +271,8 @@ export default function TempleWorld(props: WorldProps) {
         const pointer = new T.Vector2();
         const groundPlane = new T.Plane(new T.Vector3(0, 1, 0), 0);
         const groundPoint = new T.Vector3();
+        const panFrom = new T.Vector3();
+        const panTo = new T.Vector3();
         const projected = new T.Vector3();
         const keys = new Set<string>();
         let route: { x: number; z: number }[] = [];
@@ -237,6 +289,8 @@ export default function TempleWorld(props: WorldProps) {
         let approachingIncense = false;
         let incensePrayerUntil = 0;
         let currentPlace = "静心庭院";
+        let actualSeated: boolean | undefined;
+        let lastContext: WorldContext | undefined;
         let lastSent = -1;
         let lastPosition: Position = { x: 100, z: 100, heading: 0 };
         let lastRemoteSync = -1;
@@ -394,7 +448,7 @@ export default function TempleWorld(props: WorldProps) {
           pointerState.dragged = false;
           pointerState.held = false;
           pointerState.self = latest.current.cameraMode !== "first" && raycaster.intersectObject(actor.group, true).length > 0;
-          pointerState.orbit = event.pointerType === "mouse" || event.clientX - bounds.left > bounds.width * 0.32;
+          pointerState.orbit = latest.current.cameraMode === "map" || event.pointerType === "mouse" || event.clientX - bounds.left > bounds.width * 0.32;
           renderer.domElement.setPointerCapture(event.pointerId);
           if (pointerState.self && !latest.current.auto && !latest.current.meditating) {
             holdTimer = setTimeout(() => {
@@ -413,8 +467,21 @@ export default function TempleWorld(props: WorldProps) {
             if (holdTimer) clearTimeout(holdTimer);
           }
           if (pointerState.dragged && pointerState.orbit) {
-            yaw -= (event.clientX - pointerState.lastX) * 0.006;
-            if (latest.current.cameraMode === "first") firstPersonPitch = clamp(firstPersonPitch - (event.clientY - pointerState.lastY) * 0.004, -0.85, 0.85);
+            if (latest.current.cameraMode === "map") {
+              const bounds = renderer.domElement.getBoundingClientRect();
+              pointer.set((pointerState.lastX - bounds.left) / bounds.width * 2 - 1, -(pointerState.lastY - bounds.top) / bounds.height * 2 + 1);
+              raycaster.setFromCamera(pointer, camera);
+              const fromGround = raycaster.ray.intersectPlane(groundPlane, panFrom);
+              updatePointer(event);
+              const toGround = raycaster.ray.intersectPlane(groundPlane, panTo);
+              if (fromGround && toGround) {
+                mapFocus.x = clamp(mapFocus.x + panFrom.x - panTo.x, TEMPLE_BOUNDS.minX, TEMPLE_BOUNDS.maxX);
+                mapFocus.z = clamp(mapFocus.z + panFrom.z - panTo.z, TEMPLE_BOUNDS.minZ, TEMPLE_BOUNDS.maxZ);
+              }
+            } else {
+              yaw -= (event.clientX - pointerState.lastX) * 0.006;
+              if (latest.current.cameraMode === "first") firstPersonPitch = clamp(firstPersonPitch - (event.clientY - pointerState.lastY) * 0.004, -0.85, 0.85);
+            }
           }
           pointerState.lastX = event.clientX;
           pointerState.lastY = event.clientY;
@@ -449,7 +516,15 @@ export default function TempleWorld(props: WorldProps) {
         function keyUp(event: KeyboardEvent) { keys.delete(event.code); }
         function releaseControls() { keys.clear(); joystick.current = { x: 0, y: 0 }; setKnob({ x: 0, y: 0 }); pointerCancel(); }
         function contextMenu(event: Event) { event.preventDefault(); }
-        function contextLost(event: Event) { event.preventDefault(); if (alive) { setError(true); setReady(false); } }
+        function contextLost(event: Event) {
+          event.preventDefault();
+          if (alive) {
+            hotspotButtons.forEach(button => { button.style.display = "none"; });
+            latest.current.onSeatedChange?.(false);
+            setError(true);
+            setReady(false);
+          }
+        }
         function contextRestored() { if (alive) setRetry(value => value + 1); }
         function listen(target: EventTarget, type: string, handler: EventListener) {
           target.addEventListener(type, handler);
@@ -489,8 +564,29 @@ export default function TempleWorld(props: WorldProps) {
           if (visible) label.style.transform = `translate(${(projected.x + 1) * host!.clientWidth / 2}px,${(1 - projected.y) * host!.clientHeight / 2}px) translate(-50%,-100%)`;
         }
 
+        function positionHotspot(button: HTMLButtonElement, x: number, y: number, z: number, available: boolean) {
+          if (!available) {
+            button.style.display = "none";
+            return;
+          }
+          const width = renderer.domElement.clientWidth;
+          const height = renderer.domElement.clientHeight;
+          projected.set(x, y, z).project(camera);
+          const screenX = (projected.x * 0.5 + 0.5) * width;
+          const screenY = (-projected.y * 0.5 + 0.5) * height;
+          const visible = projected.z > -1 && projected.z < 1 && screenX > 8 && screenX < width - 8 && screenY > 24 && screenY < height - 24;
+          button.style.display = visible ? "block" : "none";
+          if (visible) {
+            const halfWidth = button.offsetWidth / 2;
+            const boundedX = clamp(screenX, halfWidth + 8, width - halfWidth - 8);
+            button.style.transform = `translate(${boundedX - halfWidth}px,${screenY - 22}px)`;
+          }
+        }
+
         function syncRemote(time: number) {
           const state = latest.current;
+          const ownName = state.participants.find(person => person.id === state.selfId)?.name;
+          if (ownName && selfLabel.textContent !== `● ${ownName}`) selfLabel.textContent = `● ${ownName}`;
           // Keep the nearest real visitors visible on crowded mobile devices.
           const visitors = state.participants.filter(person => person.id !== state.selfId).sort((a, b) => {
             if (a.seat !== null && b.seat === null) return -1;
@@ -538,6 +634,7 @@ export default function TempleWorld(props: WorldProps) {
           const state = latest.current;
           const position = actor.group.position;
           const firstPerson = state.cameraMode === "first";
+          const mapMode = state.cameraMode === "map";
 
           if ((state.incensePulse ?? 0) !== incensePulse) {
             incensePulse = state.incensePulse ?? 0;
@@ -597,8 +694,9 @@ export default function TempleWorld(props: WorldProps) {
               const length = Math.hypot(inputX, inputY);
               inputX = inputX / length * strength;
               inputY = inputY / length * strength;
-              dx = inputX * Math.cos(yaw) + inputY * Math.sin(yaw);
-              dz = -inputX * Math.sin(yaw) + inputY * Math.cos(yaw);
+              const movementYaw = mapMode ? 0 : yaw;
+              dx = inputX * Math.cos(movementYaw) + inputY * Math.sin(movementYaw);
+              dz = -inputX * Math.sin(movementYaw) + inputY * Math.cos(movementYaw);
               route = [];
               destination.visible = false;
               userMoved = true;
@@ -628,6 +726,30 @@ export default function TempleWorld(props: WorldProps) {
           const walking = Math.hypot(position.x - previousX, position.z - previousZ) > 0.001;
           const cushion = state.seat === null ? null : world.cushions[state.seat];
           const seated = Boolean(cushion && !walking && Math.hypot(position.x - cushion.x, position.z - cushion.z) < 0.18);
+          if (seated !== actualSeated) {
+            actualSeated = seated;
+            state.onSeatedChange?.(seated);
+          }
+          nearestCushionIndex = -1;
+          let nearestCushionDistance = 4;
+          if (state.seat === null) world.cushions.forEach((point, index) => {
+            if (state.participants.some(person => person.id !== state.selfId && person.seat === index)) return;
+            const distance = Math.hypot(position.x - point.x, position.z - point.z);
+            if (distance < nearestCushionDistance) {
+              nearestCushionDistance = distance;
+              nearestCushionIndex = index;
+            }
+          });
+          const context: WorldContext = {
+            nearCushion: world.cushions.some(point => Math.hypot(position.x - point.x, position.z - point.z) <= 2),
+            nearAltar: Math.hypot(position.x, position.z + 6.9) <= 5,
+            nearFlowers: Math.hypot(position.x - 16, position.z - 5) <= 5,
+            nearRitual: Math.hypot(position.x, position.z + 18) <= 5,
+          };
+          if (!lastContext || context.nearCushion !== lastContext.nearCushion || context.nearAltar !== lastContext.nearAltar || context.nearFlowers !== lastContext.nearFlowers || context.nearRitual !== lastContext.nearRitual) {
+            lastContext = context;
+            state.onContextChange?.(context);
+          }
           if (approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 6.95) < 0.6) {
             approachingIncense = false;
             incensePrayerUntil = time + 3;
@@ -663,13 +785,19 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Math.abs(position.x) < 4.4 && position.z < -3.5 && position.z > -10.8;
           const nextCameraMode = state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
-          if (cameraChanged || camera.fov !== (firstPerson ? 64 : 42)) {
+          const fieldOfView = firstPerson ? 64 : mapMode ? 48 : 42;
+          if (cameraChanged || camera.fov !== fieldOfView) {
             cameraMode = nextCameraMode;
-            camera.fov = firstPerson ? 64 : 42;
+            camera.fov = fieldOfView;
             camera.near = firstPerson ? 0.06 : 0.1;
             camera.updateProjectionMatrix();
           }
-          if (firstPerson) {
+          if (mapMode) {
+            if (cameraChanged) mapFocus.set(position.x, 0.65, position.z);
+            const mapHeight = mobile ? 19 : 24;
+            cameraTarget.copy(mapFocus);
+            camera.position.set(mapFocus.x, mapFocus.y + mapHeight, mapFocus.z + mapHeight * 0.7);
+          } else if (firstPerson) {
             const eyeHeight = pose === "idle" ? 1.1 : 0.85;
             firstPersonHeight += (eyeHeight - firstPersonHeight) * Math.min(1, dt * 8);
             camera.position.set(position.x, position.y + firstPersonHeight, position.z);
@@ -709,6 +837,12 @@ export default function TempleWorld(props: WorldProps) {
             material.depthWrite = material.opacity > 0.98;
           });
           renderer.render(scene, camera);
+          interactivePoints.forEach(point => {
+            const nearby = Math.hypot(position.x - point.x, position.z - point.z) <= 5;
+            positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen);
+          });
+          const availableCushion = world.cushions[nearestCushionIndex];
+          positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen);
           if (firstPerson) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
@@ -763,6 +897,7 @@ export default function TempleWorld(props: WorldProps) {
 
   return <div ref={hostRef} className="temple-world" style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#dce6d8", touchAction: "none" }}>
     <div ref={labelsRef} aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
+    <div ref={hotspotsRef} role="group" aria-label="附近可互动的地点" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
     {!ready && !error && <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, gap: 12 }}><span style={{ fontSize: 28 }}>✳</span><span>正在推开三维寺庙的门…</span></div>}
     {error && <div role="alert" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", padding: 28, textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, background: "#e4eadc", gap: 14 }}><span style={{ fontSize: 32 }}>✳</span><strong>三维庭院暂时没有打开</strong><span style={{ fontSize: 14, lineHeight: 1.8 }}>请使用手机 Safari 或 Chrome 重新打开，再试一次。</span><button onClick={() => setRetry(value => value + 1)} style={{ border: 0, padding: "11px 22px", borderRadius: 24, background: "#778d62", color: "#fff", cursor: "pointer" }}>重新入寺</button></div>}
     {ready && <>
@@ -779,7 +914,7 @@ export default function TempleWorld(props: WorldProps) {
       <div className={`world-landmarks ${placeMenu ? "is-open" : ""}`} style={{ position: "absolute", right: 17, bottom: 43, display: "grid", justifyItems: "end", gap: 9 }}>
         <button aria-label="选择想走去的地点" aria-expanded={placeMenu} disabled={controlsDisabled} onClick={() => setPlaceMenu(value => !value)} style={{ display: "flex", alignItems: "center", gap: 7, border: "1px solid #79916844", borderRadius: 20, background: "rgba(250,251,238,.94)", color: "#465b3e", fontSize: 14, fontWeight: 700, minHeight: 44, padding: "10px 13px", boxShadow: "0 2px 9px #344e2510", cursor: controlsDisabled ? "default" : "pointer" }}><span style={{ fontSize: 16 }}>⌖</span> 去走走</button>
         {placeMenu && <div role="group" aria-label="前往寺庙地点" style={{ display: "grid", gap: 5, padding: 7, borderRadius: 14, background: "rgba(251,251,240,.95)", border: "1px solid #899b7633", boxShadow: "0 4px 20px #314c3020" }}>{places.map((place, index) => <button key={`${place.name}-${index}`} disabled={controlsDisabled} onClick={() => { travel.current(place); setPlaceMenu(false); }} style={{ border: 0, borderRadius: 8, padding: "10px 13px", minHeight: 44, background: "#edf0e4", color: "#465b3e", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>⌖ &nbsp; {place.name}</button>)}</div>}
-        <span className="world-look-hint" style={{ fontSize: 14, fontWeight: 700, color: "#465b3e", textShadow: "0 1px 3px #fff" }}>拖动右侧看风景</span>
+        <span className="world-look-hint" style={{ fontSize: 14, fontWeight: 700, color: "#465b3e", textShadow: "0 1px 3px #fff" }}>{props.cameraMode === "map" ? "上下左右拖动地图" : "拖动右侧看风景"}</span>
       </div>
     </>}
   </div>;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, HeartHandshake, Leaf, RefreshCw, Send, Sparkles, UserRound, UsersRound, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import "./social.css";
 
 type Person = { id: string; name: string };
@@ -20,6 +21,7 @@ type SocialSnapshot = {
 type Props = {
   selfId?: string;
   compact?: boolean;
+  incenseRequest?: number;
   onIncense?: (count: number) => void;
   onInteraction?: () => void;
   onNotice?: (message: string) => void;
@@ -37,13 +39,13 @@ function IncenseIcon() {
   </svg>;
 }
 
-async function api(path: string, body?: Record<string, unknown>) {
+async function api(path: string, body?: Record<string, unknown>, expectedUser?: string) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await fetch(path, {
       method: body ? "POST" : "GET",
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(expectedUser ? { "X-Temple-User": expectedUser } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
       credentials: "same-origin",
@@ -61,7 +63,7 @@ async function api(path: string, body?: Record<string, unknown>) {
   }
 }
 
-export default function SocialTemple({ selfId, compact = false, onIncense, onInteraction, onNotice }: Props) {
+export default function SocialTemple({ selfId, compact = false, incenseRequest = 0, onIncense, onInteraction, onNotice }: Props) {
   const [snapshot, setSnapshot] = useState<SocialSnapshot | null>(null);
   const [connection, setConnection] = useState<"loading" | "ready" | "offline">("loading");
   const [open, setOpen] = useState(false);
@@ -91,7 +93,7 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
     if (!selfId || refreshPending.current) return;
     refreshPending.current = true;
     try {
-      const result = await api("/api/social") as SocialSnapshot;
+      const result = await api("/api/social", undefined, selfId) as SocialSnapshot;
       if (mounted.current) {
         setSnapshot(result);
         setConnection("ready");
@@ -162,7 +164,7 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
     setBusy(`${action}-${target}`);
     try {
       const identity = action === "request" || action === "greet" ? { targetId: target } : { requestId: target };
-      await api("/api/social", { action, ...identity });
+      await api("/api/social", { action, ...identity }, selfId);
       const messages = {
         request: "结缘邀请已送达，等一位有缘人回应。",
         accept: "结缘成功，今后也是一起静坐的寺友了。",
@@ -184,7 +186,7 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
     callbacks.current.onInteraction?.();
     setOffering(true);
     try {
-      const counts = await api("/api/incense", {}) as IncenseCounts;
+      const counts = await api("/api/incense", {}, selfId) as IncenseCounts;
       setSnapshot(current => current ? { ...current, incense: counts } : current);
       setCooldown(5);
       if (compact) setIncenseOpen(false);
@@ -197,6 +199,8 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
       if (mounted.current) setOffering(false);
     }
   }
+
+  useEffect(() => { if (incenseRequest) { setOpen(false); setIncenseOpen(true); void refresh(); } }, [incenseRequest, refresh]);
 
   const online = connection === "ready" ? snapshot?.online.filter(person => person.id !== snapshot.self.id) ?? [] : [];
   const friends = snapshot?.friends ?? [];
@@ -240,7 +244,7 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
     </>}
 
     {notice && <div className="social-inline-notice" role="status"><Leaf size={14} />{notice}</div>}
-    {incenseOpen && <div className="social-backdrop" onClick={() => setIncenseOpen(false)}>
+    {incenseOpen && createPortal(<div className="social-temple-compact"><div className="social-backdrop" onClick={() => setIncenseOpen(false)}>
       <section ref={modalRef} className="social-sheet incense-sheet" role="dialog" aria-modal="true" aria-labelledby="incense-title" onClick={event => event.stopPropagation()}>
         <header className="social-sheet-header"><div><span className="social-overline">清香袅袅，心意相随</span><h2 id="incense-title">敬香祈愿</h2></div><button className="social-close" aria-label="关闭敬香窗口" onClick={() => setIncenseOpen(false)}><X size={21} /></button></header>
         <div className="social-sheet-body">
@@ -248,8 +252,8 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
           {snapshot?.trial?.temporaryRecords && <p className="social-trial-note">免费体验版的好友与香火记录可能在服务休眠或重启后重置。</p>}
         </div>
       </section>
-    </div>}
-    {open && <div className="social-backdrop" onClick={() => setOpen(false)}>
+    </div></div>, document.body)}
+    {open && createPortal(<div className="social-temple-compact"><div className="social-backdrop" onClick={() => setOpen(false)}>
       <section ref={modalRef} className="social-sheet" role="dialog" aria-modal="true" aria-labelledby="social-title" onClick={event => event.stopPropagation()}>
         <header className="social-sheet-header"><div><span className="social-overline">有缘相逢，同在此刻</span><h2 id="social-title">寺友 · 结缘</h2></div><button className="social-close" aria-label="关闭结缘窗口" onClick={() => setOpen(false)}><X size={21} /></button></header>
         <div className="social-tabs" role="tablist" aria-label="结缘分类">{([{ key: "online", label: "在线同修", count: online.length }, { key: "invitations", label: "结缘邀请", count: incoming.length }, { key: "friends", label: "我的寺友", count: friends.length }] as const).map(item => <button key={item.key} role="tab" aria-selected={tab === item.key} aria-controls={`social-panel-${item.key}`} id={`social-tab-${item.key}`} onClick={() => setTab(item.key)}>{item.label}{item.count > 0 && <span>{item.count}</span>}</button>)}</div>
@@ -266,8 +270,8 @@ export default function SocialTemple({ selfId, compact = false, onIncense, onInt
             {snapshot?.greetings.length ? <div className="social-greetings"><h3>寺友捎来的问候</h3>{snapshot.greetings.slice(0, 5).map(greeting => <div key={greeting.id}><Leaf size={14} /><p><strong>{greeting.fromName}</strong><span>{greeting.text}</span></p></div>)}</div> : null}
           </>}
         </div>
-        <footer className="social-sheet-footer"><span>{snapshot?.self.name ? `你是 ${snapshot.self.name}` : "一位路过的有缘人"}</span><small>结缘身份保存在当前浏览器，清除浏览器数据会失去此身份。</small></footer>
+        <footer className="social-sheet-footer"><span>{snapshot?.self.name ? `你是 ${snapshot.self.name}` : "一位路过的有缘人"}</span><small>登录同一账号，可在其他设备找到寺友。</small></footer>
       </section>
-    </div>}
+    </div></div>, document.body)}
   </div>;
 }

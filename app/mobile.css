@@ -358,3 +358,40 @@ svg { vertical-align: middle; }
 }
 
 .temple-game .modal-backdrop, .temple-game .social-backdrop, .life-backdrop { height: var(--temple-viewport-height, 100dvh); }
+
+.temple-game .game-brand { padding: 4px; border: 0; background: #f9fbedb8; border-radius: 12px; box-shadow: none; gap: 6px; }
+.temple-game .game-brand > svg { width: 25px; height: 30px; }
+.temple-game .game-brand h1 { font-size: 19px; letter-spacing: 1px; }
+.temple-game .game-brand span { font-size: 12px; margin-top: 2px; }
+.temple-game .menu-control { width: 44px; min-height: 44px; border-radius: 50%; }
+.temple-game .game-presence { top: calc(var(--hud-top) + 56px); font-size: 12px; padding: 7px 10px; }
+.temple-game .world-landmarks { display: none !important; }
+.temple-game .world-joystick > button { width: 78px !important; height: 78px !important; }
+.temple-game .world-joystick > span { display: none; }
+.temple-game .game-menu { width: min(266px, calc(100% - var(--hud-left) - var(--hud-right))); max-height: calc(var(--temple-viewport-height, 100dvh) - var(--hud-top) - var(--hud-bottom) - 64px); overflow-y: auto; overscroll-behavior: contain; padding: 10px; }
+.game-menu[hidden], .game-action-dock[hidden], .game-action-grid[hidden] { display: none !important; }
+.game-menu:not([hidden]) { display: grid; gap: 2px; }
+.temple-game .game-menu > strong { font-size: 15px; padding: 7px 9px; }
+.game-menu > strong small { display: block; font-size: 12px; margin-top: 3px; color: #748467; }
+.temple-game .game-menu > button { min-height: 44px; font-size: 15px; padding: 8px 10px; gap: 10px; }
+.game-menu .social-temple-compact, .game-menu .temple-life { position: static; width: 100%; margin: 0; display: block; z-index: auto; }
+.game-menu .social-quick-controls { position: static; display: block; z-index: auto; }
+.game-menu .social-quick-controls > button:first-child { display: none; }
+.temple-game .game-menu .social-quick-controls > button, .game-menu .life-shortcut { width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; justify-content: flex-start; gap: 10px; font-size: 15px; color: #405b39; }
+.game-menu .social-quick-controls > button:hover, .game-menu .life-shortcut:hover { background: #e7edda; }
+.temple-game .game-action-dock { width: min(222px, calc(100% - var(--hud-left) - var(--hud-right) - 88px)); bottom: calc(var(--hud-bottom) + 50px); gap: 6px; }
+.temple-game .game-action-grid { gap: 5px; }
+.temple-game .game-action { min-height: 56px; padding: 5px 2px; gap: 2px; border-radius: 12px; }
+.temple-game .game-action > svg { width: 25px; height: 25px; }
+.temple-game .game-action span { font-size: 14px; }
+.temple-game .auto-bow-control { min-height: 44px; font-size: 14px; padding: 8px; }
+.temple-game .auto-bow-control strong { font-size: 16px; }
+.temple-game .bow-speed-control { font-size: 14px; padding: 8px 11px; }
+.practice-toggle { position: absolute; right: var(--hud-right); bottom: var(--hud-bottom); z-index: 9; min-width: 76px; min-height: 44px; padding: 9px 15px; border: 1px solid #ffffffdc; border-radius: 24px; background: #f7faedeb; color: #405b39; font-size: 15px; font-weight: 750; box-shadow: 0 3px 12px #344e2518; }
+.social-temple-compact .social-backdrop { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); height: var(--temple-viewport-height, 100dvh); align-items: center; }
+.social-temple-compact .social-sheet { max-height: calc(var(--temple-viewport-height, 100dvh) - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); }
+@media (max-height: 500px) and (orientation: landscape) {
+ .temple-game .game-action-dock { width: min(414px, calc(100% - var(--hud-left) - var(--hud-right) - 100px)); }
+ .temple-game .game-action { min-height: 53px; }
+ .temple-game .game-meditation-status { top: var(--hud-top); }
+}

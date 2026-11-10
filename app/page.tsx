@@ -5,6 +5,7 @@ import { Volume2, VolumeX, CircleHelp, X, Leaf, Pause, Play, Wind, Share2, Spark
 import TempleWorld from "./TempleWorld";
 import SocialTemple from "./SocialTemple";
 import TempleLife from "./TempleLife";
+import AccountGate, { type AccountUser } from "./AccountGate";
 import { createTempleAudio, type TempleSound } from "./audio";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
@@ -20,15 +21,26 @@ function ActionIcon({kind}:{kind:string}) {return <svg viewBox="0 0 64 58" fill=
   {kind==="beads"&&<><ellipse cx="31" cy="27" rx="18" ry="20" stroke="#b58b5e" strokeWidth="5"/>{Array.from({length:12},(_,i)=>{const a=i*Math.PI/6;return <circle key={i} cx={Number((31+18*Math.sin(a)).toFixed(3))} cy={Number((27+20*Math.cos(a)).toFixed(3))} r="4.2" fill="#b98755" stroke="#865e3f" strokeWidth="1"/>})}<path d="m31 47 1 6m-4 0h8m-4-3-3 7m3-7 3 7" stroke="#ad7252" strokeWidth="2" strokeLinecap="round"/></>}
   {kind==="wood"&&<><path d="M10 36c0-12 9-20 22-18 14 1 22 10 21 20-1 12-41 15-43-2Z" fill="#ba8554" stroke="#835f43" strokeWidth="1.8"/><path d="M28 19c8 4 10 12 3 18m-2 0 16-4" stroke="#76563f" strokeWidth="2.7" strokeLinecap="round"/><path d="m40 16 12-11" stroke="#947455" strokeWidth="4" strokeLinecap="round"/><ellipse cx="53" cy="7" rx="5" ry="6" transform="rotate(42 53 7)" fill="#d1aa77" stroke="#947455" strokeWidth="1.5"/><path d="M15 42c11 5 24 4 31 0" stroke="#d5ae79" strokeWidth="1.5" strokeLinecap="round"/></>}
 </svg>}
-export default function Home(){
+export default function Home() {
+ const [account, setAccount] = useState<AccountUser | null>(null);
+ const signedOut = useCallback(() => setAccount(null), []);
+ return account ? <TempleGame account={account} onSignedOut={signedOut} /> : <AccountGate onAuthenticated={setAccount} />;
+}
+function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
  const [incensePulse, setIncensePulse] = useState(0);
  const [room,setRoom]=useState<Room|null>(null),[connection,setConnection]=useState("connecting"),[seat,setSeat]=useState<number|null>(null),[action,setAction]=useState("idle"),[pulse,setPulse]=useState(0);
  const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|null>(null);
  const [auto,setAuto]=useState(false),[bowCount,setBowCount]=useState(0),[meditating,setMeditating]=useState(false),[duration,setDuration]=useState(5),[remaining,setRemaining]=useState(0);
  const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef({x:0,z:9,heading:0}),positionSent=useRef(0);
  const [place,setPlace]=useState("静心庭院");
- const [cameraMode, setCameraMode] = useState<"first" | "third">("third");
+ const [cameraMode, setCameraMode] = useState<"first" | "third" | "map">("map");
  const [menuOpen, setMenuOpen] = useState(false);
+ const [isSeated, setIsSeated] = useState(false);
+ const seatedRef = useRef(false);
+ const [practiceOpen, setPracticeOpen] = useState(false);
+ const [incenseRequest, setIncenseRequest] = useState(0);
+ const [flowerRequest, setFlowerRequest] = useState(0);
+ const [ritualRequest, setRitualRequest] = useState(0);
  const [flowerPulse, setFlowerPulse] = useState(0);
  const [ritualPulse, setRitualPulse] = useState(0);
  const [exitRequest, setExitRequest] = useState(0);
@@ -37,6 +49,7 @@ export default function Home(){
  bowSpeedRef.current = bowSpeed;
  const [departed, setDeparted] = useState(false);
  const departedRef = useRef(false);
+ const gameAlive = useRef(true);
  const requestSeq=useRef(0),requestQueue=useRef<Promise<unknown>>(Promise.resolve()),requestBusy=useRef(false),roomRef=useRef<Room|null>(null),preferredSeat=useRef(5),bowCountRef=useRef(0),meditationEnd=useRef(0),lastTick=useRef(0),autoRef=useRef(false),meditatingRef=useRef(false),seatRef=useRef<number|null>(null);
  const notify=useCallback((text:string)=>{setToast(text);if(toastTimer.current)clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(""),3200)},[]);
  const add=useCallback((key:keyof Omit<Stats,"date">,amount=1)=>setStats(s=>{const base=s.date===day()?s:freshStats();return {...base,[key]:base[key]+amount}}),[]);
@@ -75,7 +88,7 @@ export default function Home(){
  const sync=useCallback((body?:Record<string,unknown>):Promise<Room|null>=>{
   const seq=++requestSeq.current;
   const run=async():Promise<Room|null>=>{
-   if (departedRef.current && body?.leave !== true) return null;
+   if (!gameAlive.current || (departedRef.current && body?.leave !== true)) return null;
    // Preserve seat and meditation transitions while coalescing queued movement.
    const userTransition=Object.hasOwn(body??{},"seat")||Object.hasOwn(body??{},"meditating")||Object.hasOwn(body??{},"leave");
    if(seq!==requestSeq.current&&!userTransition)return null;
@@ -86,10 +99,13 @@ export default function Home(){
      const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
      let res:Response;
      try{
-      res=await fetch("/api/room",{method:payload?"POST":"GET",headers:payload?{"Content-Type":"application/json"}:undefined,body:payload?JSON.stringify(payload):undefined,cache:"no-store",signal:controller.signal});
+      res=await fetch("/api/room",{method:payload?"POST":"GET",headers:{"X-Temple-User":account.id,...(payload?{"Content-Type":"application/json"}:{})},body:payload?JSON.stringify(payload):undefined,cache:"no-store",signal:controller.signal});
      }finally{clearTimeout(timeout)}
+     if (!gameAlive.current) return null;
+     if (res.status === 401) { onSignedOut(); return null; }
      if(!res.ok&&res.status!==409)throw new Error("room");
-     const data=await res.json() as Room;
+     const data=await res.json() as Room & { error?: string };
+     if (data.error === "account_changed" || data.selfId !== account.id) { onSignedOut(); return null; }
      // Completed requests are already ordered by the queue, including on slow networks.
      const self=data.participants.find(v=>v.id===data.selfId);
      if(self?.seat===null&&meditatingRef.current&&attempt<seats.length){
@@ -119,13 +135,13 @@ export default function Home(){
   const result=requestQueue.current.then(run,run);
   requestQueue.current=result;
   return result;
- },[notify]);
- useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved);setSound(localStorage.getItem("cloud-temple-sound")!=="false")}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
- useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats",JSON.stringify(stats));localStorage.setItem("cloud-temple-sound",String(sound))}catch{}}},[loaded,stats,sound]);
+ },[notify,onSignedOut,account.id]);
+ useEffect(()=>{gameAlive.current=true;try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats:"+account.id)||localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved);setSound(localStorage.getItem("cloud-temple-sound")!=="false")}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{gameAlive.current=false;clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
+ useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats:"+account.id,JSON.stringify(stats));localStorage.removeItem("cloud-temple-stats");localStorage.setItem("cloud-temple-sound",String(sound))}catch{}}},[loaded,stats,sound]);
  useEffect(()=>{autoRef.current=auto;meditatingRef.current=meditating;seatRef.current=seat},[auto,meditating,seat]);
  useEffect(()=>{const visible=()=>{if(document.hidden){if(autoRef.current){autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"});notify("礼拜已暂停，回来后可继续")}}else void sync(meditatingRef.current?{meditating:true,action:"meditate"}:undefined)};document.addEventListener("visibilitychange",visible);return()=>document.removeEventListener("visibilitychange",visible)},[sync,notify]);
- const doAction=useCallback((kind:string)=>{if(meditatingRef.current||autoRef.current)return;setAction(kind);setPulse(p=>p+1);const key=({prayer:"prayer",bow:"bows",beads:"beads",wood:"wood"} as const)[kind as "prayer"|"bow"|"beads"|"wood"];if(key)add(key);tone(kind as TempleSound);void sync({action:kind,bowSpeed:1});if(actionTimer.current)clearTimeout(actionTimer.current);actionTimer.current=setTimeout(()=>{setAction("idle");void sync({action:"idle"})},1050)},[add,tone,sync]);
- const startAuto=()=>{unlockAudio();if(autoRef.current)return;if(meditatingRef.current){notify("先结束静坐，再开始礼拜吧");return}if(actionTimer.current)clearTimeout(actionTimer.current);if(bowCountRef.current>=108){bowCountRef.current=0;setBowCount(0)}autoRef.current=true;setAuto(true);setAction("idle");notify(bowCountRef.current>0?"继续礼拜，慢慢来":"已开始 108 次礼拜，可随时暂停")};
+ const doAction=useCallback((kind:string)=>{if(!seatedRef.current){notify("走近蒲团坐稳后，再开始修行吧");return}if(meditatingRef.current||autoRef.current)return;setAction(kind);setPulse(p=>p+1);const key=({prayer:"prayer",bow:"bows",beads:"beads",wood:"wood"} as const)[kind as "prayer"|"bow"|"beads"|"wood"];if(key)add(key);tone(kind as TempleSound);void sync({action:kind,bowSpeed:1});if(actionTimer.current)clearTimeout(actionTimer.current);actionTimer.current=setTimeout(()=>{setAction("idle");void sync({action:"idle"})},1050)},[add,tone,sync,notify]);
+ const startAuto=()=>{if(!seatedRef.current){notify("坐上蒲团后，就可以开始108拜");return}unlockAudio();if(autoRef.current)return;if(meditatingRef.current){notify("先结束静坐，再开始礼拜吧");return}if(actionTimer.current)clearTimeout(actionTimer.current);if(bowCountRef.current>=108){bowCountRef.current=0;setBowCount(0)}autoRef.current=true;setAuto(true);setAction("idle");notify(bowCountRef.current>0?"继续礼拜，慢慢来":"已开始 108 次礼拜，可随时暂停")};
  useEffect(() => {
   if (!auto) return;
   let completedBow: ReturnType<typeof setTimeout> | undefined;
@@ -150,10 +166,9 @@ export default function Home(){
  const stopAuto=()=>{autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"})};
  const finishMeditation=useCallback((completed=false)=>{setMeditating(false);meditatingRef.current=false;setRemaining(0);setAction("idle");void sync({meditating:false,action:"idle"});tone("bell");notify(completed?"静坐圆满，带着这份平静继续生活吧":"已结束静坐，愿此刻的安静陪着你")},[sync,tone,notify]);
  useEffect(()=>{if(!meditating)return;const timer=setInterval(()=>{const now=Date.now(),left=Math.max(0,Math.ceil((meditationEnd.current-now)/1000)),elapsed=Math.max(0,Math.floor((Math.min(now,meditationEnd.current)-lastTick.current)/1000));if(elapsed>0){add("seconds",elapsed);lastTick.current+=elapsed*1000}setRemaining(left);if(left===0)finishMeditation(true)},1000);return()=>clearInterval(timer)},[meditating,add,finishMeditation]);
- const beginMeditation=async()=>{unlockAudio();if(meditatingRef.current)return;if(seatRef.current===null){notify("先在庭院里选一个空蒲团吧");setModal(null);return}if(autoRef.current)stopAuto();if(actionTimer.current)clearTimeout(actionTimer.current);setModal(null);meditationEnd.current=Date.now()+duration*60000;lastTick.current=Date.now();setRemaining(duration*60);setMeditating(true);meditatingRef.current=true;setAction("meditate");tone("meditate");const data=await sync({meditating:true,action:"meditate"});if(meditatingRef.current)notify(data?"已加入静坐。吸气，呼气，回到此刻。":"正在独自静坐；网络恢复后将重新连接")};
+ const beginMeditation=async()=>{unlockAudio();if(meditatingRef.current)return;if(seatRef.current===null||!seatedRef.current){notify("先走到蒲团上坐稳吧");setModal(null);return}if(autoRef.current)stopAuto();if(actionTimer.current)clearTimeout(actionTimer.current);setModal(null);meditationEnd.current=Date.now()+duration*60000;lastTick.current=Date.now();setRemaining(duration*60);setMeditating(true);meditatingRef.current=true;setAction("meditate");tone("meditate");const data=await sync({meditating:true,action:"meditate"});if(meditatingRef.current)notify(data?"已加入静坐。吸气，呼气，回到此刻。":"正在独自静坐；网络恢复后将重新连接")};
  const chooseSeat=async(n:number)=>{if(autoRef.current){notify("暂停礼拜后，就可以换蒲团了");return}if(connection==="online"&&room?.participants.some(p=>p.seat===n&&p.id!==room.selfId)){notify("这个蒲团已有同修，请选另一个");return}preferredSeat.current=n;const body={seat:n,...(meditatingRef.current?{meditating:true,action:"meditate"}:{})};if(connection!=="online"){seatRef.current=n;setSeat(n);notify("已在这里坐下，正在等待网络恢复");void sync(body);return}const data=await sync(body);if(data)notify("坐稳啦，把心慢慢放下来")};
- const sitNearby=()=>{const available=seats.map((p,n)=>({...p,n})).filter(p=>connection!=="online"||!room?.participants.some(v=>v.id!==room.selfId&&v.seat===p.n)).sort((a,b)=>Math.hypot(a.x-positionRef.current.x,a.z-positionRef.current.z)-Math.hypot(b.x-positionRef.current.x,b.z-positionRef.current.z));if(available[0])void chooseSeat(available[0].n);else notify("蒲团暂时坐满了，先在寺里走走吧")};
- const leaveSeat=()=>{if(autoRef.current||meditatingRef.current)return;seatRef.current=null;setSeat(null);setAction("idle");void sync({seat:null,action:"idle"})};
+ const leaveSeat=()=>{if(autoRef.current||meditatingRef.current)return;seatedRef.current=false;setIsSeated(false);seatRef.current=null;setSeat(null);setAction("idle");void sync({seat:null,action:"idle"})};
  const movePosition=useCallback((p:{x:number,z:number,heading:number})=>{positionRef.current=p;if(Date.now()-positionSent.current>1200){positionSent.current=Date.now();void sync({...p})}},[sync]);
  const activeParticipants=connection==="online"?(room?.participants??[]):[];
  const others=activeParticipants.filter(v=>v.id!==room?.selfId),selfName=room?.participants.find(v=>v.id===room.selfId)?.name??"小知";
@@ -168,6 +183,18 @@ export default function Home(){
   audioRef.current?.setEnabled(false);
   setDeparted(true);
   void sync({ leave: true });
+ };
+ const logoutAccount = async () => {
+  try {
+   const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "logout" }) });
+   if (!response.ok) throw new Error("logout");
+   if (gameAlive.current) onSignedOut();
+  } catch { notify("退出暂时未完成，请稍后重试"); }
+ };
+ const contextAction = (kind: "incense" | "flower" | "ritual") => {
+  if (kind === "incense") setIncenseRequest(value => value + 1);
+  if (kind === "flower") setFlowerRequest(value => value + 1);
+  if (kind === "ritual") setRitualRequest(value => value + 1);
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
@@ -192,54 +219,39 @@ export default function Home(){
       onLongPress={startAuto}
       onPositionChange={movePosition}
       onPlaceChange={setPlace}
+      onContextAction={contextAction}
+      onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
      />
     </div>
 
     <header className="game-header">
      <div className="game-brand"><Lotus /><div><h1>云间寺</h1><span>{place}</span></div></div>
      <div className="game-header-tools">
-      <button className={`hud-button sound-control ${sound ? "is-on" : ""}`} onClick={toggleSound} aria-label={sound ? "关闭声音" : "开启声音"} aria-pressed={sound}>
-       {sound ? <Volume2 size={21} /> : <VolumeX size={21} />}<span>声音{sound ? "开" : "关"}</span>
-      </button>
       <button className="hud-button menu-control" onClick={() => setMenuOpen(value => !value)} aria-label="更多选项" aria-expanded={menuOpen} aria-controls="game-menu"><MoreHorizontal size={24} /></button>
      </div>
     </header>
     <div className={`game-presence online-pill ${connection}`} role="status"><i />{connection === "online" ? `${room?.total ?? 1} 人在寺` : connection === "offline" ? "离线漫游" : "正在入寺…"}</div>
-    <button className="hud-button view-toggle" onClick={() => setCameraMode(mode => mode === "third" ? "first" : "third")} aria-label={`切换到${cameraMode === "third" ? "第一" : "第三"}人称视角`}><Camera size={20} /><span>{cameraMode === "third" ? "第三人称" : "第一人称"}</span></button>
-
-    {menuOpen && <>
-     <button className="menu-dismiss" aria-label="收起更多选项" onClick={() => setMenuOpen(false)} />
-     <nav id="game-menu" className="game-menu" aria-label="更多选项">
-      <strong>{selfName} · 你的小和尚</strong>
-      <button onClick={() => { setMenuOpen(false); setModal("practice"); }}><Sparkles size={20} />我的修行</button>
-      <button onClick={() => { setMenuOpen(false); void share(); }}><Share2 size={20} />邀请朋友</button>
-      <button onClick={() => { setMenuOpen(false); setModal("help"); }}><CircleHelp size={20} />玩法帮助</button>
-      <button onClick={() => { setMenuOpen(false); setExitRequest(value => value + 1); }}><Leaf size={20} />离寺 · 留个建议</button>
-     </nav>
-    </>}
-
-    <SocialTemple
-     compact
-     selfId={room?.selfId}
-     onInteraction={unlockAudio}
-     onIncense={() => { setIncensePulse(count => count + 1); tone("incense"); }}
-     onNotice={notify}
-    />
-    <TempleLife
-     selfId={room?.selfId}
-     exitRequest={exitRequest}
-     onNotice={notify}
-     onProfileChange={() => void sync()}
-     onOffering={kind => {
+    {menuOpen && <button className="menu-dismiss" aria-label="收起更多选项" onClick={() => setMenuOpen(false)} />}
+    <nav id="game-menu" className={`game-menu ${menuOpen ? "is-open" : ""}`} hidden={!menuOpen} aria-label="更多选项">
+     <strong>{selfName}<small>账号 {account.username}</small></strong>
+     <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
+     <button onClick={toggleSound}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}声音{sound ? "已开启" : "已关闭"}</button>
+     <SocialTemple compact incenseRequest={incenseRequest} selfId={account.id} onInteraction={unlockAudio} onIncense={() => { setIncensePulse(count => count + 1); tone("incense"); }} onNotice={notify} />
+     <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       tone(kind === "flower" ? "incense" : kind === "ritual" ? "meditate" : "prayer");
       if (kind === "flower") setFlowerPulse(value => value + 1);
       if (kind === "ritual") setRitualPulse(value => value + 1);
-     }}
-     onLeave={leaveTemple}
-    />
+     }} onLeave={leaveTemple} />
+     <button onClick={() => { setMenuOpen(false); setModal("practice"); }}><Sparkles size={18} />我的修行</button>
+     <button onClick={() => { setMenuOpen(false); void share(); }}><Share2 size={18} />邀请朋友</button>
+     <button onClick={() => { setMenuOpen(false); setModal("help"); }}><CircleHelp size={18} />玩法帮助</button>
+     <button onClick={() => { setMenuOpen(false); setExitRequest(value => value + 1); }}><Leaf size={18} />离寺 · 留个建议</button>
+     <button onClick={() => void logoutAccount()}><Leaf size={18} />退出账号</button>
+    </nav>
 
-    <section className="game-action-dock" aria-label="随心修行动作">
+    {isSeated && !auto && <button className="practice-toggle" onClick={() => meditating ? finishMeditation() : setPracticeOpen(value => !value)}>{meditating ? "结束静坐" : practiceOpen ? "收起动作" : "修行"}</button>}
+    {isSeated && <section className="game-action-dock" hidden={meditating || (!practiceOpen && !auto)} aria-label="蒲团上的修行动作">
      <button className={`bow-speed-control ${bowSpeed === 4 ? "is-active" : ""}`} disabled={meditating} aria-pressed={bowSpeed === 4} aria-label={bowSpeed === 1 ? "一键切换4倍速自动礼拜" : "恢复正常速度自动礼拜"} onClick={() => { setBowSpeed(value => value === 1 ? 4 : 1); notify(bowSpeed === 1 ? "自动礼拜已切换为4倍速，仍会完成108拜" : "已恢复正常礼拜速度"); }}>{bowSpeed === 1 ? "加速 ×4" : "恢复 ×1"}</button>
      <button className={`auto-bow-control ${auto ? "is-active" : ""}`} onClick={() => auto ? stopAuto() : startAuto()} disabled={meditating} aria-label={auto ? "暂停自动礼拜" : bowCount > 0 && bowCount < 108 ? "继续108次自动礼拜" : "开始108次自动礼拜"}>
       {auto ? <Pause size={18} /> : <Play size={18} />}
@@ -247,7 +259,7 @@ export default function Home(){
       <strong>{bowCount}<small>/108</small></strong>
       <span className="auto-bow-progress" style={{ width: `${bowCount / 108 * 100}%` }} />
      </button>
-     <div className="game-action-grid">
+     <div className="game-action-grid" hidden={auto}>
       {[
        { key: "prayer", name: "合掌" },
        { key: "bow", name: "跪拜" },
@@ -256,10 +268,10 @@ export default function Home(){
       ].map(item => <button key={item.key} className={`game-action ${action === item.key ? "is-active" : ""}`} disabled={auto || meditating} onClick={() => doAction(item.key)} aria-label={item.name} aria-pressed={action === item.key}>
        <ActionIcon kind={item.key} /><span>{item.name}</span>
       </button>)}
-      <button className="game-action" disabled={auto || meditating} onClick={() => seat === null ? sitNearby() : leaveSeat()}><Lotus /><span>{seat === null ? "坐蒲团" : "起身"}</span></button>
+      <button className="game-action" disabled={auto || meditating} onClick={leaveSeat}><Lotus /><span>起身</span></button>
       <button className={`game-action ${meditating ? "is-active" : ""}`} disabled={auto} onClick={() => meditating ? finishMeditation() : setModal("meditate")}><Wind size={28} /><span>{meditating ? "结束静坐" : "静坐"}</span></button>
      </div>
-    </section>
+    </section>}
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
@@ -280,18 +292,18 @@ export default function Home(){
       <h2 id="modal-title">我的今日修行</h2>
       <div className="practice-grid">{[{ n: stats.prayer, label: "次合掌" }, { n: stats.bows, label: "次礼拜" }, { n: stats.beads, label: "次转珠" }, { n: stats.wood, label: "声木鱼" }].map(item => <div key={item.label}><strong>{item.n}</strong><span>{item.label}</span></div>)}</div>
       <div className="practice-total"><Wind size={20} />今日静坐<strong>{clock(stats.seconds)}</strong></div>
-      <p className="modal-small">记录保存在当前浏览器，按本地日期更新。</p>
+      <p className="modal-small">记录保存在本设备当前账号，按本地日期更新。</p>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
      </> : <>
       <p className="eyebrow">欢迎来到云间寺</p>
       <h2 id="modal-title">慢慢走，随心坐</h2>
       <ul className="help-list">
-       <li><b>漫游</b><span>左下摇杆行走，点地面前往。拖动画面环顾四周，电脑也可用 WASD 或方向键。寺墙处会停下。</span></li>
-       <li><b>视角</b><span>点右上「第一人称 / 第三人称」切换视角。</span></li>
-       <li><b>动作</b><span>右下可合掌、跪拜、转佛珠、敲木鱼和坐蒲团，点按钮时也能一直看着庭院。</span></li>
+       <li><b>漫游</b><span>左下摇杆行走，点地面前往。地图模式可上下左右拖动寺院，电脑也可用 WASD 或方向键。</span></li>
+       <li><b>视角</b><span>右上菜单内可切换地图、第一人称和第三人称。</span></li>
+       <li><b>动作</b><span>走近蒲团点击坐下，坐稳后点右下「修行」，展开合掌、跪拜、佛珠、木鱼和静坐。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
-       <li><b>同修</b><span>坐下后选择静坐时长，和在线同修安静相伴。右上可敬香、结交寺友。</span></li>
-       <li><b>声音</b><span>上方可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
+       <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
+       <li><b>声音</b><span>右上菜单可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
       </ul>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
      </>}

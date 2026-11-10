@@ -8,6 +8,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   colliders: Collider[];
   cushions: Array<{ x: number; z: number }>;
   landmarks: Array<{ name: string; x: number; z: number }>;
+  interactions: Array<{ kind: 'incense' | 'flower' | 'ritual'; label: string; x: number; y: number; z: number }>;
   offerFlowers: () => void;
   startRitual: () => void;
   animate: (t: number) => void;
@@ -637,6 +638,11 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       { name: '花园', x: 16, z: 5 },
       { name: '禅修院', x: -16, z: -5 },
       { name: '祈愿台', x: 0, z: -18 },
+    ],
+    interactions: [
+      { kind: 'incense', label: '♧ 敬香', x: 0, y: 1.0, z: -6.9 },
+      { kind: 'flower', label: '✿ 供花', x: 16, y: 0.7, z: 5 },
+      { kind: 'ritual', label: '✦ 做法事', x: 0, y: 0.9, z: -18 },
     ],
     offerFlowers() {
       altarFlowers.visible = true;
