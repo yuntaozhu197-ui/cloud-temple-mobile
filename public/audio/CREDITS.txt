@@ -1,0 +1,10 @@
+Mokugyo.wav
+Recorded by jonopodmore, published 6 November 2021.
+Source https://freesound.org/people/jonopodmore/sounds/607215/
+Public MP3 preview https://cdn.freesound.org/previews/607/607215_541139-hq.mp3
+License CC0 1.0 https://creativecommons.org/publicdomain/zero/1.0/
+
+The source describes a small Wooden Fish / Mokugyo temple block from Kohya-san,
+Japan, played with its original cloth-covered beater and recorded with an
+AKG 414 microphone. The MP3 file is distributed unmodified. In-browser playback
+may trim leading silence and adjust level while preserving the recorded timbre.

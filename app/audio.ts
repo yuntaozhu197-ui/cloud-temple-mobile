@@ -9,9 +9,9 @@ export type TempleAudio = {
 
 type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode };
+type SynthSound = Exclude<TempleSound, "wood">;
 
-const durations: Record<TempleSound, number> = {
-  wood: 0.45,
+const durations: Record<SynthSound, number> = {
   prayer: 2.4,
   bow: 0.9,
   beads: 0.85,
@@ -20,8 +20,7 @@ const durations: Record<TempleSound, number> = {
   bell: 3.2,
 };
 
-const peaks: Record<TempleSound, number> = {
-  wood: 0.68,
+const peaks: Record<SynthSound, number> = {
   prayer: 0.31,
   bow: 0.27,
   beads: 0.34,
@@ -80,15 +79,9 @@ function addBowl(samples: Float32Array, sampleRate: number, offset: number, freq
   ], 0.004);
 }
 
-function createSamples(sound: TempleSound, sampleRate: number) {
+function createSamples(sound: SynthSound, sampleRate: number) {
   const samples = new Float32Array(Math.ceil(durations[sound] * sampleRate));
   switch (sound) {
-    case "wood":
-      addWood(samples, sampleRate, 0);
-      // Quiet early reflections soften the close-miked knock into a small wooden hall.
-      addWood(samples, sampleRate, 0.031, 0.07, 0.998);
-      addWood(samples, sampleRate, 0.057, 0.035, 1.002);
-      break;
     case "prayer":
       addBowl(samples, sampleRate, 0, 587.33, 0.65, 0.70);
       break;
@@ -129,6 +122,10 @@ export function createTempleAudio(): TempleAudio {
   let master: GainNode | null = null;
   let enabled = false;
   let disposed = false;
+  let playbackGeneration = 0;
+  let pendingWood: { generation: number; requestedAt: number } | null = null;
+  let woodLoad: Promise<AudioBuffer | null> | null = null;
+  let woodAbort: AbortController | null = null;
   const buffers = new Map<TempleSound, AudioBuffer>();
   const voices = new Set<Voice>();
 
@@ -157,12 +154,73 @@ export function createTempleAudio(): TempleAudio {
     voice.gain.disconnect();
   }
 
+  function startVoice(sound: TempleSound, buffer: AudioBuffer, audioContext: AudioContext) {
+    if (!enabled || disposed || !master || context !== audioContext) return;
+    // Bound overlapping voices even if someone taps rapidly for a long time.
+    if (voices.size >= 10) {
+      const oldest = voices.values().next().value;
+      if (oldest) stopVoice(oldest, audioContext);
+    }
+    const source = audioContext.createBufferSource();
+    const gain = audioContext.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = sound === "beads" ? 0.99 + Math.random() * 0.02 : 1;
+    gain.gain.value = sound === "wood" ? 1 : 0.94 + Math.random() * 0.06;
+    source.connect(gain);
+    gain.connect(master);
+    const voice = { source, gain };
+    voices.add(voice);
+    source.onended = () => releaseVoice(voice);
+    source.start();
+  }
+
+  function loadWood(audioContext: AudioContext) {
+    const cached = buffers.get("wood");
+    if (cached) return Promise.resolve(cached);
+    if (woodLoad) return woodLoad;
+    const controller = new AbortController();
+    woodAbort = controller;
+    woodLoad = (async () => {
+      // This same-origin asset is a real CC0 mokugyo recording. Keep its original pitch.
+      const response = await fetch("/audio/mokugyo.mp3", { signal: controller.signal });
+      if (!response.ok) throw new Error("木鱼录音暂时无法加载");
+      const recorded = await audioContext.decodeAudioData(await response.arrayBuffer());
+      if (disposed || context !== audioContext) return null;
+      let maximum = 0;
+      for (let channel = 0; channel < recorded.numberOfChannels; channel += 1) {
+        for (const sample of recorded.getChannelData(channel)) maximum = Math.max(maximum, Math.abs(sample));
+      }
+      const level = 0.68 / Math.max(maximum, 0.0001);
+      for (let channel = 0; channel < recorded.numberOfChannels; channel += 1) {
+        const samples = recorded.getChannelData(channel);
+        for (let index = 0; index < samples.length; index += 1) samples[index] *= level;
+      }
+      buffers.set("wood", recorded);
+      const pending = pendingWood;
+      pendingWood = null;
+      if (pending && pending.generation === playbackGeneration && Date.now() - pending.requestedAt < 5000 && audioContext.state === "running") {
+        startVoice("wood", recorded, audioContext);
+      }
+      return recorded;
+    })().catch(() => {
+      pendingWood = null;
+      return null;
+    }).finally(() => {
+      if (woodAbort === controller) {
+        woodAbort = null;
+        woodLoad = null;
+      }
+    });
+    return woodLoad;
+  }
+
   function unlock() {
     try {
       const audioContext = ensureContext();
       if (!audioContext) return Promise.resolve(false);
       // Call resume before returning from the user gesture, as required by mobile Safari.
       const resumed = audioContext.resume();
+      void loadWood(audioContext);
       const silent = audioContext.createBufferSource();
       silent.buffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
       silent.connect(audioContext.destination);
@@ -181,28 +239,18 @@ export function createTempleAudio(): TempleAudio {
       if (!audioContext || !master) return;
       if (audioContext.state !== "running") void audioContext.resume().catch(() => {});
       let buffer = buffers.get(sound);
+      if (sound === "wood" && !buffer) {
+        pendingWood = { generation: playbackGeneration, requestedAt: Date.now() };
+        void loadWood(audioContext);
+        return;
+      }
       if (!buffer) {
-        const samples = createSamples(sound, audioContext.sampleRate);
+        const samples = createSamples(sound as SynthSound, audioContext.sampleRate);
         buffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
         buffer.getChannelData(0).set(samples);
         buffers.set(sound, buffer);
       }
-      // Bound overlapping voices even if someone taps rapidly for a long time.
-      if (voices.size >= 10) {
-        const oldest = voices.values().next().value;
-        if (oldest) stopVoice(oldest, audioContext);
-      }
-      const source = audioContext.createBufferSource();
-      const gain = audioContext.createGain();
-      source.buffer = buffer;
-      source.playbackRate.value = sound === "wood" || sound === "beads" ? 0.99 + Math.random() * 0.02 : 1;
-      gain.gain.value = 0.94 + Math.random() * 0.06;
-      source.connect(gain);
-      gain.connect(master);
-      const voice = { source, gain };
-      voices.add(voice);
-      source.onended = () => releaseVoice(voice);
-      source.start();
+      startVoice(sound, buffer, audioContext);
     } catch {
       // A denied audio session must leave the temple's controls usable.
     }
@@ -210,6 +258,10 @@ export function createTempleAudio(): TempleAudio {
 
   function setEnabled(nextEnabled: boolean) {
     enabled = nextEnabled;
+    if (!enabled) {
+      playbackGeneration += 1;
+      pendingWood = null;
+    }
     if (!context || !master) return;
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setTargetAtTime(enabled ? 0.62 : 0, context.currentTime, 0.012);
@@ -219,6 +271,9 @@ export function createTempleAudio(): TempleAudio {
   function dispose() {
     disposed = true;
     enabled = false;
+    playbackGeneration += 1;
+    pendingWood = null;
+    woodAbort?.abort();
     voices.forEach(voice => {
       voice.source.onended = null;
       voice.source.stop();

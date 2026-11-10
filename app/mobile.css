@@ -25,7 +25,7 @@ svg { vertical-align: middle; }
   inset: 0;
   width: 100%;
   height: 100%;
-  height: 100dvh;
+  height: var(--temple-viewport-height, 100dvh);
   min-height: 0;
   padding: 0;
   overflow: hidden;
@@ -155,7 +155,7 @@ svg { vertical-align: middle; }
 .temple-game .world-landmarks.is-open { z-index: 12; }
 .world-landmarks > button { font-size: 16px !important; }
 .world-landmarks > [role="group"] {
-  max-height: calc(100dvh - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: calc(var(--temple-viewport-height, 100dvh) - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -259,9 +259,9 @@ svg { vertical-align: middle; }
 .game-menu > strong { display: block; padding: 8px 9px 12px; font-size: 15px; }
 .game-menu > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px; font-size: 17px; border-radius: 10px; }
 .game-menu > button:hover { background: #e7edda; }
-.temple-game .toast {
-  z-index: 100;
-  top: calc(var(--hud-top) + 176px);
+.game-toast {
+  z-index: 110;
+  top: calc(max(12px, env(safe-area-inset-top)) + 12px);
   bottom: auto;
   max-width: min(460px, calc(100% - 32px));
   width: max-content;
@@ -272,7 +272,10 @@ svg { vertical-align: middle; }
   white-space: normal;
   border: 1px solid #ffffffa6;
   text-align: left;
+  pointer-events: none;
 }
+.bow-speed-control { position: absolute; bottom: calc(100% + 8px); right: 0; min-height: 44px; padding: 9px 13px; border: 1px solid #ffffffe6; border-radius: 14px; color: #405c36; background: #f8faedee; font-size: 16px; font-weight: 800; pointer-events: auto; box-shadow: 0 3px 14px #344e2518; }
+.bow-speed-control.is-active { background: #dae9bf; border-color: #8ca76b; }
 .temple-game .modal-backdrop, .temple-game .social-backdrop {
   z-index: 80;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -280,7 +283,7 @@ svg { vertical-align: middle; }
   align-items: center;
 }
 .temple-game .game-modal, .temple-game .social-sheet {
-  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+  max-height: calc(var(--temple-viewport-height, 100dvh) - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
   max-width: 100%;
   border-radius: 20px;
 }
@@ -347,8 +350,11 @@ svg { vertical-align: middle; }
   .temple-game .temple-life { top: calc(var(--hud-top) + 114px); }
   .temple-game .game-presence { top: calc(var(--hud-top) + 64px); }
   .temple-game .world-landmarks { top: calc(var(--hud-top) + 114px) !important; }
-  .world-landmarks > [role="group"] { max-height: calc(100dvh - var(--hud-top) - var(--hud-bottom) - 170px); }
+  .world-landmarks > [role="group"] { max-height: calc(var(--temple-viewport-height, 100dvh) - var(--hud-top) - var(--hud-bottom) - 170px); }
   .game-meditation-status { top: var(--hud-top); left: 50%; padding: 9px 12px; }
   .game-meditation-status > span { display: none; }
-  .temple-game .toast { top: calc(var(--hud-top) + 112px); font-size: 15px; padding: 10px 14px; }
+  .game-toast { font-size: 15px; padding: 10px 14px; }
+  .bow-speed-control { bottom: calc(100% - 42px); right: 220px; min-height: 42px; }
 }
+
+.temple-game .modal-backdrop, .temple-game .social-backdrop, .life-backdrop { height: var(--temple-viewport-height, 100dvh); }

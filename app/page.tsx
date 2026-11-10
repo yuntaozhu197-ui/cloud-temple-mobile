@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Volume2, VolumeX, CircleHelp, X, Leaf, Pause, Play, Wind, Share2, Sparkles, Camera, MoreHorizontal } from "lucide-react";
 import TempleWorld from "./TempleWorld";
 import SocialTemple from "./SocialTemple";
@@ -31,6 +32,9 @@ export default function Home(){
  const [flowerPulse, setFlowerPulse] = useState(0);
  const [ritualPulse, setRitualPulse] = useState(0);
  const [exitRequest, setExitRequest] = useState(0);
+ const [bowSpeed, setBowSpeed] = useState<1 | 4>(1);
+ const bowSpeedRef = useRef(bowSpeed);
+ bowSpeedRef.current = bowSpeed;
  const [departed, setDeparted] = useState(false);
  const departedRef = useRef(false);
  const requestSeq=useRef(0),requestQueue=useRef<Promise<unknown>>(Promise.resolve()),requestBusy=useRef(false),roomRef=useRef<Room|null>(null),preferredSeat=useRef(5),bowCountRef=useRef(0),meditationEnd=useRef(0),lastTick=useRef(0),autoRef=useRef(false),meditatingRef=useRef(false),seatRef=useRef<number|null>(null);
@@ -60,6 +64,14 @@ export default function Home(){
   notify(enabled ? "声音已开启，每个动作都有自己的轻响" : "声音已关闭");
  };
  useEffect(() => { audioRef.current?.setEnabled(sound); }, [sound]);
+ useEffect(() => {
+  const viewport = window.visualViewport;
+  const resize = () => document.documentElement.style.setProperty("--temple-viewport-height", `${Math.round(viewport?.height ?? window.innerHeight)}px`);
+  resize();
+  viewport?.addEventListener("resize", resize);
+  window.addEventListener("resize", resize);
+  return () => { viewport?.removeEventListener("resize", resize); window.removeEventListener("resize", resize); };
+ }, []);
  const sync=useCallback((body?:Record<string,unknown>):Promise<Room|null>=>{
   const seq=++requestSeq.current;
   const run=async():Promise<Room|null>=>{
@@ -108,11 +120,11 @@ export default function Home(){
   requestQueue.current=result;
   return result;
  },[notify]);
- useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved);setSound(localStorage.getItem("cloud-temple-sound")!=="false")}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow"}:undefined)},3000);return()=>{clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
+ useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved);setSound(localStorage.getItem("cloud-temple-sound")!=="false")}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
  useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats",JSON.stringify(stats));localStorage.setItem("cloud-temple-sound",String(sound))}catch{}}},[loaded,stats,sound]);
  useEffect(()=>{autoRef.current=auto;meditatingRef.current=meditating;seatRef.current=seat},[auto,meditating,seat]);
  useEffect(()=>{const visible=()=>{if(document.hidden){if(autoRef.current){autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"});notify("礼拜已暂停，回来后可继续")}}else void sync(meditatingRef.current?{meditating:true,action:"meditate"}:undefined)};document.addEventListener("visibilitychange",visible);return()=>document.removeEventListener("visibilitychange",visible)},[sync,notify]);
- const doAction=useCallback((kind:string)=>{if(meditatingRef.current||autoRef.current)return;setAction(kind);setPulse(p=>p+1);const key=({prayer:"prayer",bow:"bows",beads:"beads",wood:"wood"} as const)[kind as "prayer"|"bow"|"beads"|"wood"];if(key)add(key);tone(kind as TempleSound);void sync({action:kind});if(actionTimer.current)clearTimeout(actionTimer.current);actionTimer.current=setTimeout(()=>{setAction("idle");void sync({action:"idle"})},1050)},[add,tone,sync]);
+ const doAction=useCallback((kind:string)=>{if(meditatingRef.current||autoRef.current)return;setAction(kind);setPulse(p=>p+1);const key=({prayer:"prayer",bow:"bows",beads:"beads",wood:"wood"} as const)[kind as "prayer"|"bow"|"beads"|"wood"];if(key)add(key);tone(kind as TempleSound);void sync({action:kind,bowSpeed:1});if(actionTimer.current)clearTimeout(actionTimer.current);actionTimer.current=setTimeout(()=>{setAction("idle");void sync({action:"idle"})},1050)},[add,tone,sync]);
  const startAuto=()=>{unlockAudio();if(autoRef.current)return;if(meditatingRef.current){notify("先结束静坐，再开始礼拜吧");return}if(actionTimer.current)clearTimeout(actionTimer.current);if(bowCountRef.current>=108){bowCountRef.current=0;setBowCount(0)}autoRef.current=true;setAuto(true);setAction("idle");notify(bowCountRef.current>0?"继续礼拜，慢慢来":"已开始 108 次礼拜，可随时暂停")};
  useEffect(() => {
   if (!auto) return;
@@ -127,13 +139,13 @@ export default function Home(){
     bowCountRef.current += 1;
     setBowCount(bowCountRef.current);
     add("bows");
-   }, 1050);
+   }, 1050 / bowSpeed);
   };
   bow();
-  const timer = setInterval(bow, 1250);
-  void sync({ action: "bow" });
+  const timer = setInterval(bow, 1250 / bowSpeed);
+  void sync({ action: "bow", bowSpeed });
   return () => { clearInterval(timer); clearTimeout(completedBow); };
- }, [auto, add, sync, tone]);
+ }, [auto, add, sync, tone, bowSpeed]);
  useEffect(()=>{if(auto&&bowCount>=108){autoRef.current=false;setAuto(false);setAction("prayer");tone("bell");notify("108 次礼拜圆满。愿你心生欢喜。");void sync({action:"prayer"})}},[bowCount,auto,tone,notify,sync]);
  const stopAuto=()=>{autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"})};
  const finishMeditation=useCallback((completed=false)=>{setMeditating(false);meditatingRef.current=false;setRemaining(0);setAction("idle");void sync({meditating:false,action:"idle"});tone("bell");notify(completed?"静坐圆满，带着这份平静继续生活吧":"已结束静坐，愿此刻的安静陪着你")},[sync,tone,notify]);
@@ -170,6 +182,7 @@ export default function Home(){
       action={action}
       actionPulse={pulse}
       auto={auto}
+      bowSpeed={auto ? bowSpeed : 1}
       meditating={meditating}
       seat={seat}
       selfId={room?.selfId}
@@ -227,6 +240,7 @@ export default function Home(){
     />
 
     <section className="game-action-dock" aria-label="随心修行动作">
+     <button className={`bow-speed-control ${bowSpeed === 4 ? "is-active" : ""}`} disabled={meditating} aria-pressed={bowSpeed === 4} aria-label={bowSpeed === 1 ? "一键切换4倍速自动礼拜" : "恢复正常速度自动礼拜"} onClick={() => { setBowSpeed(value => value === 1 ? 4 : 1); notify(bowSpeed === 1 ? "自动礼拜已切换为4倍速，仍会完成108拜" : "已恢复正常礼拜速度"); }}>{bowSpeed === 1 ? "加速 ×4" : "恢复 ×1"}</button>
      <button className={`auto-bow-control ${auto ? "is-active" : ""}`} onClick={() => auto ? stopAuto() : startAuto()} disabled={meditating} aria-label={auto ? "暂停自动礼拜" : bowCount > 0 && bowCount < 108 ? "继续108次自动礼拜" : "开始108次自动礼拜"}>
       {auto ? <Pause size={18} /> : <Play size={18} />}
       <span>{auto ? "暂停礼拜" : bowCount > 0 && bowCount < 108 ? "继续礼拜" : "108拜"}</span>
@@ -249,7 +263,7 @@ export default function Home(){
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
-   {toast && <div className="toast" role="status"><Leaf size={18} />{toast}</div>}
+   {toast && createPortal(<div className="toast game-toast" role="status"><Leaf size={18} />{toast}</div>, document.body)}
    {modal && <div className="modal-backdrop" onClick={() => setModal(null)}>
     <section className="modal game-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={event => event.stopPropagation()}>
      <button className="modal-close icon-button" onClick={() => setModal(null)} aria-label="关闭"><X size={24} /></button>
@@ -277,7 +291,7 @@ export default function Home(){
        <li><b>动作</b><span>右下可合掌、跪拜、转佛珠、敲木鱼和坐蒲团，点按钮时也能一直看着庭院。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>坐下后选择静坐时长，和在线同修安静相伴。右上可敬香、结交寺友。</span></li>
-       <li><b>声音</b><span>上方可开关声音。合掌、跪拜、佛珠、木鱼、静坐与敬香各有轻响。</span></li>
+       <li><b>声音</b><span>上方可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
       </ul>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
      </>}

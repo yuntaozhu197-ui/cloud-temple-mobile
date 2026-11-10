@@ -12,6 +12,7 @@ type Participant = {
   x?: number;
   z?: number;
   heading?: number;
+  bowSpeed?: 1 | 4;
 };
 
 type Position = { x: number; z: number; heading: number };
@@ -24,6 +25,7 @@ type WorldProps = {
   flowerPulse?: number;
   ritualPulse?: number;
   auto: boolean;
+  bowSpeed?: 1 | 4;
   meditating: boolean;
   seat: number | null;
   selfId?: string;
@@ -130,7 +132,7 @@ export default function TempleWorld(props: WorldProps) {
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
         let observer: ResizeObserver | undefined;
-        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number }>();
+        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number; bowSpeed: number }>();
         const cleanupListeners: (() => void)[] = [];
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
@@ -514,14 +516,15 @@ export default function TempleWorld(props: WorldProps) {
               const label = document.createElement("div");
               label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;will-change:transform";
               labels!.appendChild(label);
-              existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time };
+              existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1 };
               remote.set(person.id, existing);
             }
             existing.target.set(x, seatPosition ? 0.12 : 0, z);
             existing.heading = seatPosition ? Math.PI : person.heading ?? 0;
             const nextAction = person.meditating ? "meditate" : person.action === "idle" && seatPosition ? "sit" : person.action;
-            if (nextAction !== existing.action) existing.actionStart = time;
+            if (nextAction !== existing.action || existing.bowSpeed !== (person.bowSpeed ?? 1)) existing.actionStart = time;
             existing.action = nextAction;
+            existing.bowSpeed = person.bowSpeed ?? 1;
             existing.label.textContent = `${person.meditating ? "◦ " : ""}${person.name}`;
           });
         }
@@ -641,7 +644,7 @@ export default function TempleWorld(props: WorldProps) {
             actionStart = time;
           }
           const pose = walking ? "idle" : incensePrayer ? "prayer" : state.action === "idle" && seated ? "sit" : state.action;
-          actor.update(pose, time, walking, pose === "bow" ? Math.min((time - actionStart) / 1.0, 1) : undefined);
+          actor.update(pose, time, walking, pose === "bow" ? Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1) : undefined);
           selfRing.position.set(position.x, 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
           selfRing.visible = !seated && !firstPerson;
@@ -652,7 +655,7 @@ export default function TempleWorld(props: WorldProps) {
             const distance = person.monk.group.position.distanceTo(person.target);
             person.monk.group.position.lerp(person.target, 1 - Math.exp(-dt * 7));
             person.monk.group.rotation.y += angleDelta(person.monk.group.rotation.y, person.heading) * Math.min(1, dt * 8);
-            person.monk.update(person.action, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min((time - person.actionStart) % 1.25, 1) : undefined);
+            person.monk.update(person.action, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min(((time - person.actionStart) * person.bowSpeed) % 1.25, 1) : undefined);
           });
           world.animate(time);
           offering?.animate(time);

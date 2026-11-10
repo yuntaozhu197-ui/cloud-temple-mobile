@@ -137,6 +137,9 @@ function validateUpdate(body) {
   if (Object.hasOwn(body, "meditating") && typeof body.meditating !== "boolean") {
     return { error: "invalid_meditation", message: "请重新选择静坐状态。" };
   }
+  if (Object.hasOwn(body, "bowSpeed") && ![1, 4].includes(body.bowSpeed)) {
+    return { error: "invalid_speed", message: "请选择正常或4倍礼拜速度。" };
+  }
   if (Object.hasOwn(body, "leave") && typeof body.leave !== "boolean") {
     return { error: "invalid_leave" };
   }
@@ -145,6 +148,8 @@ function validateUpdate(body) {
 
 function updateVisitor(visitor, body) {
   if (Object.hasOwn(body, "seat")) visitor.seat = body.seat;
+  if (Object.hasOwn(body, "bowSpeed")) visitor.bowSpeed = body.bowSpeed;
+  else if (Object.hasOwn(body, "action") && body.action !== "bow") visitor.bowSpeed = 1;
   for (const key of POSITION_KEYS) {
     if (!Object.hasOwn(body, key)) continue;
     const bounds = TEMPLE_BOUNDS[key];
@@ -500,6 +505,7 @@ export function createTempleServer({
         z: 9,
         heading: 0,
         action: "idle",
+        bowSpeed: 1,
         meditating: false,
         joinedAt: timestamp,
         lastSeen: timestamp,
