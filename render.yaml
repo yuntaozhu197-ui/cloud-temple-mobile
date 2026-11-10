@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: cloud-temple-mobile
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: TEMPLE_TRIAL_MODE
+        value: "true"

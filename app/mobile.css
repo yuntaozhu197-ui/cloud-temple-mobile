@@ -1,0 +1,117 @@
+html {
+  width: 100%;
+  min-width: 320px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  width: 100%;
+}
+
+svg {
+  vertical-align: middle;
+}
+
+.site-shell {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.toast {
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+.world-joystick {
+  pointer-events: none;
+}
+
+.world-joystick > button {
+  pointer-events: auto;
+}
+
+@media (max-width: 540px) {
+  .site-header {
+    padding-top: env(safe-area-inset-top);
+    height: calc(74px + env(safe-area-inset-top));
+  }
+
+  .sound-toggle,
+  .help-button,
+  .invite {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .world-courtyard {
+    height: clamp(390px, 58svh, 520px);
+  }
+
+  .world-instructions {
+    font-size: 10px;
+    align-items: center;
+  }
+
+  .world-instructions > span {
+    max-width: 208px;
+    font-size: 9px;
+  }
+
+  .world-tools {
+    gap: 4px;
+  }
+
+  .world-tools button,
+  .world-tools .sit-nearby {
+    min-height: 44px;
+    font-size: 10px;
+  }
+
+  .world-tools button:last-child {
+    min-width: 36px;
+    justify-content: center;
+  }
+
+  .primary-button,
+  .bow-bar > button,
+  .modal-close {
+    min-height: 44px;
+  }
+
+  .modal-close {
+    min-width: 44px;
+  }
+
+  .action-button strong {
+    font-size: 14px;
+  }
+
+  .action-button small {
+    font-size: 10px;
+  }
+
+  .welcome-sub {
+    font-size: 11px;
+  }
+
+  .meditation-card > p,
+  .fellow-row,
+  .today-stat {
+    font-size: 10px;
+  }
+
+  .practice-link {
+    min-height: 44px;
+    font-size: 10px;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .world-courtyard {
+    height: 74svh;
+    min-height: 300px;
+  }
+}
+
+#temple-social { scroll-margin-top: 20px; } .community-shortcut { display:flex; gap:3px; align-items:center; color:#7c9166; font-size:11px; min-height:35px; } @media(max-width:540px){.section-label small { display:none; } .community-shortcut{font-size:11px;}}
