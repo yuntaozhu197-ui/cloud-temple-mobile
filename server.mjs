@@ -607,7 +607,7 @@ export function createTempleServer({
         let body;
         try { body = await readJson(request); }
         catch {
-          sendJson(response, { error: "invalid_request", message: "账号信息未送达，请检查后重试。" }, 400);
+          sendJson(response, { error: "invalid_request", message: "昵称信息未送达，请检查后重试。" }, 400);
           return;
         }
         const result = await auth.act(request, body, requestIdentity(request));
@@ -622,12 +622,12 @@ export function createTempleServer({
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
-        sendJson(response, { authenticated: false, error: "authentication_required", message: "请先设置账号密码或登录，再进入寺庙。" }, 401);
+        sendJson(response, { authenticated: false, error: "authentication_required", message: "请先起个名字，再进入寺庙。" }, 401);
         return;
       }
       if (requiresAuth && Object.hasOwn(request.headers, "x-temple-user") && request.headers["x-temple-user"] !== identity.id) {
         request.resume();
-        sendJson(response, { error: "account_changed", message: "账号已在其他页面切换，请重新进入寺庙。" }, 409);
+        sendJson(response, { error: "account_changed", message: "当前小和尚已在其他页面变化，请重新进入寺庙。" }, 409);
         return;
       }
       if (pathname === "/api/room") {

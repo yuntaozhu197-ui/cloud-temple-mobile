@@ -16,7 +16,7 @@
   font-weight: 600;
 }
 .account-card {
-  width: min(390px, 100%);
+  width: min(370px, 100%);
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -30,15 +30,12 @@
 .account-leaf { display: inline-grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: #e5edd9; color: #738f58; }
 .account-heading h1 { margin: 12px 0 5px; font-family: inherit; font-size: 29px; font-weight: 800; line-height: 1.3; letter-spacing: 4px; }
 .account-heading p { margin: 0; color: #74856a; font-size: 16px; }
-.account-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 12px; background: #edf2e4; margin-bottom: 19px; }
-.account-tabs button { min-height: 44px; border-radius: 9px; font-size: 16px; font-weight: 750; color: #748568; }
-.account-tabs button[aria-selected="true"] { background: #fffef7; color: #405d33; box-shadow: 0 2px 7px #47633b12; }
 .account-form { display: grid; gap: 14px; }
 .account-form label { display: block; font-size: 16px; font-weight: 750; line-height: 1.5; }
 .account-form input { display: block; width: 100%; min-width: 0; min-height: 47px; margin-top: 7px; padding: 11px 12px; border: 1px solid #c5d0b8; border-radius: 10px; background: #fffffc; color: #334e2c; font-family: inherit; font-size: 16px; font-weight: 600; line-height: 1.4; }
 .account-form input::placeholder { color: #929e86; font-size: 14px; font-weight: 500; }
 .account-form input:focus { outline: 3px solid #99b37866; outline-offset: 1px; }
-.account-submit { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 49px; padding: 11px 14px; margin-top: 3px; border-radius: 11px; background: #637f50; color: #fffef5; font-size: 16px; font-weight: 750; }
+.account-submit { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 47px; padding: 11px 14px; margin-top: 3px; border-radius: 11px; background: #637f50; color: #fffef5; font-size: 16px; font-weight: 750; }
 .account-submit:hover:not(:disabled) { background: #526f3f; }
 .account-gate button:disabled { opacity: .58; cursor: default; }
 .account-error { margin: 0; padding: 10px 12px; border: 1px solid #e4c8ae; border-radius: 10px; background: #f8ecdf; color: #8a5439; font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }

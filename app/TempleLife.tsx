@@ -242,8 +242,8 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
   }
 
   async function changeName() {
-    if (!validLength(name, 2, 16)) {
-      setError("名字需要2–16个字。");
+    if (!name.trim()) {
+      setError("请给小和尚取个名字。");
       return;
     }
     if (await mutate("profile", { name: name.trim() })) {
@@ -335,7 +335,7 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
                 <label>标题<input disabled={Boolean(busy)} value={title} onChange={event => setTitle(event.target.value)} maxLength={120} placeholder="给这一刻起个名字" required /></label>
                 <label>正文<textarea disabled={Boolean(busy)} value={body} onChange={event => setBody(event.target.value)} maxLength={4000} rows={6} placeholder="此刻的心情、感谢或小小愿望…" required /></label>
                 <label>谁可以看到<select disabled={Boolean(busy)} value={visibility} onChange={event => setVisibility(event.target.value as Diary["visibility"])}><option value="private">仅自己可见</option><option value="public">公开，分享给寺友</option></select></label>
-                <p className="life-hint">{visibility === "private" ? "私人日记仅当前登录账号可见。" : "保存后，所有来到寺庙的人都能阅读这篇日记。"}</p>
+                <p className="life-hint">{visibility === "private" ? "私人日记仅当前浏览器里的你可见。" : "保存后，所有来到寺庙的人都能阅读这篇日记。"}</p>
                 <button className="life-button" disabled={Boolean(busy)} type="submit"><Save size={18} />{busy === "saveDiary" ? "正在保存…" : "保存日记"}</button>
               </form>
               <div className="life-section-heading"><h3>已保存的日记</h3><button className="life-text-button" onClick={exportDiaries} disabled={!snapshot?.mine.length}><Download size={17} />导出备份</button></div>
@@ -353,7 +353,7 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
             <section className="life-offering"><h3>法事祈愿 · 三十秒回向</h3><p>线上自助祈愿体验，跟随呼吸，安住此刻。</p><label>仪式<select value={ritualKind} disabled={ritualRemaining > 0} onChange={event => setRitualKind(event.target.value as RitualKind)}>{ritualKinds.map(kind => <option key={kind}>{kind}</option>)}</select></label><label>心愿，可留空<textarea value={intention} disabled={ritualRemaining > 0} onChange={event => setIntention(event.target.value)} maxLength={240} rows={3} placeholder="愿你与在意的人，平安自在。" /></label><p className="life-hint">开始时记录次数，随后跟随30秒呼吸。心愿私密保存，页面只公开累计次数。</p><p className="life-count">全寺祈愿记录 {offerings?.rituals ?? 0} 次 · 我参与 {offerings?.mineRituals ?? 0} 次</p>{ritualRemaining > 0 ? <div className="life-ritual" role="timer"><span>{breath}</span><strong>{ritualRemaining}<small>秒</small></strong><p>让肩膀放松，让心愿落定。</p></div> : <>{ritualCompleted && <p className="life-complete">仪式圆满，带着善意继续生活。</p>}<button className="life-button" disabled={Boolean(busy)} onClick={() => void beginRitual()}>开始{ritualKind}</button></>}</section>
           </>}
           {ready && tab === "profile" && <>
-            <h3>给小和尚起个名字</h3><form className="life-form" onSubmit={event => { event.preventDefault(); void changeName(); }}><label>寺友们会看到这个名字<input value={name} onChange={event => setName(event.target.value)} minLength={2} maxLength={32} required autoComplete="off" /></label><p className="life-hint">2–16个字，名字会同步到庭院和公开心语。</p><button className="life-button" type="submit" disabled={Boolean(busy)}><Save size={18} />保存名字</button></form><section className="life-offering"><h3>我的心意</h3><p>献花 {offerings?.mineFlowers ?? 0} 朵</p><p>随喜值 {offerings?.mineSponsor ?? 0}</p><p>仪式 {offerings?.mineRituals ?? 0} 次</p></section><p className="life-hint">日记和寺友跟随账号。使用共用设备后，可从菜单退出账号。</p>
+            <h3>给小和尚起个名字</h3><form className="life-form" onSubmit={event => { event.preventDefault(); void changeName(); }}><label>寺友们会看到这个名字<input value={name} onChange={event => setName(event.target.value)} required autoComplete="nickname" /></label><p className="life-hint">中文、英文和数字都可以，名字会同步到庭院和公开心语。</p><button className="life-button" type="submit" disabled={Boolean(busy)}><Save size={18} />保存名字</button></form><section className="life-offering"><h3>我的心意</h3><p>献花 {offerings?.mineFlowers ?? 0} 朵</p><p>随喜值 {offerings?.mineSponsor ?? 0}</p><p>仪式 {offerings?.mineRituals ?? 0} 次</p></section><p className="life-hint">这个浏览器会记住你的小和尚、日记和寺友。同名访客各有独立记录。</p>
           </>}
           {tab === "leave" && <>
             <h3>带着安静，回到生活</h3><p>离寺前，可以留下一点感受或建议。</p><form className="life-form" onSubmit={event => { event.preventDefault(); void submitAndLeave(); }}><label>给云间寺的话，选填<textarea value={feedback} onChange={event => setFeedback(event.target.value)} maxLength={2000} rows={5} placeholder="今天的体验、想增加的功能，或一句问候…" /></label><button className="life-button" type="submit" disabled={Boolean(busy) || !ready}><Send size={18} />{busy === "feedback" ? "正在提交…" : "提交并离寺"}</button></form><button className="life-button secondary life-leave-button" disabled={Boolean(busy)} onClick={() => { setOpen(false); callbacks.current.onLeave(); }}><LogOut size={18} />直接离寺</button><p className="life-hint">愿你归去时，心里多一份自在。</p>

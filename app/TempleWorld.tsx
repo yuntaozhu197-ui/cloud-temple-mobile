@@ -147,7 +147,7 @@ export default function TempleWorld(props: WorldProps) {
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
         const selfLabel = document.createElement("div");
-        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:5px 10px;border-radius:12px;background:rgba(252,251,238,.94);border:1px solid rgba(111,136,96,.26);color:#42573d;font:700 14px system-ui;white-space:nowrap;box-shadow:0 2px 7px #52694c12;will-change:transform";
+        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:5px 10px;border-radius:12px;background:rgba(252,251,238,.94);border:1px solid rgba(111,136,96,.26);color:#42573d;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 7px #52694c12;will-change:transform";
         selfLabel.textContent = "● 你的小和尚";
         labels.appendChild(selfLabel);
 
@@ -180,7 +180,7 @@ export default function TempleWorld(props: WorldProps) {
         local.group.rotation.y = 0;
         const actor = local;
         const world = environment;
-        const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #84976d77;border-radius:22px;background:rgba(255,253,238,.95);color:#405438;font:700 14px system-ui;white-space:nowrap;box-shadow:0 3px 10px #354c2525;pointer-events:auto;touch-action:manipulation;will-change:transform";
+        const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #84976d77;border-radius:22px;background:rgba(255,253,238,.95);color:#405438;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 3px 10px #354c2525;pointer-events:auto;touch-action:manipulation;will-change:transform";
         const interactivePoints = world.interactions.map(point => {
           const button = document.createElement("button");
           button.type = "button";
@@ -586,7 +586,7 @@ export default function TempleWorld(props: WorldProps) {
         function syncRemote(time: number) {
           const state = latest.current;
           const ownName = state.participants.find(person => person.id === state.selfId)?.name;
-          if (ownName && selfLabel.textContent !== `● ${ownName}`) selfLabel.textContent = `● ${ownName}`;
+          if (ownName && selfLabel.textContent !== `● ${ownName}`) { selfLabel.textContent = `● ${ownName}`; selfLabel.title = ownName; }
           // Keep the nearest real visitors visible on crowded mobile devices.
           const visitors = state.participants.filter(person => person.id !== state.selfId).sort((a, b) => {
             if (a.seat !== null && b.seat === null) return -1;
@@ -610,7 +610,7 @@ export default function TempleWorld(props: WorldProps) {
               monk.group.position.set(x, seatPosition ? 0.12 : 0, z);
               scene.add(monk.group);
               const label = document.createElement("div");
-              label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;will-change:transform";
+              label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;will-change:transform";
               labels!.appendChild(label);
               existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1 };
               remote.set(person.id, existing);
@@ -622,6 +622,7 @@ export default function TempleWorld(props: WorldProps) {
             existing.action = nextAction;
             existing.bowSpeed = person.bowSpeed ?? 1;
             existing.label.textContent = `${person.meditating ? "◦ " : ""}${person.name}`;
+            existing.label.title = person.name;
           });
         }
 

@@ -270,7 +270,7 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
             {snapshot?.greetings.length ? <div className="social-greetings"><h3>寺友捎来的问候</h3>{snapshot.greetings.slice(0, 5).map(greeting => <div key={greeting.id}><Leaf size={14} /><p><strong>{greeting.fromName}</strong><span>{greeting.text}</span></p></div>)}</div> : null}
           </>}
         </div>
-        <footer className="social-sheet-footer"><span>{snapshot?.self.name ? `你是 ${snapshot.self.name}` : "一位路过的有缘人"}</span><small>登录同一账号，可在其他设备找到寺友。</small></footer>
+        <footer className="social-sheet-footer"><span>{snapshot?.self.name ? `你是 ${snapshot.self.name}` : "一位路过的有缘人"}</span><small>这个浏览器会记住你，同名寺友各有独立记录。</small></footer>
       </section>
     </div></div>, document.body)}
   </div>;

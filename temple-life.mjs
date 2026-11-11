@@ -81,8 +81,8 @@ export function createTempleLife(database, { trialMode }) {
   function act(identity, body, timestamp) {
     if (body.action === "profile") {
       const name = typeof body.name === "string" ? body.name.normalize("NFC").trim() : "";
-      if (length(name) < 2 || length(name) > 16 || /[\u0000-\u001f\u007f]/.test(name)) {
-        return invalid("名字请填写2至16个字，避免换行和控制字符。");
+      if (!name || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(body.name)) {
+        return invalid("请填写昵称，避免换行和控制字符。");
       }
       query.rename.run(name, identity.id);
       identity.name = name;

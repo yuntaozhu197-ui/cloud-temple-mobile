@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 const deriveKey = promisify(scrypt);
 const SESSION_COOKIE = "yunjian_session";
 const SESSION_AGE_SECONDS = 30 * 24 * 60 * 60;
+const NAME_SESSION_AGE_SECONDS = 365 * 24 * 60 * 60;
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURE_RECORDS = 2048;
 const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 };
@@ -48,11 +49,21 @@ export function createTempleAuth(database, { now = Date.now } = {}) {
     );
     CREATE INDEX IF NOT EXISTS temple_session_expiry ON temple_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS temple_session_owner ON temple_sessions(owner_id);
+    CREATE TABLE IF NOT EXISTS temple_name_sessions (
+      token_hash TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES community_users(id),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS temple_name_session_expiry ON temple_name_sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS temple_name_session_owner ON temple_name_sessions(owner_id);
   `);
   const query = {
     account: database.prepare("SELECT username, owner_id AS ownerId, password_salt AS salt, password_hash AS hash FROM temple_accounts WHERE username = ?"),
     owner: database.prepare("SELECT username FROM temple_accounts WHERE owner_id = ?"),
     addUser: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
+    rename: database.prepare("UPDATE community_users SET name = ? WHERE id = ?"),
+    namedUser: database.prepare("SELECT id, name FROM community_users WHERE id = ?"),
     user: database.prepare("SELECT u.id, u.name, a.username FROM community_users u JOIN temple_accounts a ON a.owner_id = u.id WHERE u.id = ?"),
     addAccount: database.prepare("INSERT INTO temple_accounts (username, owner_id, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)"),
     session: database.prepare(`SELECT u.id, u.name, a.username FROM temple_sessions s
@@ -61,6 +72,11 @@ export function createTempleAuth(database, { now = Date.now } = {}) {
     addSession: database.prepare("INSERT INTO temple_sessions (token_hash, owner_id, created_at, expires_at) VALUES (?, ?, ?, ?)"),
     revoke: database.prepare("DELETE FROM temple_sessions WHERE token_hash = ?"),
     expired: database.prepare("DELETE FROM temple_sessions WHERE expires_at <= ?"),
+    nameSession: database.prepare(`SELECT u.id, u.name FROM temple_name_sessions s
+      JOIN community_users u ON u.id = s.owner_id WHERE s.token_hash = ? AND s.expires_at > ?`),
+    addNameSession: database.prepare("INSERT INTO temple_name_sessions (token_hash, owner_id, created_at, expires_at) VALUES (?, ?, ?, ?)"),
+    revokeName: database.prepare("DELETE FROM temple_name_sessions WHERE token_hash = ?"),
+    expiredNames: database.prepare("DELETE FROM temple_name_sessions WHERE expires_at <= ?"),
   };
   const failures = new Map();
   const inFlight = new Map();
@@ -75,7 +91,10 @@ export function createTempleAuth(database, { now = Date.now } = {}) {
 
   function resolve(request) {
     const token = suppliedToken(request);
-    return token ? query.session.get(tokenHash(token), now()) : undefined;
+    if (!token) return undefined;
+    const hash = tokenHash(token);
+    const timestamp = now();
+    return query.nameSession.get(hash, timestamp) || query.session.get(hash, timestamp);
   }
 
   function pruneFailures(timestamp) {
@@ -95,17 +114,23 @@ export function createTempleAuth(database, { now = Date.now } = {}) {
     return { status, body: { authenticated: false, error, message } };
   }
 
-  function rotateSession(request, identity) {
+  function rotateSession(request, identity, namedEntry = false) {
     const secret = randomBytes(32).toString("hex");
     const timestamp = now();
     const oldToken = suppliedToken(request);
     query.expired.run(timestamp);
-    if (oldToken) query.revoke.run(tokenHash(oldToken));
-    query.addSession.run(tokenHash(secret), identity.id, timestamp, timestamp + SESSION_AGE_SECONDS * 1000);
+    query.expiredNames.run(timestamp);
+    if (oldToken) {
+      query.revoke.run(tokenHash(oldToken));
+      query.revokeName.run(tokenHash(oldToken));
+    }
+    const age = namedEntry ? NAME_SESSION_AGE_SECONDS : SESSION_AGE_SECONDS;
+    const addSession = namedEntry ? query.addNameSession : query.addSession;
+    addSession.run(tokenHash(secret), identity.id, timestamp, timestamp + age * 1000);
     return {
       status: 200,
       body: { authenticated: true, user: identity },
-      cookies: [sessionCookie(request, secret, SESSION_AGE_SECONDS)],
+      cookies: [sessionCookie(request, secret, age)],
       identity,
     };
   }
@@ -114,11 +139,29 @@ export function createTempleAuth(database, { now = Date.now } = {}) {
     if (body.action === "logout") {
       const identity = resolve(request);
       const token = suppliedToken(request);
-      if (token) query.revoke.run(tokenHash(token));
+      if (token) {
+        query.revoke.run(tokenHash(token));
+        query.revokeName.run(tokenHash(token));
+      }
       return { status: 200, body: { authenticated: false }, cookies: [sessionCookie(request, "", 0)], signedOutId: identity?.id, rotateGuest: true };
     }
+    if (body.action === "enter") {
+      const name = typeof body.name === "string" ? body.name.normalize("NFC").trim() : "";
+      if (!name || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(body.name)) {
+        return failure(400, "invalid_name", "请填写昵称，避免换行和控制字符。");
+      }
+      // A display name never selects an owner. Only browser secrets may restore one.
+      const owner = resolve(request) || guestIdentity;
+      return transact(database, () => {
+        query.addUser.run(owner.id, name, now());
+        query.rename.run(name, owner.id);
+        const result = rotateSession(request, query.namedUser.get(owner.id), true);
+        if (guestIdentity.cookie) result.cookies.unshift(guestIdentity.cookie);
+        return result;
+      });
+    }
     if (body.action !== "login" && body.action !== "register") {
-      return failure(400, "invalid_auth_action", "请选择登录或设置密码。");
+      return failure(400, "invalid_auth_action", "请填写昵称后进入寺庙。");
     }
     const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
     const password = body.password;

@@ -373,6 +373,9 @@ svg { vertical-align: middle; }
 .game-menu:not([hidden]) { display: grid; gap: 2px; }
 .temple-game .game-menu > strong { font-size: 15px; padding: 7px 9px; }
 .game-menu > strong small { display: block; font-size: 12px; margin-top: 3px; color: #748467; }
+.player-menu-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.social-person-name strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.life-entry-meta > strong { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .temple-game .game-menu > button { min-height: 44px; font-size: 15px; padding: 8px 10px; gap: 10px; }
 .game-menu .social-temple-compact, .game-menu .temple-life { position: static; width: 100%; margin: 0; display: block; z-index: auto; }
 .game-menu .social-quick-controls { position: static; display: block; z-index: auto; }

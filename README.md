@@ -16,9 +16,9 @@ npm start
 
 ## 数据
 
-账号、日记、好友、心意和建议记录写入 `data/temple.sqlite`。`TEMPLE_DATA_DIR` 可设置数据目录。云服务器应为该目录挂载持久化磁盘，并定期备份。在线位置采用45秒租期，使用单个服务器实例。
+玩家身份、日记、好友、心意和建议记录写入 `data/temple.sqlite`。`TEMPLE_DATA_DIR` 可设置数据目录。云服务器应为该目录挂载持久化磁盘，并定期备份。在线位置采用45秒租期，使用单个服务器实例。
 
-玩家使用账号密码登录。密码经随机盐和scrypt派生后保存，会话使用HttpOnly Cookie。登录同一账号可访问自己的日记与寺友。旧浏览器身份首次设置账号密码时会保留尚存在的记录。
+玩家取一个名字即可进入，支持中文、英文和数字，名字没有单独的字数限制。当前浏览器通过HttpOnly Cookie记住玩家身份，同名访客各有独立的日记与寺友记录。
 
 ## 容器部署
 
@@ -31,5 +31,5 @@ docker run -d -p 3000:3000 -v temple-data:/app/data --name cloud-temple cloud-te
 
 ## Render 免费体验
 
-仓库提供 `render.yaml` 和 Dockerfile，可在Render创建免费Web Service。免费服务闲置后会休眠，首次唤醒需要等待。免费实例的本地存储是临时的，账号、日记与其他记录可能在休眠、重启或重新发布后重置。`TEMPLE_TRIAL_MODE=true` 会在页面显示提示，日记页面提供导出备份。
+仓库提供 `render.yaml` 和 Dockerfile，可在Render创建免费Web Service。免费服务闲置后会休眠，首次唤醒需要等待。免费实例的本地存储是临时的，玩家身份、日记与其他记录可能在休眠、重启或重新发布后重置。`TEMPLE_TRIAL_MODE=true` 会在页面显示提示，日记页面提供导出备份。
 

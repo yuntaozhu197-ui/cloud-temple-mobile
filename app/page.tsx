@@ -184,13 +184,6 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setDeparted(true);
   void sync({ leave: true });
  };
- const logoutAccount = async () => {
-  try {
-   const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "logout" }) });
-   if (!response.ok) throw new Error("logout");
-   if (gameAlive.current) onSignedOut();
-  } catch { notify("退出暂时未完成，请稍后重试"); }
- };
  const contextAction = (kind: "incense" | "flower" | "ritual") => {
   if (kind === "incense") setIncenseRequest(value => value + 1);
   if (kind === "flower") setFlowerRequest(value => value + 1);
@@ -233,7 +226,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     <div className={`game-presence online-pill ${connection}`} role="status"><i />{connection === "online" ? `${room?.total ?? 1} 人在寺` : connection === "offline" ? "离线漫游" : "正在入寺…"}</div>
     {menuOpen && <button className="menu-dismiss" aria-label="收起更多选项" onClick={() => setMenuOpen(false)} />}
     <nav id="game-menu" className={`game-menu ${menuOpen ? "is-open" : ""}`} hidden={!menuOpen} aria-label="更多选项">
-     <strong>{selfName}<small>账号 {account.username}</small></strong>
+     <strong className="player-menu-name" title={selfName}>{selfName}</strong>
      <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
      <button onClick={toggleSound}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}声音{sound ? "已开启" : "已关闭"}</button>
      <SocialTemple compact incenseRequest={incenseRequest} selfId={account.id} onInteraction={unlockAudio} onIncense={() => { setIncensePulse(count => count + 1); tone("incense"); }} onNotice={notify} />
@@ -247,7 +240,6 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <button onClick={() => { setMenuOpen(false); void share(); }}><Share2 size={18} />邀请朋友</button>
      <button onClick={() => { setMenuOpen(false); setModal("help"); }}><CircleHelp size={18} />玩法帮助</button>
      <button onClick={() => { setMenuOpen(false); setExitRequest(value => value + 1); }}><Leaf size={18} />离寺 · 留个建议</button>
-     <button onClick={() => void logoutAccount()}><Leaf size={18} />退出账号</button>
     </nav>
 
     {isSeated && !auto && <button className="practice-toggle" onClick={() => meditating ? finishMeditation() : setPracticeOpen(value => !value)}>{meditating ? "结束静坐" : practiceOpen ? "收起动作" : "修行"}</button>}
@@ -292,7 +284,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       <h2 id="modal-title">我的今日修行</h2>
       <div className="practice-grid">{[{ n: stats.prayer, label: "次合掌" }, { n: stats.bows, label: "次礼拜" }, { n: stats.beads, label: "次转珠" }, { n: stats.wood, label: "声木鱼" }].map(item => <div key={item.label}><strong>{item.n}</strong><span>{item.label}</span></div>)}</div>
       <div className="practice-total"><Wind size={20} />今日静坐<strong>{clock(stats.seconds)}</strong></div>
-      <p className="modal-small">记录保存在本设备当前账号，按本地日期更新。</p>
+      <p className="modal-small">记录保存在本设备当前小和尚，按本地日期更新。</p>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
      </> : <>
       <p className="eyebrow">欢迎来到云间寺</p>
