@@ -681,7 +681,9 @@ export default function TempleWorld(props: WorldProps) {
           button.style.display = visible ? "block" : "none";
           if (visible) {
             const halfWidth = button.offsetWidth / 2;
-            const boundedX = clamp(screenX, halfWidth + 8, width - halfWidth - 8);
+            const besidePlayer = Math.hypot(x - actor.group.position.x, z - actor.group.position.z) < 1.6;
+            const offset = besidePlayer ? (screenX < width / 2 ? 1 : -1) * (halfWidth + 42) : 0;
+            const boundedX = clamp(screenX + offset, halfWidth + 8, width - halfWidth - 8);
             button.style.transform = `translate(${boundedX - halfWidth}px,${screenY - 22}px)`;
           }
         }
