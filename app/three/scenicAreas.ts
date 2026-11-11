@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { createFishSchool } from "./fishSchool";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 type ScenicAction = "release" | "martial" | "pagoda";
@@ -28,7 +29,6 @@ export function createScenicAreas() {
  const gold = surface("#d0af65", { metalness: .3, roughness: .55 });
  const water = surface("#6caeaa", { roughness: .2, metalness: .2 });
  const leaf = surface("#728f69");
- const fishMaterial = surface("#e8b47c");
  const glow = surface("#e8cc88", { emissive: "#c7a15e", emissiveIntensity: .7, transparent: true, opacity: .5, depthWrite: false });
  function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Group = staticGroup) {
   geometries.add(geometry);
@@ -126,16 +126,11 @@ export function createScenicAreas() {
  cylinder(31.5, .07, 9.5, .7, .7, .14, stone, 12);
  block(31.5, 9.5, 1.7, 1.7);
 
- const fish: THREE.Group[] = [];
- for (let index = 0; index < 4; index++) {
-  const swimmer = new THREE.Group();
-  const body = mesh(new THREE.SphereGeometry(.16, 8, 5), fishMaterial, 0, 0, 0, swimmer);
-  body.scale.set(.65, .5, 1.8);
-  const tail = mesh(new THREE.ConeGeometry(.13, .2, 3), red, 0, 0, -.32, swimmer);
-  tail.rotation.x = -Math.PI / 2;
-  group.add(swimmer);
-  fish.push(swimmer);
- }
+ const fishSchool = createFishSchool({
+  name: "放生池 · 多彩鱼群", count: 24, capacity: 72,
+  x: -28, z: 8, radiusX: 3.8, radiusZ: 3.8, waterY: .15,
+ });
+ group.add(fishSchool.group);
  const releaseRipple = mesh(new THREE.RingGeometry(.28, .34, 32), glow, -24.6, .13, 8, group);
  releaseRipple.rotation.x = -Math.PI / 2;
  releaseRipple.castShadow = false;
@@ -184,22 +179,14 @@ export function createScenicAreas() {
   ],
   interact(kind: ScenicAction) {
    const now = performance.now() / 1000;
-   if (kind === "release") releasedAt = now;
+   if (kind === "release") { releasedAt = now; fishSchool.release(7); }
    if (kind === "martial") martialAt = now;
    if (kind === "pagoda") prayerAt = now;
   },
   animate(time: number) {
    const now = performance.now() / 1000;
    const releaseAge = now - releasedAt;
-   fish.forEach((swimmer, index) => {
-    const newlyReleased = releaseAge < 7;
-    const progress = Math.min(1, releaseAge / 5);
-    const angle = time * .3 + index * Math.PI / 2;
-    const targetX = -28 + Math.cos(angle) * (1.7 + index * .25);
-    const targetZ = 8 + Math.sin(angle) * (1.7 + index * .2);
-    swimmer.position.set(newlyReleased ? -24.6 + (targetX + 24.6) * progress : targetX, .15 + Math.sin(time * 2 + index) * .015, newlyReleased ? 8 + (targetZ - 8) * progress : targetZ);
-    swimmer.rotation.y = -angle;
-   });
+   fishSchool.animate(time);
    releaseRipple.visible = releaseAge < 5;
    if (releaseRipple.visible) releaseRipple.scale.setScalar(1 + (releaseAge % 1.4) * 1.7);
    const martialAge = now - martialAt;
@@ -213,6 +200,7 @@ export function createScenicAreas() {
    if (disposed) return;
    disposed = true;
    group.removeFromParent();
+   fishSchool.dispose();
    geometries.forEach(geometry => geometry.dispose());
    materials.forEach(material => material.dispose());
    group.clear();

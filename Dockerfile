@@ -17,6 +17,7 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node server.mjs ./server.mjs
 COPY --chown=node:node temple-life.mjs ./temple-life.mjs
 COPY --chown=node:node temple-auth.mjs ./temple-auth.mjs
+COPY --chown=node:node temple-lamps.mjs ./temple-lamps.mjs
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 3000

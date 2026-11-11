@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type * as THREE from "three";
+import { SHRINES, type ShrineId } from "./shrines";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -19,13 +20,15 @@ type Participant = {
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
 type Landmark = { name: string; x: number; z: number };
-type ContextAction = "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
+type ContextAction = "incense" | "incenseGuanyin" | "incenseWenshu" | "longLamp" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
 type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
   action: string;
   actionPulse: number;
   cameraMode?: "first" | "third" | "map";
   incensePulse?: number;
+  incenseShrine?: ShrineId;
+  lampPulse?: number;
   flowerPulse?: number;
   ritualPulse?: number;
   auto: boolean;
@@ -109,9 +112,9 @@ export default function TempleWorld(props: WorldProps) {
         host.insertBefore(renderer.domElement, host.firstChild);
 
         const scene = new T.Scene();
-        scene.background = new T.Color(0xdce6d8);
-        scene.fog = new T.Fog(0xdce6d8, 50, 125);
-        const camera = new T.PerspectiveCamera(42, 1, 0.1, 150);
+        scene.background = new T.Color(0xd9e9eb);
+        scene.fog = new T.Fog(0xd9e9eb, 120, 360);
+        const camera = new T.PerspectiveCamera(42, 1, 0.1, 430);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
         let cameraRadius = mobile ? 7.8 : 10;
@@ -143,7 +146,7 @@ export default function TempleWorld(props: WorldProps) {
 
         let environment: ReturnType<typeof createTempleEnvironment> | undefined;
         let local: MonkInstance | undefined;
-        let offering: ReturnType<typeof createIncenseOffering> | undefined;
+        const offerings = new Map<ShrineId, ReturnType<typeof createIncenseOffering>>();
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
         let observer: ResizeObserver | undefined;
@@ -164,7 +167,7 @@ export default function TempleWorld(props: WorldProps) {
           cleanupListeners.forEach(remove => remove());
           remote.forEach(({ monk, label }) => { monk.dispose(); label.remove(); });
           local?.dispose();
-          offering?.dispose();
+          offerings.forEach(offering => offering.dispose());
           environment?.dispose();
           ownedGeometries.forEach(geometry => geometry.dispose());
           ownedMaterials.forEach(material => material.dispose());
@@ -230,8 +233,10 @@ export default function TempleWorld(props: WorldProps) {
         cleanupListeners.push(() => cushionButton.removeEventListener("click", sitOnNearbyCushion));
         hotspots.appendChild(cushionButton);
         hotspotButtons.push(cushionButton);
-        offering = createIncenseOffering(scene);
-        world.colliders.push({ minX: -0.45, maxX: 0.45, minZ: -15.15, maxZ: -14.45 });
+        for (const [id, shrine] of Object.entries(SHRINES)) {
+          offerings.set(id as ShrineId, createIncenseOffering(scene, { x: shrine.x, z: shrine.furnaceZ }));
+          world.colliders.push({ minX: shrine.x - 0.45, maxX: shrine.x + 0.45, minZ: shrine.furnaceZ - 0.35, maxZ: shrine.furnaceZ + 0.35 });
+        }
         const roofSurfaces: THREE.Mesh[] = [];
         const hallRoofs = new Set<THREE.Mesh>();
         scene.updateMatrixWorld(true);
@@ -298,6 +303,8 @@ export default function TempleWorld(props: WorldProps) {
         let localAction = latest.current.action;
         let actionStart = 0;
         let incensePulse = latest.current.incensePulse ?? 0;
+        let incenseTarget: ShrineId = "rulai";
+        let lampPulse = latest.current.lampPulse ?? 0;
         let flowerPulse = latest.current.flowerPulse ?? 0;
         let ritualPulse = latest.current.ritualPulse ?? 0;
         let approachingIncense = false;
@@ -309,7 +316,7 @@ export default function TempleWorld(props: WorldProps) {
         let sceneAction: { kind: "martial" | "salute"; start: number; duration: number } | null = null;
         const touchPoints = new Map<number, { x: number; y: number }>();
         let pinchDistance = 0;
-        function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.65, 1.55); }
+        function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.45, 3.2); }
         zoomView.current = changeZoom;
         let currentPlace = "静心庭院";
         let actualSeated: boolean | undefined;
@@ -563,6 +570,12 @@ export default function TempleWorld(props: WorldProps) {
           pinchDistance = 0;
         }
 
+        function wheel(event: WheelEvent) {
+          event.preventDefault();
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? renderer.domElement.clientHeight : 1;
+          changeZoom(Math.exp(clamp(event.deltaY * unit, -240, 240) * 0.0018));
+        }
+
         function keyDown(event: KeyboardEvent) {
           const target = event.target as HTMLElement;
           if (target.closest("input,textarea,select,[contenteditable='true']") || document.querySelector("[role='dialog']")) return;
@@ -585,14 +598,15 @@ export default function TempleWorld(props: WorldProps) {
           }
         }
         function contextRestored() { if (alive) setRetry(value => value + 1); }
-        function listen(target: EventTarget, type: string, handler: EventListener) {
-          target.addEventListener(type, handler);
+        function listen(target: EventTarget, type: string, handler: EventListener, options?: AddEventListenerOptions) {
+          target.addEventListener(type, handler, options);
           cleanupListeners.push(() => target.removeEventListener(type, handler));
         }
         listen(renderer.domElement, "pointerdown", pointerDown as EventListener);
         listen(renderer.domElement, "pointermove", pointerMove as EventListener);
         listen(renderer.domElement, "pointerup", pointerUp as EventListener);
         listen(renderer.domElement, "pointercancel", pointerCancel);
+        listen(renderer.domElement, "wheel", wheel as EventListener, { passive: false });
         listen(renderer.domElement, "contextmenu", contextMenu);
         listen(renderer.domElement, "webglcontextlost", contextLost);
         listen(renderer.domElement, "webglcontextrestored", contextRestored);
@@ -704,9 +718,14 @@ export default function TempleWorld(props: WorldProps) {
             incensePulse = state.incensePulse ?? 0;
             if (!state.auto && !state.meditating) {
               incensePrayerUntil = 0;
-              walkTo(0, -13.8);
+              incenseTarget = state.incenseShrine ?? "rulai";
+              walkTo(SHRINES[incenseTarget].x, SHRINES[incenseTarget].z);
               approachingIncense = true;
             }
+          }
+          if ((state.lampPulse ?? 0) !== lampPulse) {
+            lampPulse = state.lampPulse ?? 0;
+            world.lightLongLamp();
           }
           if ((state.flowerPulse ?? 0) !== flowerPulse) {
             flowerPulse = state.flowerPulse ?? 0;
@@ -827,7 +846,8 @@ export default function TempleWorld(props: WorldProps) {
             lastContext = context;
             state.onContextChange?.(context);
           }
-          if (approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 13.8) < 0.6) {
+          const prayerSpot = SHRINES[incenseTarget];
+          if (approachingIncense && route.length === 0 && Math.hypot(position.x - prayerSpot.x, position.z - prayerSpot.z) < 0.6) {
             approachingIncense = false;
             incensePrayerStart = time;
             incensePrayerUntil = time + 8.4;
@@ -840,7 +860,7 @@ export default function TempleWorld(props: WorldProps) {
           }
           const incensePrayer = time < incensePrayerUntil;
           if (incensePrayer && !incenseInserted && time - incensePrayerStart >= 8.4 * 0.68) {
-            offering?.offer();
+            offerings.get(incenseTarget)?.offer();
             incenseInserted = true;
             state.onIncenseStage?.("insert");
           }
@@ -874,7 +894,7 @@ export default function TempleWorld(props: WorldProps) {
             person.monk.update(person.action, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min(((time - person.actionStart) * person.bowSpeed) % 1.25, 1) : undefined);
           });
           world.animate(time);
-          offering?.animate(time);
+          offerings.forEach(offering => offering.animate(time));
 
           const activeRoom = world.rooms.find(room => position.x > room.minX && position.x < room.maxX && position.z > room.minZ && position.z < room.maxZ);
           const indoors = Boolean(activeRoom);
@@ -882,7 +902,7 @@ export default function TempleWorld(props: WorldProps) {
           if (mapMode) mapFocus.y = floorHeight + 0.65;
           const nextCameraMode = state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
-          const fieldOfView = firstPerson ? 64 * Math.sqrt(zoomScale) : mapMode ? 48 : 42;
+          const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 42, 85) : mapMode ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
             cameraMode = nextCameraMode;
             camera.fov = fieldOfView;
@@ -895,7 +915,9 @@ export default function TempleWorld(props: WorldProps) {
               mapFocus.x += (position.x - mapFocus.x) * Math.min(1, dt * 4);
               mapFocus.z += (position.z - 1.2 - mapFocus.z) * Math.min(1, dt * 4);
             }
-            const mapHeight = (mobile ? 19 : 24) * zoomScale;
+            const overview = clamp((zoomScale - 1.55) / 1.65, 0, 1);
+            const overviewWidth = 1 + overview * (clamp(0.9 / camera.aspect, 1, 2.4) - 1);
+            const mapHeight = (mobile ? 19 : 24) * zoomScale * (1 + overview * 0.75) * overviewWidth;
             cameraTarget.copy(mapFocus);
             camera.position.set(mapFocus.x, mapFocus.y + mapHeight, mapFocus.z + mapHeight * 0.7);
           } else if (firstPerson) {
@@ -913,15 +935,26 @@ export default function TempleWorld(props: WorldProps) {
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
             if (activeRoom) {
+              const indoorZoom = clamp(zoomScale, 0.65, 1.35);
               for (const turn of [0, Math.PI / 3, -Math.PI / 3, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI]) {
-                cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2 * zoomScale, activeRoom.minX + 0.4, activeRoom.maxX - 0.4), floorHeight + 2.6 * zoomScale, clamp(position.z + Math.cos(yaw + turn) * 5.2 * zoomScale, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4));
+                cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2 * indoorZoom, activeRoom.minX + 0.4, activeRoom.maxX - 0.4), floorHeight + 2.6 * indoorZoom, clamp(position.z + Math.cos(yaw + turn) * 5.2 * indoorZoom, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4));
                 if (!blocked(cameraGoal.x, cameraGoal.z) && Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) > 1.8) break;
               }
             } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius * zoomScale, floorHeight + cameraHeight * zoomScale, position.z + Math.cos(yaw) * cameraRadius * zoomScale);
             if (cameraChanged) camera.position.copy(cameraGoal);
             else camera.position.lerp(cameraGoal, 1 - Math.exp(-dt * 5));
+            if (activeRoom) camera.position.set(
+              clamp(camera.position.x, activeRoom.minX + 0.4, activeRoom.maxX - 0.4),
+              clamp(camera.position.y, floorHeight + 1.5, floorHeight + 3.6),
+              clamp(camera.position.z, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4),
+            );
           }
           camera.lookAt(cameraTarget);
+          const fogShift = Math.max(0, camera.position.distanceTo(cameraTarget) - 80);
+          if (scene.fog instanceof T.Fog) {
+            scene.fog.near = 120 + fogShift;
+            scene.fog.far = Math.min(camera.far - 8, 360 + fogShift);
+          }
           if (firstPerson) obscuredRoofs.clear();
           else if (time - lastOcclusionCheck > 0.08) {
             occlusionDirection.copy(position);
@@ -1007,7 +1040,7 @@ export default function TempleWorld(props: WorldProps) {
 
   const controlsDisabled = !ready || props.auto || props.meditating;
 
-  return <div ref={hostRef} className="temple-world" style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#dce6d8", touchAction: "none" }}>
+  return <div ref={hostRef} className="temple-world" style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#d9e9eb", touchAction: "none" }}>
     <div ref={labelsRef} aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
     <div ref={hotspotsRef} role="group" aria-label="附近可互动的地点" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
     {!ready && !error && <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, gap: 12 }}><span style={{ fontSize: 28 }}>✳</span><span>正在推开三维寺庙的门…</span></div>}

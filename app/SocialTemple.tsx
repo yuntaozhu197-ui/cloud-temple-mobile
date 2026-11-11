@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronRight, HeartHandshake, Leaf, RefreshCw, Send, Sparkles, UserRound, UsersRound, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import "./social.css";
+import { SHRINES, type ShrineId } from "./shrines";
 
 type Person = { id: string; name: string };
 type Friend = Person & { online: boolean };
 type Invitation = { id: string; fromId?: string; toId?: string; name: string; createdAt: number };
 type Greeting = { id: string; fromName: string; text: string; createdAt: number };
-type IncenseCounts = { today: number; total: number; mineToday: number };
+type IncenseCount = { today: number; total: number; mineToday: number };
+type IncenseCounts = IncenseCount & { shrines?: Record<ShrineId, IncenseCount> };
 type SocialSnapshot = {
   self: Person;
   online: Person[];
@@ -22,7 +24,8 @@ type Props = {
   selfId?: string;
   compact?: boolean;
   incenseRequest?: number;
-  onIncense?: (count: number) => void;
+  incenseShrine?: ShrineId;
+  onIncense?: (shrine: ShrineId) => void;
   onInteraction?: () => void;
   onNotice?: (message: string) => void;
 };
@@ -63,7 +66,7 @@ async function api(path: string, body?: Record<string, unknown>, expectedUser?: 
   }
 }
 
-export default function SocialTemple({ selfId, compact = false, incenseRequest = 0, onIncense, onInteraction, onNotice }: Props) {
+export default function SocialTemple({ selfId, compact = false, incenseRequest = 0, incenseShrine = "rulai", onIncense, onInteraction, onNotice }: Props) {
   const [snapshot, setSnapshot] = useState<SocialSnapshot | null>(null);
   const [connection, setConnection] = useState<"loading" | "ready" | "offline">("loading");
   const [open, setOpen] = useState(false);
@@ -186,12 +189,12 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
     callbacks.current.onInteraction?.();
     setOffering(true);
     try {
-      const counts = await api("/api/incense", {}, selfId) as IncenseCounts;
+      const counts = await api("/api/incense", { shrine: incenseShrine }, selfId) as IncenseCounts;
       setSnapshot(current => current ? { ...current, incense: counts } : current);
       setCooldown(5);
       if (compact) setIncenseOpen(false);
-      callbacks.current.onIncense?.(counts.mineToday);
-      inform("心意已记下，正前往殿前敬香。");
+      callbacks.current.onIncense?.(incenseShrine);
+      inform(`心意已记下，正前往${SHRINES[incenseShrine].hall}敬香。`);
     } catch (error) {
       if ((error as Error & { status?: number }).status === 429) setCooldown(5);
       inform(error instanceof Error ? error.message : "香火暂时没有送达，请稍后再试。");
@@ -207,6 +210,8 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
   const incoming = snapshot?.incoming ?? [];
   const outgoing = snapshot?.outgoing ?? [];
   const ready = connection === "ready";
+  const shrine = SHRINES[incenseShrine];
+  const shrineCounts = snapshot?.incense.shrines?.[incenseShrine];
 
   function onlineAction(person: Person) {
     if (friends.some(friend => friend.id === person.id)) return <span className="social-friend-badge"><Check size={13} /> 已结缘</span>;
@@ -217,17 +222,16 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
     return <button className="social-small-button" disabled={Boolean(busy)} onClick={() => void act("request", person.id)}><HeartHandshake size={14} /> 结缘</button>;
   }
 
-  const incenseCard = <section className="social-card incense-card" aria-label="菩萨敬香">
-      <div className="social-card-heading"><span><Sparkles size={15} /> 一炷清香，一念善意</span><span className="social-soft-label">敬香祈愿</span></div>
-      <div className="incense-content"><div className={`incense-illustration ${offering || cooldown ? "is-lit" : ""}`}><IncenseIcon /></div><div><h2>菩萨前，敬一炷香</h2><p>把心愿轻轻放下，<br />愿你与在意的人平安自在。</p></div></div>
-      <div className="incense-counts"><span>今日香火 <strong>{snapshot?.incense.today ?? "—"}</strong></span><span>我的敬香 <strong>{snapshot?.incense.mineToday ?? "—"}</strong></span></div>
+  const incenseCard = <section className="social-card incense-card" aria-label={`${shrine.name}敬香`}>
+      <div className="social-card-heading"><span><Sparkles size={15} /> {shrine.hall}</span><span className="social-soft-label">免费敬香</span></div>
+      <div className="incense-content"><div className={`incense-illustration ${offering || cooldown ? "is-lit" : ""}`}><IncenseIcon /></div><div><h2>{shrine.name}前，敬一炷香</h2><p>{shrine.intention}<br />{shrine.description}</p></div></div>
+      <div className="incense-counts"><span>本殿今日 <strong>{shrineCounts?.today ?? "—"}</strong></span><span>我的敬香 <strong>{shrineCounts?.mineToday ?? "—"}</strong></span></div>
       <button className="social-main-button incense-offer" disabled={!ready || offering || cooldown > 0} onClick={() => void offerIncense()}><Sparkles size={16} />{offering ? "正在敬香…" : cooldown ? `清香袅袅 · ${cooldown} 秒` : "敬香祈愿"}</button>
       <p className="social-card-foot">{connection === "loading" ? "正在连接殿前香炉…" : connection === "offline" ? "暂时离线，连接后即可敬香" : "殿前香炉会点亮，香火记录随心意留下"}</p>
     </section>;
 
   return <div className={`social-temple${compact ? " social-temple-compact" : ""}`}>
-    {compact ? <div className="social-quick-controls" aria-label="敬香与寺友">
-      <button type="button" onClick={() => { setOpen(false); setIncenseOpen(true); void refresh(); }} aria-label="打开敬香祈愿"><Sparkles size={20} /><span>敬香</span></button>
+    {compact ? <div className="social-quick-controls" aria-label="寺友">
       <button type="button" onClick={() => { setIncenseOpen(false); setOpen(true); void refresh(); }} aria-label="打开寺友结缘"><UsersRound size={20} /><span>寺友</span>{incoming.length > 0 && <span className="social-quick-badge">{incoming.length}</span>}</button>
     </div> : <>
     {snapshot?.trial?.temporaryRecords && <p className="social-trial-note">免费体验版的好友与香火记录可能在服务休眠或重启后重置。</p>}
@@ -246,7 +250,7 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
     {notice && <div className="social-inline-notice" role="status"><Leaf size={14} />{notice}</div>}
     {incenseOpen && createPortal(<div className="social-temple-compact"><div className="social-backdrop" onClick={() => setIncenseOpen(false)}>
       <section ref={modalRef} className="social-sheet incense-sheet" role="dialog" aria-modal="true" aria-labelledby="incense-title" onClick={event => event.stopPropagation()}>
-        <header className="social-sheet-header"><div><span className="social-overline">清香袅袅，心意相随</span><h2 id="incense-title">敬香祈愿</h2></div><button className="social-close" aria-label="关闭敬香窗口" onClick={() => setIncenseOpen(false)}><X size={21} /></button></header>
+        <header className="social-sheet-header"><div><span className="social-overline">{shrine.hall} · 免费祈愿</span><h2 id="incense-title">{shrine.name} · 敬香</h2></div><button className="social-close" aria-label="关闭敬香窗口" onClick={() => setIncenseOpen(false)}><X size={21} /></button></header>
         <div className="social-sheet-body">
           {incenseCard}
           {snapshot?.trial?.temporaryRecords && <p className="social-trial-note">免费体验版的好友与香火记录可能在服务休眠或重启后重置。</p>}

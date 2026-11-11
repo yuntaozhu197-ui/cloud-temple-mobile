@@ -403,7 +403,6 @@ svg { vertical-align: middle; }
 .temple-game .game-menu > button { min-height: 44px; font-size: 15px; padding: 8px 10px; gap: 10px; }
 .game-menu .social-temple-compact, .game-menu .temple-life { position: static; width: 100%; margin: 0; display: block; z-index: auto; }
 .game-menu .social-quick-controls { position: static; display: block; z-index: auto; }
-.game-menu .social-quick-controls > button:first-child { display: none; }
 .temple-game .game-menu .social-quick-controls > button, .game-menu .life-shortcut { width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; justify-content: flex-start; gap: 10px; font-size: 15px; color: #405b39; }
 .game-menu .social-quick-controls > button:hover, .game-menu .life-shortcut:hover { background: #e7edda; }
 .temple-game .game-action-dock { width: min(222px, calc(100% - var(--hud-left) - var(--hud-right) - 88px)); bottom: calc(var(--hud-bottom) + 50px); gap: 6px; }

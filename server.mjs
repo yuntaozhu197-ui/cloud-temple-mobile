@@ -9,6 +9,7 @@ import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { createTempleLife } from "./temple-life.mjs";
 import { createTempleAuth } from "./temple-auth.mjs";
+import { createTempleLamps } from "./temple-lamps.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
@@ -237,6 +238,10 @@ function openCommunityDatabase(dataDir) {
     CREATE INDEX IF NOT EXISTS incense_user_day ON incense_offerings(user_id, offering_day);
     CREATE INDEX IF NOT EXISTS incense_user_time ON incense_offerings(user_id, created_at);
   `);
+  if (!database.prepare("PRAGMA table_info(incense_offerings)").all().some(column => column.name === "shrine")) {
+    database.exec("ALTER TABLE incense_offerings ADD COLUMN shrine TEXT NOT NULL DEFAULT 'rulai'");
+  }
+  database.exec("CREATE INDEX IF NOT EXISTS incense_shrine_user_time ON incense_offerings(shrine, user_id, created_at)");
   return database;
 }
 
@@ -327,6 +332,7 @@ export function createTempleServer({
   const staticRoot = resolve(distDirectory);
   const database = openCommunityDatabase(dataDir);
   const life = createTempleLife(database, { trialMode });
+  const lamps = createTempleLamps(database, { trialMode });
   const auth = createTempleAuth(database, { now });
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
@@ -354,8 +360,11 @@ export function createTempleServer({
     incenseToday: database.prepare("SELECT COUNT(*) AS count FROM incense_offerings WHERE offering_day = ?"),
     incenseTotal: database.prepare("SELECT COUNT(*) AS count FROM incense_offerings"),
     incenseMine: database.prepare("SELECT COUNT(*) AS count FROM incense_offerings WHERE user_id = ? AND offering_day = ?"),
-    lastIncense: database.prepare("SELECT created_at AS createdAt FROM incense_offerings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1"),
-    insertIncense: database.prepare("INSERT INTO incense_offerings (user_id, offering_day, created_at) VALUES (?, ?, ?)"),
+    shrineCounts: database.prepare(`SELECT shrine, COUNT(*) AS total,
+      SUM(offering_day = ?) AS today,
+      SUM(user_id = ? AND offering_day = ?) AS mineToday FROM incense_offerings GROUP BY shrine`),
+    lastIncense: database.prepare("SELECT created_at AS createdAt FROM incense_offerings WHERE user_id = ? AND shrine = ? ORDER BY created_at DESC LIMIT 1"),
+    insertIncense: database.prepare("INSERT INTO incense_offerings (user_id, offering_day, created_at, shrine) VALUES (?, ?, ?, ?)"),
   };
 
   function registerUser(identity, timestamp) {
@@ -367,10 +376,15 @@ export function createTempleServer({
 
   function incenseCounts(identity, timestamp) {
     const day = offeringDayFormatter.format(new Date(timestamp));
+    const shrines = Object.fromEntries(["rulai", "guanyin", "wenshu"].map(id => [id, { today: 0, total: 0, mineToday: 0 }]));
+    for (const { shrine, ...counts } of queries.shrineCounts.all(day, identity.id, day)) {
+      if (Object.hasOwn(shrines, shrine)) shrines[shrine] = counts;
+    }
     return {
       today: queries.incenseToday.get(day).count,
       total: queries.incenseTotal.get().count,
       mineToday: queries.incenseMine.get(identity.id, day).count,
+      shrines,
     };
   }
 
@@ -465,13 +479,18 @@ export function createTempleServer({
     const timestamp = now();
     registerUser(identity, timestamp);
     if (pathname === "/api/incense") {
-      const previous = queries.lastIncense.get(identity.id);
+      const shrine = body.shrine ?? "rulai";
+      if (!["rulai", "guanyin", "wenshu"].includes(shrine)) {
+        sendJson(response, { error: "invalid_shrine", message: "请选择一处殿堂敬香。" }, 400, identity);
+        return;
+      }
+      const previous = queries.lastIncense.get(identity.id, shrine);
       if (previous && timestamp - previous.createdAt < 5_000) {
         response.setHeader("Retry-After", Math.ceil((5_000 - timestamp + previous.createdAt) / 1000));
         sendJson(response, { error: "incense_cooldown", message: "清香已敬上，静心片刻再来吧。", ...incenseCounts(identity, timestamp) }, 429, identity);
         return;
       }
-      queries.insertIncense.run(identity.id, offeringDayFormatter.format(new Date(timestamp)), timestamp);
+      queries.insertIncense.run(identity.id, offeringDayFormatter.format(new Date(timestamp)), timestamp, shrine);
       sendJson(response, incenseCounts(identity, timestamp), 200, identity);
       return;
     }
@@ -630,7 +649,7 @@ export function createTempleServer({
         sendJson(response, result.body, result.status, { cookie: result.cookies });
         return;
       }
-      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life"].includes(pathname);
+      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps"].includes(pathname);
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
@@ -646,7 +665,8 @@ export function createTempleServer({
         await handleRoom(request, response, identity);
         return;
       }
-      if (pathname === "/api/life") {
+      if (pathname === "/api/life" || pathname === "/api/lamps") {
+        const feature = pathname === "/api/lamps" ? lamps : life;
         if (!["GET", "POST"].includes(request.method)) {
           response.setHeader("Allow", "GET, POST");
           sendJson(response, { error: "method_not_allowed" }, 405, identity);
@@ -667,14 +687,14 @@ export function createTempleServer({
         }
         const timestamp = now();
         registerUser(identity, timestamp);
-        const failure = body ? life.act(identity, body, timestamp) : null;
+        const failure = body ? feature.act(identity, body, timestamp) : null;
         if (failure) {
           const { status, ...error } = failure;
           sendJson(response, error, status, identity);
           return;
         }
         if (visitors.has(identity.id)) visitors.get(identity.id).name = identity.name;
-        sendJson(response, life.snapshot(identity), 200, identity);
+        sendJson(response, feature.snapshot(identity, timestamp), 200, identity);
         return;
       }
       if (pathname === "/api/social" || pathname === "/api/incense") {

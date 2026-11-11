@@ -8,6 +8,8 @@ import TempleLife from "./TempleLife";
 import AccountGate, { type AccountUser } from "./AccountGate";
 import FloorActivity from "./FloorActivity";
 import TempleReading from "./TempleReading";
+import TempleLamps from "./TempleLamps";
+import { type ShrineId } from "./shrines";
 import { createTempleAudio, type TempleSound } from "./audio";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
@@ -30,6 +32,9 @@ export default function Home() {
 }
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
  const [incensePulse, setIncensePulse] = useState(0);
+ const [incenseShrine, setIncenseShrine] = useState<ShrineId>("rulai");
+ const [lampOpen, setLampOpen] = useState(false);
+ const [lampPulse, setLampPulse] = useState(0);
  const [room,setRoom]=useState<Room|null>(null),[connection,setConnection]=useState("connecting"),[seat,setSeat]=useState<number|null>(null),[action,setAction]=useState("idle"),[pulse,setPulse]=useState(0);
  const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|"sutra"|"breathe"|null>(null);
  const [auto,setAuto]=useState(false),[bowCount,setBowCount]=useState(0),[meditating,setMeditating]=useState(false),[duration,setDuration]=useState(5),[remaining,setRemaining]=useState(0);
@@ -210,8 +215,12 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setDeparted(true);
   void sync({ leave: true });
  };
- const contextAction = (kind: "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda") => {
-  if (kind === "incense") setIncenseRequest(value => value + 1);
+ const contextAction = (kind: "incense" | "incenseGuanyin" | "incenseWenshu" | "longLamp" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda") => {
+  if (kind === "incense" || kind === "incenseGuanyin" || kind === "incenseWenshu") {
+   setIncenseShrine(kind === "incenseGuanyin" ? "guanyin" : kind === "incenseWenshu" ? "wenshu" : "rulai");
+   setIncenseRequest(value => value + 1);
+  }
+  if (kind === "longLamp") setLampOpen(true);
   if (kind === "flower") setFlowerRequest(value => value + 1);
   if (kind === "ritual") setRitualRequest(value => value + 1);
   if (kind === "bell") { tone("bell"); notify("钟声已响，让这一念慢慢安定。"); }
@@ -233,6 +242,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       flowerPulse={flowerPulse}
       ritualPulse={ritualPulse}
       incensePulse={incensePulse}
+      incenseShrine={incenseShrine}
+      lampPulse={lampPulse}
       action={action}
       actionPulse={pulse}
       auto={auto}
@@ -268,7 +279,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <strong className="player-menu-name" title={selfName}>{selfName}</strong>
      <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
      <button onClick={toggleSound}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}声音{sound ? "已开启" : "已关闭"}</button>
-     <SocialTemple compact incenseRequest={incenseRequest} selfId={account.id} onInteraction={unlockAudio} onIncense={() => { setIncensePulse(count => count + 1); }} onNotice={notify} />
+     <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
+     <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
      <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       tone(kind === "flower" ? "incense" : kind === "ritual" ? "meditate" : "prayer");
@@ -308,6 +320,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
+   <TempleLamps selfId={account.id} open={lampOpen} onClose={() => setLampOpen(false)} onLight={() => { tone("incense"); setLampPulse(value => value + 1); }} />
    {toast && createPortal(<div className="toast game-toast" role="status"><Leaf size={18} />{toast}</div>, document.body)}
    {modal && <div className="modal-backdrop" onClick={() => setModal(null)}>
     <section className="modal game-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={event => event.stopPropagation()}>
@@ -334,7 +347,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        <li><b>漫游</b><span>左上「地图导航」选择殿堂或景点，点「到处走走」自动前往一处风景。左下摇杆行走，也可点地面前往。地图可上下左右拖动。</span></li>
        <li><b>视角</b><span>双指开合或点加减按钮缩放。右上菜单内可切换地图、第一人称和第三人称。</span></li>
        <li><b>动作</b><span>右侧「敲木鱼」随时可点。走近蒲团坐稳后，点右下「修行」展开合掌、跪拜、佛珠和静坐。</span></li>
-       <li><b>殿堂</b><span>大雄宝殿可敬香，藏经阁可看经文，观云阁可静心调息。三栋殿堂沿步道相连。</span></li>
+       <li><b>殿堂</b><span>大雄宝殿向如来敬香，观音殿与文殊殿各有独立香炉。文殊殿可为学业、高考祈愿。藏经阁读经，观云阁调息。</span></li>
+       <li><b>点灯</b><span>长明灯塔可写下私密心愿，每日手动点亮，漏点日期可免费补点。地图导航可前往灯塔，菜单可打开我的长明灯。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
        <li><b>景观</b><span>钟亭鸣钟，莲池喂锦鲤，放生池放生小鱼，塔林合掌祈愿，习武广场练拳。大雄宝殿可敬香、点莲灯、赏壁画。</span></li>

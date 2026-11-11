@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-export function createIncenseOffering(scene: THREE.Scene) {
+export function createIncenseOffering(scene: THREE.Scene, position = { x: 0, z: -14.8 }) {
   const group = new THREE.Group();
   group.name = "大殿三足香炉";
-  group.position.set(0, 0, -14.8);
+  group.position.set(position.x, 0, position.z);
   scene.add(group);
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
