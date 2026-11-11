@@ -279,6 +279,8 @@ svg { vertical-align: middle; }
 .temple-game .modal-backdrop, .temple-game .social-backdrop {
   z-index: 80;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   overflow: hidden;
   align-items: center;
 }
@@ -289,12 +291,17 @@ svg { vertical-align: middle; }
 }
 .temple-game .game-modal {
   position: relative;
-  width: 440px;
+  width: min(440px, calc(100vw - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))));
+  min-width: 0;
+  overflow-wrap: anywhere;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 26px 22px;
 }
 .temple-game .modal-close { min-width: 46px; min-height: 46px; top: 10px; right: 10px; }
+.temple-game .game-modal > * { min-width: 0; max-width: 100%; }
+.world-nav-buttons { display: flex; gap: 5px; width: 100%; }
+.world-nav-buttons > button { min-width: 0; min-height: 44px; flex: 1; white-space: nowrap; }
 .temple-game .game-modal h2, .temple-game .social-sheet h2 { font-size: 25px; font-weight: 800; }
 .temple-game .eyebrow { font-size: 14px; font-weight: 700; }
 .temple-game .modal-description, .temple-game .help-list li span { color: #5b7052; font-size: 16px; line-height: 1.8; font-weight: 600; }
@@ -365,7 +372,7 @@ svg { vertical-align: middle; }
 .temple-game .game-brand span { font-size: 12px; margin-top: 2px; }
 .temple-game .menu-control { width: 44px; min-height: 44px; border-radius: 50%; }
 .temple-game .game-presence { top: calc(var(--hud-top) + 56px); font-size: 12px; padding: 7px 10px; }
-.temple-game .world-landmarks { display: none !important; }
+.temple-game .world-landmarks { display: grid !important; top: calc(var(--hud-top) + 100px) !important; }
 .temple-game .world-joystick > button { width: 78px !important; height: 78px !important; }
 .temple-game .world-joystick > span { display: none; }
 .temple-game .game-menu { width: min(266px, calc(100% - var(--hud-left) - var(--hud-right))); max-height: calc(var(--temple-viewport-height, 100dvh) - var(--hud-top) - var(--hud-bottom) - 64px); overflow-y: auto; overscroll-behavior: contain; padding: 10px; }
@@ -392,9 +399,42 @@ svg { vertical-align: middle; }
 .temple-game .auto-bow-control strong { font-size: 16px; }
 .temple-game .bow-speed-control { font-size: 14px; padding: 8px 11px; }
 .practice-toggle { position: absolute; right: var(--hud-right); bottom: var(--hud-bottom); z-index: 9; min-width: 76px; min-height: 44px; padding: 9px 15px; border: 1px solid #ffffffdc; border-radius: 24px; background: #f7faedeb; color: #405b39; font-size: 15px; font-weight: 750; box-shadow: 0 3px 12px #344e2518; }
+.woodfish-shortcut {
+ position: absolute;
+ z-index: 9;
+ right: var(--hud-right);
+ top: calc(var(--hud-top) + 100px);
+ width: 64px;
+ min-height: 68px;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ gap: 3px;
+ padding: 7px 4px;
+ border: 1px solid #fffef0;
+ border-radius: 17px;
+ background: #faf7e8f2;
+ color: #5b5139;
+ box-shadow: 0 3px 12px #344e2520;
+ touch-action: manipulation;
+}
+.woodfish-shortcut > svg { width: 31px; height: 28px; }
+.woodfish-shortcut > span { font-size: 14px; font-weight: 800; line-height: 1.25; white-space: nowrap; }
+.woodfish-shortcut.is-active { background: #e9dbb7; border-color: #bda16b; }
+.woodfish-shortcut:disabled { opacity: .55; }
+.floor-activity-icon { display: block; margin: 20px auto 12px; color: #77895e; }
+.sutra-passage { padding: 20px; border: 1px solid #e4d6ac; border-radius: 12px; background: #faf3df; color: #66553e; font-size: 21px; font-weight: 700; line-height: 1.9; }
+.breathing-cloud { width: 126px; height: 126px; margin: 30px auto; border: 1px solid #a9bc99; border-radius: 50%; display: grid; place-items: center; color: #6c865a; background: #e8efdd; transform: scale(.76); }
+.breathing-cloud.is-running { animation: temple-breath 10s ease-in-out infinite; }
+.breathing-prompt { text-align: center; color: #49623c; font-size: 23px; font-weight: 800; }
+@keyframes temple-breath { 0%, 100% { transform: scale(.76); } 40% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .breathing-cloud.is-running { animation: none; transform: scale(1); } }
 .social-temple-compact .social-backdrop { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); height: var(--temple-viewport-height, 100dvh); align-items: center; }
 .social-temple-compact .social-sheet { max-height: calc(var(--temple-viewport-height, 100dvh) - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom))); }
 @media (max-height: 500px) and (orientation: landscape) {
+ .woodfish-shortcut { top: var(--hud-top); right: calc(var(--hud-right) + 52px); width: 88px; min-height: 44px; flex-direction: row; gap: 4px; padding: 6px; border-radius: 14px; }
+ .woodfish-shortcut > svg { width: 25px; height: 25px; }
  .temple-game .game-action-dock { width: min(414px, calc(100% - var(--hud-left) - var(--hud-right) - 100px)); }
  .temple-game .game-action { min-height: 53px; }
  .temple-game .game-meditation-status { top: var(--hud-top); }

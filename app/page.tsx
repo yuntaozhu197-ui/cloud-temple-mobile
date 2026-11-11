@@ -6,8 +6,9 @@ import TempleWorld from "./TempleWorld";
 import SocialTemple from "./SocialTemple";
 import TempleLife from "./TempleLife";
 import AccountGate, { type AccountUser } from "./AccountGate";
+import FloorActivity from "./FloorActivity";
 import { createTempleAudio, type TempleSound } from "./audio";
-type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number };
+type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
 const seats = [{x:-3,z:1},{x:-1,z:1},{x:1,z:1},{x:3,z:1},{x:-3,z:4},{x:-1,z:4},{x:1,z:4},{x:3,z:4}];
@@ -29,9 +30,9 @@ export default function Home() {
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
  const [incensePulse, setIncensePulse] = useState(0);
  const [room,setRoom]=useState<Room|null>(null),[connection,setConnection]=useState("connecting"),[seat,setSeat]=useState<number|null>(null),[action,setAction]=useState("idle"),[pulse,setPulse]=useState(0);
- const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|null>(null);
+ const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|"sutra"|"breathe"|null>(null);
  const [auto,setAuto]=useState(false),[bowCount,setBowCount]=useState(0),[meditating,setMeditating]=useState(false),[duration,setDuration]=useState(5),[remaining,setRemaining]=useState(0);
- const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef({x:0,z:9,heading:0}),positionSent=useRef(0);
+ const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef<{x:number;z:number;heading:number;floor:1|2|3}>({x:0,z:9,heading:0,floor:1}),positionSent=useRef(0);
  const [place,setPlace]=useState("静心庭院");
  const [cameraMode, setCameraMode] = useState<"first" | "third" | "map">("map");
  const [menuOpen, setMenuOpen] = useState(false);
@@ -140,7 +141,24 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats:"+account.id,JSON.stringify(stats));localStorage.removeItem("cloud-temple-stats");localStorage.setItem("cloud-temple-sound",String(sound))}catch{}}},[loaded,stats,sound]);
  useEffect(()=>{autoRef.current=auto;meditatingRef.current=meditating;seatRef.current=seat},[auto,meditating,seat]);
  useEffect(()=>{const visible=()=>{if(document.hidden){if(autoRef.current){autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"});notify("礼拜已暂停，回来后可继续")}}else void sync(meditatingRef.current?{meditating:true,action:"meditate"}:undefined)};document.addEventListener("visibilitychange",visible);return()=>document.removeEventListener("visibilitychange",visible)},[sync,notify]);
- const doAction=useCallback((kind:string)=>{if(!seatedRef.current){notify("走近蒲团坐稳后，再开始修行吧");return}if(meditatingRef.current||autoRef.current)return;setAction(kind);setPulse(p=>p+1);const key=({prayer:"prayer",bow:"bows",beads:"beads",wood:"wood"} as const)[kind as "prayer"|"bow"|"beads"|"wood"];if(key)add(key);tone(kind as TempleSound);void sync({action:kind,bowSpeed:1});if(actionTimer.current)clearTimeout(actionTimer.current);actionTimer.current=setTimeout(()=>{setAction("idle");void sync({action:"idle"})},1050)},[add,tone,sync,notify]);
+ const doAction = useCallback((kind: string) => {
+  if (kind !== "wood" && !seatedRef.current) {
+   notify("走近蒲团坐稳后，再开始修行吧");
+   return;
+  }
+  if (meditatingRef.current || autoRef.current) return;
+  setAction(kind);
+  setPulse(value => value + 1);
+  const key = ({ prayer: "prayer", bow: "bows", beads: "beads", wood: "wood" } as const)[kind as "prayer" | "bow" | "beads" | "wood"];
+  if (key) add(key);
+  tone(kind as TempleSound);
+  void sync({ action: kind, bowSpeed: 1 });
+  if (actionTimer.current) clearTimeout(actionTimer.current);
+  actionTimer.current = setTimeout(() => {
+   setAction("idle");
+   void sync({ action: "idle" });
+  }, 1050);
+ }, [add, tone, sync, notify]);
  const startAuto=()=>{if(!seatedRef.current){notify("坐上蒲团后，就可以开始108拜");return}unlockAudio();if(autoRef.current)return;if(meditatingRef.current){notify("先结束静坐，再开始礼拜吧");return}if(actionTimer.current)clearTimeout(actionTimer.current);if(bowCountRef.current>=108){bowCountRef.current=0;setBowCount(0)}autoRef.current=true;setAuto(true);setAction("idle");notify(bowCountRef.current>0?"继续礼拜，慢慢来":"已开始 108 次礼拜，可随时暂停")};
  useEffect(() => {
   if (!auto) return;
@@ -169,7 +187,14 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const beginMeditation=async()=>{unlockAudio();if(meditatingRef.current)return;if(seatRef.current===null||!seatedRef.current){notify("先走到蒲团上坐稳吧");setModal(null);return}if(autoRef.current)stopAuto();if(actionTimer.current)clearTimeout(actionTimer.current);setModal(null);meditationEnd.current=Date.now()+duration*60000;lastTick.current=Date.now();setRemaining(duration*60);setMeditating(true);meditatingRef.current=true;setAction("meditate");tone("meditate");const data=await sync({meditating:true,action:"meditate"});if(meditatingRef.current)notify(data?"已加入静坐。吸气，呼气，回到此刻。":"正在独自静坐；网络恢复后将重新连接")};
  const chooseSeat=async(n:number)=>{if(autoRef.current){notify("暂停礼拜后，就可以换蒲团了");return}if(connection==="online"&&room?.participants.some(p=>p.seat===n&&p.id!==room.selfId)){notify("这个蒲团已有同修，请选另一个");return}preferredSeat.current=n;const body={seat:n,...(meditatingRef.current?{meditating:true,action:"meditate"}:{})};if(connection!=="online"){seatRef.current=n;setSeat(n);notify("已在这里坐下，正在等待网络恢复");void sync(body);return}const data=await sync(body);if(data)notify("坐稳啦，把心慢慢放下来")};
  const leaveSeat=()=>{if(autoRef.current||meditatingRef.current)return;seatedRef.current=false;setIsSeated(false);seatRef.current=null;setSeat(null);setAction("idle");void sync({seat:null,action:"idle"})};
- const movePosition=useCallback((p:{x:number,z:number,heading:number})=>{positionRef.current=p;if(Date.now()-positionSent.current>1200){positionSent.current=Date.now();void sync({...p})}},[sync]);
+ const movePosition = useCallback((position: {x:number;z:number;heading:number;floor:1|2|3}) => {
+  const floorChanged = position.floor !== positionRef.current.floor;
+  positionRef.current = position;
+  if (Date.now() - positionSent.current > 1200 || floorChanged) {
+   positionSent.current = Date.now();
+   void sync({ ...position });
+  }
+ }, [sync]);
  const activeParticipants=connection==="online"?(room?.participants??[]):[];
  const others=activeParticipants.filter(v=>v.id!==room?.selfId),selfName=room?.participants.find(v=>v.id===room.selfId)?.name??"小知";
  const share=async()=>{try{const data={title:"云间寺 · 给心放个假",text:"来云间寺，和我一起静坐一会儿。",url:window.location.href};if(navigator.share)await navigator.share(data);else{await navigator.clipboard.writeText(data.url);notify("寺庙链接已复制，邀朋友来坐坐吧")}}catch(e){if((e as Error).name!=="AbortError")notify("可复制浏览器地址，邀朋友一起静坐")}};
@@ -184,7 +209,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setDeparted(true);
   void sync({ leave: true });
  };
- const contextAction = (kind: "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp") => {
+ const contextAction = (kind: "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda") => {
   if (kind === "incense") setIncenseRequest(value => value + 1);
   if (kind === "flower") setFlowerRequest(value => value + 1);
   if (kind === "ritual") setRitualRequest(value => value + 1);
@@ -192,6 +217,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   if (kind === "fish") { tone("water"); notify("撒下一点鱼食，锦鲤正向你游来。"); }
   if (kind === "lamp") { tone("incense"); notify("莲灯已点亮，愿这一盏温柔陪着你。"); }
   if (kind === "mural") setModal("mural");
+  if (kind === "sutra" || kind === "breathe") setModal(kind);
+  if (kind === "release") { tone("release"); notify("小鱼游入放生池，愿万物自在。"); }
+  if (kind === "martial") { tone("martial"); notify("稳住马步，舒展拳脚。"); }
+  if (kind === "pagoda") { tone("pagoda"); notify("塔前合掌，留一念清宁。"); }
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
@@ -246,6 +275,9 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <button onClick={() => { setMenuOpen(false); setExitRequest(value => value + 1); }}><Leaf size={18} />离寺 · 留个建议</button>
     </nav>
 
+    <button className={`woodfish-shortcut ${action === "wood" ? "is-active" : ""}`} onClick={() => doAction("wood")} disabled={auto || meditating} aria-label="敲木鱼">
+     <ActionIcon kind="wood" /><span>敲木鱼</span>
+    </button>
     {isSeated && !auto && <button className="practice-toggle" onClick={() => meditating ? finishMeditation() : setPracticeOpen(value => !value)}>{meditating ? "结束静坐" : practiceOpen ? "收起动作" : "修行"}</button>}
     {isSeated && <section className="game-action-dock" hidden={meditating || (!practiceOpen && !auto)} aria-label="蒲团上的修行动作">
      <button className={`bow-speed-control ${bowSpeed === 4 ? "is-active" : ""}`} disabled={meditating} aria-pressed={bowSpeed === 4} aria-label={bowSpeed === 1 ? "一键切换4倍速自动礼拜" : "恢复正常速度自动礼拜"} onClick={() => { setBowSpeed(value => value === 1 ? 4 : 1); notify(bowSpeed === 1 ? "自动礼拜已切换为4倍速，仍会完成108拜" : "已恢复正常礼拜速度"); }}>{bowSpeed === 1 ? "加速 ×4" : "恢复 ×1"}</button>
@@ -260,7 +292,6 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        { key: "prayer", name: "合掌" },
        { key: "bow", name: "跪拜" },
        { key: "beads", name: "转佛珠" },
-       { key: "wood", name: "敲木鱼" },
       ].map(item => <button key={item.key} className={`game-action ${action === item.key ? "is-active" : ""}`} disabled={auto || meditating} onClick={() => doAction(item.key)} aria-label={item.name} aria-pressed={action === item.key}>
        <ActionIcon kind={item.key} /><span>{item.name}</span>
       </button>)}
@@ -290,7 +321,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       <div className="practice-total"><Wind size={20} />今日静坐<strong>{clock(stats.seconds)}</strong></div>
       <p className="modal-small">记录保存在本设备当前小和尚，按本地日期更新。</p>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
-     </> : modal === "mural" ? <>
+     </> : modal === "sutra" || modal === "breathe" ? <FloorActivity kind={modal} onSound={tone} /> : modal === "mural" ? <>
       <p className="eyebrow">莲池云山，静观一念</p>
       <h2 id="modal-title">看一幅殿内壁画</h2>
       <img className="mural-preview" src="/art/lotus-paradise-mural.jpg" alt="青绿山水与莲池、流云、仙鹤交织的原创寺院壁画" />
@@ -300,12 +331,13 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       <p className="eyebrow">欢迎来到云间寺</p>
       <h2 id="modal-title">慢慢走，随心坐</h2>
       <ul className="help-list">
-       <li><b>漫游</b><span>左下摇杆行走，点地面前往。地图模式可上下左右拖动寺院，电脑也可用 WASD 或方向键。</span></li>
-       <li><b>视角</b><span>右上菜单内可切换地图、第一人称和第三人称。</span></li>
-       <li><b>动作</b><span>走近蒲团点击坐下，坐稳后点右下「修行」，展开合掌、跪拜、佛珠、木鱼和静坐。</span></li>
+       <li><b>漫游</b><span>左上「地图导航」选择地点或楼层，点「到处走走」自动前往一处风景。左下摇杆行走，也可点地面前往。地图可上下左右拖动。</span></li>
+       <li><b>视角</b><span>双指开合或点加减按钮缩放。右上菜单内可切换地图、第一人称和第三人称。</span></li>
+       <li><b>动作</b><span>右侧「敲木鱼」随时可点。走近蒲团坐稳后，点右下「修行」展开合掌、跪拜、佛珠和静坐。</span></li>
+       <li><b>登楼</b><span>一层可敬香，二层藏经阁可诵读心经，三层可观云调息。走近楼梯或用「去走走」前往。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
-       <li><b>景观</b><span>走近钟亭可以敲钟，莲池边可以喂锦鲤。大殿里还能点莲灯、观赏壁画，互动会在靠近时出现。</span></li>
+       <li><b>景观</b><span>钟亭鸣钟，莲池喂锦鲤，放生池放生小鱼，塔林合掌祈愿，习武广场练拳。大雄宝殿可敬香、点莲灯、赏壁画。</span></li>
        <li><b>声音</b><span>右上菜单可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
       </ul>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>

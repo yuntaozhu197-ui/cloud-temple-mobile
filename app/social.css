@@ -117,3 +117,58 @@
   .social-temple-compact .incense-illustration { flex-basis: 60px; }
   .social-temple-compact .incense-illustration svg { width: 60px; height: 76px; }
 }
+
+/* Portal dialogs inherit their viewport constraints directly from the backdrop. */
+.social-backdrop {
+  --social-inset-left: max(12px, env(safe-area-inset-left));
+  --social-inset-right: max(12px, env(safe-area-inset-right));
+  --social-inset-top: max(12px, env(safe-area-inset-top));
+  --social-inset-bottom: max(12px, env(safe-area-inset-bottom));
+  width: 100%;
+  min-width: 0;
+  height: var(--temple-viewport-height, 100dvh);
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--social-inset-top) var(--social-inset-right) var(--social-inset-bottom) var(--social-inset-left);
+  overflow: hidden;
+}
+.social-backdrop *, .social-backdrop *::before, .social-backdrop *::after { box-sizing: border-box; }
+.social-backdrop > .social-sheet {
+  width: min(540px, calc(100vw - var(--social-inset-left) - var(--social-inset-right)));
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(var(--temple-viewport-height, 100dvh) - var(--social-inset-top) - var(--social-inset-bottom));
+}
+.social-sheet > * { min-width: 0; max-width: 100%; }
+.social-sheet-header { flex-shrink: 0; gap: 10px; }
+.social-sheet-header > div { min-width: 0; overflow-wrap: anywhere; }
+.social-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-shrink: 0; }
+.social-tabs > button { min-width: 0; max-width: 100%; flex-wrap: wrap; white-space: normal; padding: 7px 2px; row-gap: 2px; }
+.social-tabs > button > span { max-width: 100%; overflow-wrap: anywhere; }
+.social-sheet-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow-x: hidden; overflow-wrap: anywhere; }
+.social-sheet-body > *, .social-person-list, .social-person-list > li { min-width: 0; max-width: 100%; }
+.social-person-name strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.social-greetings > div { min-width: 0; max-width: 100%; }
+.social-greetings p { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.social-invitation-actions { flex-wrap: wrap; max-width: 100%; }
+.social-main-button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.incense-content > div:last-child { min-width: 0; flex: 1 1 140px; overflow-wrap: anywhere; }
+.incense-counts { flex-wrap: wrap; gap: 10px 18px; }
+.incense-counts > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.social-sheet .social-sheet-footer {
+  flex-shrink: 0;
+  min-height: 0;
+  max-height: min(128px, calc(var(--temple-viewport-height, 100dvh) / 3));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.social-sheet-footer > span { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.social-sheet-footer > small { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .social-temple-compact .social-sheet-header { padding: 10px 16px 8px; }
+  .social-sheet-header .social-overline { display: none; }
+  .social-sheet-header h2 { margin: 0; }
+  .social-sheet .social-sheet-footer { max-height: 72px; padding: 10px 16px; }
+}

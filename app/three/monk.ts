@@ -166,7 +166,7 @@ export function createMonk(color = 0xcf895c): {
   oval(mallet, woodLight, 0.16, 0.105, 0, 0.043, 0.037, 0.04);
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
-    const seated = !walking && action !== "idle" && action !== "walk";
+    const seated = !walking && !["idle", "walk", "incense", "martial"].includes(action);
     const animationPhase = phase ?? 0;
     const sway = Math.sin(t * 9 + animationPhase);
     standingLegs.visible = !seated;
@@ -177,10 +177,10 @@ export function createMonk(color = 0xcf895c): {
     for (let index = 0; index < 2; index += 1) {
       const side = index === 0 ? -1 : 1;
       arms[index].rotation.set(walking ? sway * side * 0.48 : -0.12, 0, side * 0.12);
-      legPivots[index].rotation.x = walking ? -sway * side * 0.43 : 0;
+      legPivots[index].rotation.set(walking ? -sway * side * 0.43 : 0, 0, 0);
       palms[index].visible = true;
     }
-    prayerHands.visible = action === "prayer";
+    prayerHands.visible = action === "prayer" || action === "incense";
     beadRing.visible = action === "beads";
     woodenFish.visible = action === "wood";
 
@@ -188,11 +188,25 @@ export function createMonk(color = 0xcf895c): {
       arms[0].rotation.set(-0.62, 0, 0.62);
       arms[1].rotation.set(-0.62, 0, -0.62);
     }
-    if (action === "prayer") {
+    if (action === "prayer" || action === "incense") {
       arms[0].rotation.set(-0.90, -0.05, 0.79);
       arms[1].rotation.set(-0.90, 0.05, -0.79);
       palms[0].visible = false;
       palms[1].visible = false;
+    }
+    if (action === "incense") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      torso.rotation.x = Math.sin(progress * Math.PI) ** 2 * 0.32;
+      head.rotation.x = Math.sin(progress * Math.PI) * 0.12;
+    }
+    if (action === "martial") {
+      const punch = Math.sin(t * 8);
+      torso.rotation.y = punch * 0.18;
+      torso.position.y = 0.42 + Math.abs(punch) * 0.025;
+      arms[0].rotation.set(-1.25 - punch * 0.65, -0.12, 0.22);
+      arms[1].rotation.set(-1.25 + punch * 0.65, 0.12, -0.22);
+      legPivots[0].rotation.z = 0.22;
+      legPivots[1].rotation.set(Math.max(0, Math.sin(t * 4)) * -0.5, 0, -0.22);
     }
     if (action === "bow") {
       const bowPhase = phase === undefined ? t % 1 : THREE.MathUtils.clamp(phase, 0, 1);

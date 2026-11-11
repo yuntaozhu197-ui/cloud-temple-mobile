@@ -1,4 +1,4 @@
-export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water";
+export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda";
 
 export type TempleAudio = {
   unlock: () => Promise<boolean>;
@@ -9,7 +9,7 @@ export type TempleAudio = {
 
 type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode };
-type SynthSound = Exclude<TempleSound, "wood">;
+type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
 
 const durations: Record<SynthSound, number> = {
   prayer: 2.4,
@@ -19,6 +19,7 @@ const durations: Record<SynthSound, number> = {
   incense: 2.2,
   bell: 3.2,
   water: 0.85,
+  martial: 1.1,
 };
 
 const peaks: Record<SynthSound, number> = {
@@ -29,6 +30,7 @@ const peaks: Record<SynthSound, number> = {
   incense: 0.30,
   bell: 0.40,
   water: 0.22,
+  martial: 0.34,
 };
 
 // Damped, inharmonic modes give each instrument a physical body and a natural tail.
@@ -114,6 +116,15 @@ function createSamples(sound: SynthSound, sampleRate: number) {
           { frequency: 1450 + index * 230, amplitude: 0.12, decay: 0.03 },
         ], 0.002);
         addBrush(samples, sampleRate, offset, 0.11, 0.13, 127 + index);
+      });
+      break;
+    case "martial":
+      [0, 0.28, 0.57].forEach((offset, index) => {
+        addBrush(samples, sampleRate, offset, 0.18, 0.34, 193 + index * 13);
+        addResonance(samples, sampleRate, offset + 0.12, [
+          { frequency: 108 + index * 7, amplitude: 0.28, decay: 0.055 },
+          { frequency: 177 + index * 9, amplitude: 0.10, decay: 0.032 },
+        ], 0.001);
       });
       break;
   }
@@ -243,9 +254,12 @@ export function createTempleAudio(): TempleAudio {
     }
   }
 
-  function play(sound: TempleSound) {
+  function play(requestedSound: TempleSound) {
     if (!enabled || disposed) return;
     try {
+      let sound = requestedSound;
+      if (sound === "release") sound = "water";
+      if (sound === "pagoda") sound = "bell";
       const audioContext = ensureContext();
       if (!audioContext || !master) return;
       if (audioContext.state !== "running") void audioContext.resume().catch(() => {});

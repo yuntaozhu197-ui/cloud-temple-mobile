@@ -16,7 +16,8 @@ const MAX_VISITORS = 128;
 const MAX_BODY_BYTES = 16_384;
 const ACTIONS = new Set(["idle", "prayer", "bow", "beads", "wood", "meditate"]);
 const POSITION_KEYS = ["x", "z", "heading"];
-const TEMPLE_BOUNDS = { x: [-23.5, 23.5], z: [-23.5, 23.5] };
+const TEMPLE_BOUNDS = { x: [-37.5, 37.5], z: [-27.5, 27.5] };
+const UPPER_FLOOR_BOUNDS = { x: [-11.7, 11.7], z: [-21, -3] };
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -121,6 +122,9 @@ function readJson(request) {
 }
 
 function validateUpdate(body) {
+  if (Object.hasOwn(body, "floor") && ![1, 2, 3].includes(body.floor)) {
+    return { error: "invalid_floor", message: "请选择寺院的一层、二层或三层。" };
+  }
   for (const key of POSITION_KEYS) {
     const bound = key === "heading" ? Math.PI * 2 : 50;
     if (Object.hasOwn(body, key) &&
@@ -148,13 +152,23 @@ function validateUpdate(body) {
 }
 
 function updateVisitor(visitor, body) {
+  const previousFloor = visitor.floor ?? 1;
+  const nextFloor = body.floor ?? previousFloor;
+  if (nextFloor !== previousFloor) {
+    visitor.seat = null;
+    visitor.meditating = false;
+    visitor.action = "idle";
+    visitor.bowSpeed = 1;
+  }
+  visitor.floor = nextFloor;
   if (Object.hasOwn(body, "seat")) visitor.seat = body.seat;
   if (Object.hasOwn(body, "bowSpeed")) visitor.bowSpeed = body.bowSpeed;
   else if (Object.hasOwn(body, "action") && body.action !== "bow") visitor.bowSpeed = 1;
+  const positionBounds = nextFloor === 1 ? TEMPLE_BOUNDS : UPPER_FLOOR_BOUNDS;
   for (const key of POSITION_KEYS) {
-    if (!Object.hasOwn(body, key)) continue;
-    const bounds = TEMPLE_BOUNDS[key];
-    visitor[key] = bounds ? Math.max(bounds[0], Math.min(bounds[1], body[key])) : body[key];
+    if (Object.hasOwn(body, key)) visitor[key] = body[key];
+    const bounds = positionBounds[key];
+    if (bounds) visitor[key] = Math.max(bounds[0], Math.min(bounds[1], visitor[key]));
   }
   if (Object.hasOwn(body, "meditating")) {
     visitor.meditating = body.meditating && visitor.seat !== null;
@@ -485,13 +499,13 @@ export function createTempleServer({
   function snapshot(identity, timestamp) {
     const participants = [...visitors.values()]
       .sort((a, b) => a.joinedAt - b.joinedAt)
-      .map(({ lastSeen, ...visitor }) => visitor);
+      .map(({ lastSeen, ...visitor }) => ({ ...visitor, floor: visitor.floor ?? 1 }));
     return {
       selfId: identity.id,
       now: timestamp,
       participants,
       total: participants.length,
-      meditatingCount: participants.filter(visitor => visitor.meditating).length,
+      meditatingCount: participants.filter(visitor => visitor.floor === 1 && visitor.meditating).length,
     };
   }
 
@@ -501,6 +515,7 @@ export function createTempleServer({
       visitor = {
         id: identity.id,
         name: identity.name,
+        floor: 1,
         seat: null,
         x: 0,
         z: 9,
@@ -558,13 +573,20 @@ export function createTempleServer({
       return;
     }
     if (body) {
-      const requestedSeat = Object.hasOwn(body, "seat") ? body.seat : visitor.seat;
+      const currentFloor = visitor.floor ?? 1;
+      const requestedFloor = body.floor ?? currentFloor;
+      const retainedSeat = requestedFloor === currentFloor ? visitor.seat : null;
+      const requestedSeat = Object.hasOwn(body, "seat") ? body.seat : retainedSeat;
+      if (requestedFloor !== 1 && requestedSeat !== null) {
+        sendJson(response, { error: "seat_on_wrong_floor", message: "蒲团在一层，请回到一层后再入座。" }, 400, identity);
+        return;
+      }
       if (body.action === "bow" && requestedSeat === null) {
         sendJson(response, { error: "bow_requires_seat", message: "请先坐稳蒲团，再开始礼拜。" }, 400, identity);
         return;
       }
       const occupied = body.seat !== null && Object.hasOwn(body, "seat") &&
-        [...visitors.values()].some(other => other.id !== identity.id && other.seat === body.seat);
+        [...visitors.values()].some(other => other.id !== identity.id && (other.floor ?? 1) === 1 && other.seat === body.seat);
       if (occupied) {
         sendJson(response, {
           ...snapshot(identity, timestamp),

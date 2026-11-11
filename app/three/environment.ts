@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createSacredArt } from './sacredArt';
+import { createUpperFloors, type TempleFloor } from './upperFloors';
+import { createScenicAreas } from './scenicAreas';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -8,11 +10,12 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   ground: THREE.Object3D;
   colliders: Collider[];
   cushions: Array<{ x: number; z: number }>;
-  landmarks: Array<{ name: string; x: number; z: number }>;
-  interactions: Array<{ kind: 'incense' | 'flower' | 'ritual' | 'bell' | 'fish' | 'mural' | 'lamp'; label: string; x: number; y: number; z: number }>;
+  landmarks: Array<{ name: string; x: number; z: number; floor?: TempleFloor }>;
+  interactions: Array<{ kind: 'incense' | 'flower' | 'ritual' | 'bell' | 'fish' | 'mural' | 'lamp' | 'sutra' | 'breathe' | 'release' | 'martial' | 'pagoda'; label: string; x: number; y: number; z: number; floor?: TempleFloor }>;
+  upperFloors: ReturnType<typeof createUpperFloors>;
   offerFlowers: () => void;
   startRitual: () => void;
-  interact: (kind: 'bell' | 'fish' | 'lamp') => void;
+  interact: (kind: 'bell' | 'fish' | 'lamp' | 'release' | 'martial' | 'pagoda') => void;
   animate: (t: number) => void;
   dispose: () => void;
 } {
@@ -178,7 +181,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   // This broad, uninterrupted plane is also the tap-to-walk raycast target.
   const groundMaterial = material('#a9bd8d', { side: THREE.DoubleSide });
-  const ground = mesh(new THREE.PlaneGeometry(50, 50), groundMaterial, 0, 0, 0);
+  const ground = mesh(new THREE.PlaneGeometry(80, 60), groundMaterial, 0, 0, 0);
   ground.rotation.x = -Math.PI / 2;
   ground.name = '可行走地面';
   ground.castShadow = false;
@@ -208,11 +211,11 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     box(x, 0.14, z, width + 0.12, 0.28, depth + 0.1, palette.stone);
     collider(x, z, width, depth);
   }
-  wall(-24, 0, 0.42, 48);
-  wall(24, 0, 0.42, 48);
-  wall(0, -24, 48, 0.42);
-  wall(-13.25, 24, 21.5, 0.42);
-  wall(13.25, 24, 21.5, 0.42);
+  wall(-38, 0, 0.42, 56);
+  wall(38, 0, 0.42, 56);
+  wall(0, -28, 76, 0.42);
+  wall(-20.25, 28, 35.5, 0.42);
+  wall(20.25, 28, 35.5, 0.42);
 
   function roof(centerX: number, centerZ: number, width: number, depth: number, baseY: number, rise: number) {
     const halfWidth = width / 2;
@@ -342,13 +345,13 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     carving.scale.set(1.5, 0.12, 0.65);
     carving.rotation.y = -angle;
   }
-  roof(0, -12, 30, 23, 6.4, 2.2);
+  roof(0, -12, 30, 23, 15.8, 2.2);
   for (const z of [-20.1, -5.5]) {
-    box(0, 7.6, z, 23.7, 0.6, 0.25, tealTimber);
-    for (let x = -11.4; x <= 11.4; x += 0.76) box(x, 7.6, z + (z > -12 ? 0.15 : -0.15), 0.07, 0.65, 0.07, hallWood);
+    box(0, 17, z, 23.7, 0.6, 0.25, tealTimber);
+    for (let x = -11.4; x <= 11.4; x += 0.76) box(x, 17, z + (z > -12 ? 0.15 : -0.15), 0.07, 0.65, 0.07, hallWood);
   }
-  for (const x of [-11.8, 11.8]) box(x, 7.6, -12.8, 0.25, 0.6, 14.6, tealTimber);
-  roof(0, -12.8, 24.5, 15.5, 7.9, 1.45);
+  for (const x of [-11.8, 11.8]) box(x, 17, -12.8, 0.25, 0.6, 14.6, tealTimber);
+  roof(0, -12.8, 24.5, 15.5, 17.3, 1.45);
   box(0, 5.1, -1.66, 4.4, 1.05, 0.18, palette.woodDark);
   box(0, 5.1, -1.55, 4.15, 0.84, 0.04, palette.gold);
   box(0, 5.1, -1.52, 3.9, 0.65, 0.025, palette.woodDark);
@@ -378,6 +381,11 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     return group;
   }
   const lanterns = [lantern(-5.8, 5.1, -1.6, 1.35), lantern(5.8, 5.1, -1.6, 1.35)];
+  const scenicAreas = createScenicAreas();
+  world.add(scenicAreas.group);
+  colliders.push(...scenicAreas.colliders);
+  const upperFloors = createUpperFloors();
+  world.add(upperFloors.group);
   const sacredArt = createSacredArt();
   world.add(sacredArt.group);
   colliders.push(...sacredArt.colliders);
@@ -671,7 +679,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   // Bake stationary shapes by material so the detailed garden stays light on phones.
   // Independent animated objects and the walkable raycast plane retain their identity.
-  const movingObjects = new Set<THREE.Object3D>([...lanterns, ...fish, bell, striker, ...ripples, feedRipple, lampFlame, altarFlowers, ritualAura, sacredArt.group]);
+  const movingObjects = new Set<THREE.Object3D>([...lanterns, ...fish, bell, striker, ...ripples, feedRipple, lampFlame, altarFlowers, ritualAura, sacredArt.group, upperFloors.group, scenicAreas.group]);
   const staticBatches = new Map<string, { surface: THREE.Material; castShadow: boolean; receiveShadow: boolean; pieces: THREE.BufferGeometry[]; objects: THREE.Mesh[] }>();
   world.updateMatrixWorld(true);
   world.traverse((object) => {
@@ -705,8 +713,12 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     ground,
     colliders,
     cushions,
+    upperFloors,
     landmarks: [
-      { name: '大殿', x: 0, z: -11.8 },
+      ...scenicAreas.landmarks,
+      { name: '大雄宝殿 · 一层敬香', x: 0, z: -13.8, floor: 1 },
+      { name: '二层藏经阁 · 诵读', x: 0, z: -14.5, floor: 2 },
+      { name: '三层观云阁 · 调息', x: 0, z: -14, floor: 3 },
       { name: '莲池', x: 5.8, z: 2 },
       { name: '竹林', x: -8.4, z: 0.7 },
       { name: '钟亭', x: 18, z: -5.5 },
@@ -719,6 +731,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       { name: '壁画长廊', x: -11.2, z: -10 },
     ],
     interactions: [
+      ...scenicAreas.interactions,
       { kind: 'incense', label: '♧ 敬香', x: 0, y: 1.3, z: -13.8 },
       { kind: 'flower', label: '✿ 供花', x: 16, y: 0.7, z: 5 },
       { kind: 'ritual', label: '✦ 做法事', x: 18, y: 0.9, z: -18 },
@@ -726,6 +739,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       { kind: 'fish', label: '◌ 喂锦鲤', x: 6, y: 0.7, z: 2 },
       { kind: 'mural', label: '✧ 赏壁画', x: -11.2, y: 1.3, z: -10 },
       { kind: 'lamp', label: '✺ 点莲灯', x: 8.8, y: 1.3, z: -15.5 },
+      { kind: 'sutra', label: '▤ 藏经阁诵读', x: 0, y: 7.9, z: -14.5, floor: 2 },
+      { kind: 'breathe', label: '☁ 观云调息', x: 0, y: 12.3, z: -14, floor: 3 },
     ],
     offerFlowers() {
       altarFlowers.visible = true;
@@ -737,12 +752,14 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       ritualUntil = performance.now() + 30_000;
     },
     interact(kind) {
+      if (kind === 'release' || kind === 'martial' || kind === 'pagoda') { scenicAreas.interact(kind); return; }
       const now = performance.now();
       if (kind === 'bell') bellStarted = now;
       if (kind === 'fish') feedStarted = now;
       if (kind === 'lamp') lampUntil = now + 90_000;
     },
     animate(t: number) {
+      scenicAreas.animate(t);
       const now = performance.now();
       altarFlowers.visible = now < flowersUntil;
       if (altarFlowers.visible) {
@@ -799,6 +816,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     dispose() {
       scene.remove(world);
       sacredArt.dispose();
+      upperFloors.dispose();
+      scenicAreas.dispose();
       for (const instance of instances) instance.dispose();
       for (const geometry of geometries) geometry.dispose();
       for (const surface of materials) surface.dispose();
