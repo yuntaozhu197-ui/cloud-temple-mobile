@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 export function createIncenseOffering(scene: THREE.Scene) {
   const group = new THREE.Group();
-  group.position.set(0, 0, -7.9);
+  group.position.set(0, 0, -14.8);
   scene.add(group);
 
   const bronze = new THREE.MeshStandardMaterial({

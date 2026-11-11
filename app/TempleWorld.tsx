@@ -17,6 +17,7 @@ type Participant = {
 
 type Position = { x: number; z: number; heading: number };
 type Landmark = { name: string; x: number; z: number };
+type ContextAction = "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp";
 type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
   action: string;
@@ -36,7 +37,7 @@ type WorldProps = {
   onLongPress: () => void;
   onPositionChange: (position: Position) => void;
   onPlaceChange?: (name: string) => void;
-  onContextAction?: (kind: "incense" | "flower" | "ritual") => void;
+  onContextAction?: (kind: ContextAction) => void;
   onContextChange?: (context: WorldContext) => void;
   onSeatedChange?: (seated: boolean) => void;
 };
@@ -186,13 +187,17 @@ export default function TempleWorld(props: WorldProps) {
           button.type = "button";
           button.className = "world-hotspot";
           button.textContent = point.label;
-          button.setAttribute("aria-label", `${point.label.replace(/^[^ ]+ /, "")}，${point.kind === "flower" ? "花园" : point.kind === "ritual" ? "祈愿台" : "大殿"}`);
+          button.setAttribute("aria-label", point.label.replace(/^[^ ]+ /, ""));
           button.style.cssText = hotspotStyle;
+          let nextActivation = 0;
           const activate = (event: MouseEvent) => {
             event.preventDefault();
             event.stopPropagation();
             const state = latest.current;
             if (state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
+            if (performance.now() < nextActivation) return;
+            nextActivation = performance.now() + (point.kind === "fish" ? 4000 : 1200);
+            if (point.kind === "bell" || point.kind === "fish" || point.kind === "lamp") world.interact(point.kind);
             state.onContextAction?.(point.kind);
           };
           button.addEventListener("click", activate);
@@ -220,8 +225,9 @@ export default function TempleWorld(props: WorldProps) {
         hotspots.appendChild(cushionButton);
         hotspotButtons.push(cushionButton);
         offering = createIncenseOffering(scene);
-        world.colliders.push({ minX: -0.45, maxX: 0.45, minZ: -8.25, maxZ: -7.55 });
+        world.colliders.push({ minX: -0.45, maxX: 0.45, minZ: -15.15, maxZ: -14.45 });
         const roofSurfaces: THREE.Mesh[] = [];
+        const hallRoofs = new Set<THREE.Object3D>();
         scene.updateMatrixWorld(true);
         scene.traverse(object => {
           if (!(object instanceof T.Mesh) || Array.isArray(object.material) || object.material.side !== T.DoubleSide) return;
@@ -229,6 +235,8 @@ export default function TempleWorld(props: WorldProps) {
           if (bounds.min.y > 2.7 && bounds.max.x - bounds.min.x > 3 && bounds.max.z - bounds.min.z > 0.8) {
             object.material.transparent = true;
             roofSurfaces.push(object);
+            // Each roof has separate front/back slopes; match their overlap with the hall.
+            if (bounds.min.z < -2 && bounds.max.z > -22 && bounds.max.x - bounds.min.x > 20) hallRoofs.add(object);
           }
         });
         setPlaces([...world.landmarks, { name: "回到庭院", x: 0, z: 7 }]);
@@ -641,7 +649,7 @@ export default function TempleWorld(props: WorldProps) {
             incensePulse = state.incensePulse ?? 0;
             offering?.offer();
             if (!state.auto && !state.meditating) {
-              walkTo(0, -6.95);
+              walkTo(0, -13.8);
               approachingIncense = true;
             }
           }
@@ -743,15 +751,15 @@ export default function TempleWorld(props: WorldProps) {
           });
           const context: WorldContext = {
             nearCushion: world.cushions.some(point => Math.hypot(position.x - point.x, position.z - point.z) <= 2),
-            nearAltar: Math.hypot(position.x, position.z + 6.9) <= 5,
+            nearAltar: Math.hypot(position.x, position.z + 13.8) <= 5,
             nearFlowers: Math.hypot(position.x - 16, position.z - 5) <= 5,
-            nearRitual: Math.hypot(position.x, position.z + 18) <= 5,
+            nearRitual: Math.hypot(position.x - 18, position.z + 18) <= 5,
           };
           if (!lastContext || context.nearCushion !== lastContext.nearCushion || context.nearAltar !== lastContext.nearAltar || context.nearFlowers !== lastContext.nearFlowers || context.nearRitual !== lastContext.nearRitual) {
             lastContext = context;
             state.onContextChange?.(context);
           }
-          if (approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 6.95) < 0.6) {
+          if (approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 13.8) < 0.6) {
             approachingIncense = false;
             incensePrayerUntil = time + 3;
           }
@@ -783,7 +791,7 @@ export default function TempleWorld(props: WorldProps) {
           world.animate(time);
           offering?.animate(time);
 
-          const indoors = Math.abs(position.x) < 4.4 && position.z < -3.5 && position.z > -10.8;
+          const indoors = Math.abs(position.x) < 12.6 && position.z < -2.2 && position.z > -21.6;
           const nextCameraMode = state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
           const fieldOfView = firstPerson ? 64 : mapMode ? 48 : 42;
@@ -813,8 +821,10 @@ export default function TempleWorld(props: WorldProps) {
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
             if (indoors) {
-              cameraGoal.set(clamp(position.x + Math.sin(yaw) * 3.8, -4.25, 4.25), 2.5, clamp(position.z + Math.cos(yaw) * 3.8, -10.4, -3.75));
-              if (Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) < 1.8) cameraGoal.x = position.x > 0 ? -1.8 : 1.8;
+              for (const turn of [0, Math.PI / 3, -Math.PI / 3, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI]) {
+                cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2, -12.2, 12.2), 3.2, clamp(position.z + Math.cos(yaw + turn) * 5.2, -21.2, -2.6));
+                if (!blocked(cameraGoal.x, cameraGoal.z) && Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) > 1.8) break;
+              }
             } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius, cameraHeight, position.z + Math.cos(yaw) * cameraRadius);
             if (cameraChanged) camera.position.copy(cameraGoal);
             else camera.position.lerp(cameraGoal, 1 - Math.exp(-dt * 5));
@@ -829,6 +839,7 @@ export default function TempleWorld(props: WorldProps) {
             occlusionRay.ray.set(camera.position, occlusionDirection.normalize());
             obscuredRoofs.clear();
             occlusionRay.intersectObjects(roofSurfaces, false).forEach(hit => obscuredRoofs.add(hit.object));
+            if (indoors && mapMode) hallRoofs.forEach(roof => obscuredRoofs.add(roof));
             lastOcclusionCheck = time;
           }
           roofSurfaces.forEach(roof => {

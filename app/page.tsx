@@ -29,7 +29,7 @@ export default function Home() {
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
  const [incensePulse, setIncensePulse] = useState(0);
  const [room,setRoom]=useState<Room|null>(null),[connection,setConnection]=useState("connecting"),[seat,setSeat]=useState<number|null>(null),[action,setAction]=useState("idle"),[pulse,setPulse]=useState(0);
- const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|null>(null);
+ const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|null>(null);
  const [auto,setAuto]=useState(false),[bowCount,setBowCount]=useState(0),[meditating,setMeditating]=useState(false),[duration,setDuration]=useState(5),[remaining,setRemaining]=useState(0);
  const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef({x:0,z:9,heading:0}),positionSent=useRef(0);
  const [place,setPlace]=useState("静心庭院");
@@ -184,10 +184,14 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setDeparted(true);
   void sync({ leave: true });
  };
- const contextAction = (kind: "incense" | "flower" | "ritual") => {
+ const contextAction = (kind: "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp") => {
   if (kind === "incense") setIncenseRequest(value => value + 1);
   if (kind === "flower") setFlowerRequest(value => value + 1);
   if (kind === "ritual") setRitualRequest(value => value + 1);
+  if (kind === "bell") { tone("bell"); notify("钟声已响，让这一念慢慢安定。"); }
+  if (kind === "fish") { tone("water"); notify("撒下一点鱼食，锦鲤正向你游来。"); }
+  if (kind === "lamp") { tone("incense"); notify("莲灯已点亮，愿这一盏温柔陪着你。"); }
+  if (kind === "mural") setModal("mural");
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
@@ -286,6 +290,12 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       <div className="practice-total"><Wind size={20} />今日静坐<strong>{clock(stats.seconds)}</strong></div>
       <p className="modal-small">记录保存在本设备当前小和尚，按本地日期更新。</p>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
+     </> : modal === "mural" ? <>
+      <p className="eyebrow">莲池云山，静观一念</p>
+      <h2 id="modal-title">看一幅殿内壁画</h2>
+      <img className="mural-preview" src="/art/lotus-paradise-mural.jpg" alt="青绿山水与莲池、流云、仙鹤交织的原创寺院壁画" />
+      <p className="modal-description">莲花舒展，流云绕山，仙鹤掠过水面。这幅壁画借传统矿物色与莲花纹样，画出一方安静的天地。</p>
+      <button className="primary-button" onClick={() => setModal(null)}>继续逛逛大殿</button>
      </> : <>
       <p className="eyebrow">欢迎来到云间寺</p>
       <h2 id="modal-title">慢慢走，随心坐</h2>
@@ -295,6 +305,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        <li><b>动作</b><span>走近蒲团点击坐下，坐稳后点右下「修行」，展开合掌、跪拜、佛珠、木鱼和静坐。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
+       <li><b>景观</b><span>走近钟亭可以敲钟，莲池边可以喂锦鲤。大殿里还能点莲灯、观赏壁画，互动会在靠近时出现。</span></li>
        <li><b>声音</b><span>右上菜单可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
       </ul>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>

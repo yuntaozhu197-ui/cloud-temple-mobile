@@ -374,6 +374,7 @@ svg { vertical-align: middle; }
 .temple-game .game-menu > strong { font-size: 15px; padding: 7px 9px; }
 .game-menu > strong small { display: block; font-size: 12px; margin-top: 3px; color: #748467; }
 .player-menu-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mural-preview { display: block; width: 100%; height: auto; margin: 18px 0; border: 1px solid #bfa877; border-radius: 10px; }
 .social-person-name strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .life-entry-meta > strong { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .temple-game .game-menu > button { min-height: 44px; font-size: 15px; padding: 8px 10px; gap: 10px; }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createSacredArt } from './sacredArt';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -8,9 +9,10 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   colliders: Collider[];
   cushions: Array<{ x: number; z: number }>;
   landmarks: Array<{ name: string; x: number; z: number }>;
-  interactions: Array<{ kind: 'incense' | 'flower' | 'ritual'; label: string; x: number; y: number; z: number }>;
+  interactions: Array<{ kind: 'incense' | 'flower' | 'ritual' | 'bell' | 'fish' | 'mural' | 'lamp'; label: string; x: number; y: number; z: number }>;
   offerFlowers: () => void;
   startRitual: () => void;
+  interact: (kind: 'bell' | 'fish' | 'lamp') => void;
   animate: (t: number) => void;
   dispose: () => void;
 } {
@@ -57,6 +59,9 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     pink: material('#e7b5a3'),
     koi: material('#dca474'),
   };
+  const hallPlaster = material('#d5b777');
+  const hallWood = material('#895640');
+  const tealTimber = material('#557b70');
 
   function mesh(
     geometry: THREE.BufferGeometry,
@@ -96,6 +101,28 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     object.position.copy(a).add(b).multiplyScalar(0.5);
     object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
     return object;
+  }
+
+  function batchMovingGroup(group: THREE.Group) {
+    const batches = new Map<THREE.Material, { pieces: THREE.BufferGeometry[]; objects: THREE.Mesh[] }>();
+    for (const child of group.children) {
+      if (!(child instanceof THREE.Mesh) || Array.isArray(child.material)) continue;
+      child.updateMatrix();
+      let batch = batches.get(child.material);
+      if (!batch) {
+        batch = { pieces: [], objects: [] };
+        batches.set(child.material, batch);
+      }
+      batch.pieces.push(child.geometry.clone().applyMatrix4(child.matrix));
+      batch.objects.push(child);
+    }
+    for (const [surface, batch] of batches) {
+      const geometry = mergeGeometries(batch.pieces, false);
+      for (const piece of batch.pieces) piece.dispose();
+      if (!geometry) continue;
+      mesh(geometry, surface, 0, 0, 0, group);
+      for (const child of batch.objects) child.removeFromParent();
+    }
   }
 
   const petalGeometry = new THREE.SphereGeometry(0.1, 6, 4);
@@ -156,19 +183,19 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   ground.name = '可行走地面';
   ground.castShadow = false;
 
-  box(0, 0.014, 4, 10.4, 0.028, 16.4, palette.path);
-  box(0, 0.022, -6.8, 10, 0.045, 8.5, palette.path);
-  box(5.9, 0.018, -4.9, 8.8, 0.035, 1.35, palette.path);
+  box(0, 0.014, 11, 26, 0.028, 22, palette.path).name = '中央庭院石铺地面';
+  box(0, 0.022, -12, 26, 0.045, 20, palette.stoneLight).name = '大殿石铺地面';
+  box(15.8, 0.018, -9, 1.4, 0.035, 23, palette.path);
+  box(18, 0.018, -17, 5.8, 0.035, 1.4, palette.path);
+  box(17, 0.018, -5.5, 3.5, 0.035, 1.4, palette.path);
   box(-7.6, 0.018, 0.7, 5.6, 0.035, 1.35, palette.path);
   box(0, 0.014, 16.5, 4.6, 0.028, 12.4, palette.path);
   box(13, 0.018, 7, 9, 0.035, 1.35, palette.path);
   box(16, 0.018, 5.4, 1.35, 0.035, 4.5, palette.path);
-  box(-11.5, 0.018, -3, 10.4, 0.035, 1.35, palette.path);
-  box(-16, 0.018, -4.1, 1.35, 0.035, 3.4, palette.path);
-  box(0, 0.018, -13.5, 33, 0.035, 1.4, palette.path);
-  box(-6.4, 0.018, -9, 1.4, 0.035, 10, palette.path);
-  box(6.4, 0.018, -9, 1.4, 0.035, 10, palette.path);
-  box(0, 0.018, -16, 1.5, 0.035, 5.5, palette.path);
+  box(-16, 0.018, -0.7, 5.5, 0.035, 1.35, palette.path);
+  box(-18.2, 0.018, -2.5, 1.35, 0.035, 5.5, palette.path);
+  for (const x of [-12, 12]) box(x, 0.047, -12, 0.22, 0.045, 19.4, palette.woodDark);
+  for (const z of [-21.5, -2.5]) box(0, 0.047, z, 24, 0.045, 0.22, palette.woodDark);
   for (let z = -2; z <= 11; z += 1.35) {
     const stone = box(0, 0.039, z, 1.32, 0.035, 0.98, palette.stoneLight);
     stone.rotation.y = Math.sin(z * 3) * 0.07;
@@ -192,7 +219,9 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     const halfDepth = depth / 2;
     const surfaceHeight = (x: number, v: number) => {
       const eave = Math.max(0, (v - 0.72) / 0.28);
-      return baseY + rise * Math.pow(1 - v, 1.5) + 0.23 * eave * eave + 0.22 * Math.pow(Math.abs(x) / halfWidth, 7);
+      const eaveLift = width > 20 ? 0.6 : 0.23;
+      const cornerLift = width > 20 ? 0.52 : 0.22;
+      return baseY + rise * Math.pow(1 - v, 1.5) + eaveLift * eave * eave + cornerLift * Math.pow(Math.abs(x) / halfWidth, 7);
     };
     for (const direction of [-1, 1]) {
       const vertices: number[] = [];
@@ -250,40 +279,83 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     }
   }
 
-  // Walk-in main hall. The floor stays at the courtyard's walking height.
-  box(0, 1.78, -11, 10.1, 3.56, 0.28, palette.plaster);
-  collider(0, -11, 10.1, 0.36);
-  for (const side of [-1, 1]) {
-    box(side * 5, 0.65, -7.25, 0.26, 1.3, 7.5, palette.plaster);
-    box(side * 5, 3.22, -7.25, 0.26, 0.66, 7.5, palette.plaster);
-    collider(side * 5, -7.25, 0.35, 7.5);
-    for (let z = -10.5; z <= -3.7; z += 0.5) box(side * 5, 2.08, z, 0.2, 1.55, 0.07, palette.woodDark);
-    box(side * 5, 1.34, -7.25, 0.36, 0.12, 7.5, palette.wood);
-    box(side * 5, 2.85, -7.25, 0.36, 0.12, 7.5, palette.wood);
-    box(side * 3.65, 0.62, -3.5, 2.5, 1.24, 0.23, palette.plaster);
-    collider(side * 3.65, -3.5, 2.5, 0.34);
-    for (const z of [-10.7, -7.2, -3.5]) {
-      cylinder(side * 4.7, 1.92, z, 0.15, 0.19, 3.84, palette.wood, world, 10);
-      cylinder(side * 4.7, 0.14, z, 0.25, 0.27, 0.28, palette.stone);
-      collider(side * 4.7, z, 0.5, 0.5);
+  // Deep eaves and interlocking timber brackets frame a hall almost as large as its courtyard.
+  box(0, 3.2, -22, 26.3, 6.4, 0.36, hallPlaster);
+  box(0, 0.3, -21.96, 26.4, 0.6, 0.48, palette.stone);
+  collider(0, -22, 26.3, 0.4);
+  function bracket(x: number, z: number) {
+    for (let level = 0; level < 3; level += 1) {
+      const span = 0.75 + level * 0.36;
+      box(x, 5.62 + level * 0.22, z, span, 0.17, 0.28, level % 2 ? palette.gold : tealTimber);
+      box(x, 5.72 + level * 0.22, z, 0.28, 0.17, span, hallWood);
     }
-    cylinder(side * 2.3, 1.92, -3.5, 0.15, 0.19, 3.84, palette.wood);
-    cylinder(side * 2.3, 0.14, -3.5, 0.25, 0.27, 0.28, palette.stone);
-    collider(side * 2.3, -3.5, 0.48, 0.48);
   }
-  box(0, 3.66, -3.5, 10.5, 0.3, 0.32, palette.woodDark);
-  box(0, 3.66, -10.85, 10.5, 0.3, 0.32, palette.woodDark);
-  box(-4.8, 3.66, -7.2, 0.3, 0.3, 7.6, palette.woodDark);
-  box(4.8, 3.66, -7.2, 0.3, 0.3, 7.6, palette.woodDark);
-  roof(0, -7.3, 12, 10.4, 3.86, 1.78);
-  box(0, 3.37, -3.28, 2, 0.65, 0.13, palette.woodDark);
-  box(0, 3.37, -3.195, 1.85, 0.51, 0.035, palette.gold);
-  box(0, 3.37, -3.165, 1.7, 0.39, 0.025, palette.woodDark);
-  // A small lotus carved into the plaque keeps its appearance font-independent.
-  for (let i = -1; i <= 1; i++) {
-    const petal = sphere(i * 0.15, 3.37, -3.13, 0.105, palette.goldLight);
-    petal.scale.set(0.6, 1.35, 0.35);
-    petal.rotation.z = -i * 0.48;
+  function hallColumn(x: number, z: number) {
+    cylinder(x, 2.9, z, 0.2, 0.26, 5.8, hallWood, world, 12);
+    cylinder(x, 0.19, z, 0.37, 0.43, 0.38, palette.stone, world, 12);
+    cylinder(x, 0.43, z, 0.28, 0.35, 0.13, palette.stoneLight, world, 12);
+    collider(x, z, 0.75, 0.75);
+    bracket(x, z);
+  }
+  for (const side of [-1, 1]) {
+    box(side * 13, 3.15, -12, 0.36, 6.3, 20, hallPlaster);
+    box(side * 12.96, 0.3, -12, 0.5, 0.6, 20.2, palette.stone);
+    collider(side * 13, -12, 0.4, 20);
+    box(side * 9.4, 3.15, -2, 7.2, 6.3, 0.3, hallPlaster);
+    box(side * 9.4, 0.35, -1.94, 7.4, 0.7, 0.45, palette.stone);
+    collider(side * 9.4, -2, 7.2, 0.4);
+    for (const z of [-21.3, -12, -1.7]) hallColumn(side * 12.2, z);
+    hallColumn(side * 6.1, -1.7);
+    hallColumn(side * 7.7, -12.5);
+    const frontWindow = mesh(new THREE.CircleGeometry(1.21, 32), tealTimber, side * 9.4, 3.2, -1.82);
+    frontWindow.castShadow = false;
+    mesh(new THREE.TorusGeometry(1.27, 0.09, 6, 32), palette.gold, side * 9.4, 3.2, -1.75);
+    for (let bar = -2; bar <= 2; bar += 1) {
+      const span = Math.sqrt(1.21 ** 2 - (bar * 0.42) ** 2) * 2;
+      box(side * 9.4 + bar * 0.42, 3.2, -1.69, 0.065, span, 0.065, hallWood);
+      box(side * 9.4, 3.2 + bar * 0.42, -1.68, span, 0.065, 0.07, hallWood);
+    }
+    // Lattice windows sit beyond the mural panels at either end of the side aisles.
+    for (const z of [-4.4, -20]) {
+      const glass = mesh(new THREE.CircleGeometry(1.21, 32), tealTimber, side * 12.76, 3.2, z);
+      glass.rotation.y = -side * Math.PI / 2;
+      const frame = mesh(new THREE.TorusGeometry(1.27, 0.09, 6, 32), palette.gold, side * 12.68, 3.2, z);
+      frame.rotation.y = Math.PI / 2;
+      for (let bar = -2; bar <= 2; bar += 1) {
+        const span = Math.sqrt(1.21 ** 2 - (bar * 0.42) ** 2) * 2;
+        box(side * 12.63, 3.2, z + bar * 0.42, 0.06, span, 0.065, hallWood);
+        box(side * 12.62, 3.2 + bar * 0.42, z, 0.07, 0.065, span, hallWood);
+      }
+    }
+    box(side * 12.1, 6.2, -12, 0.34, 0.35, 20.2, palette.woodDark);
+  }
+  for (const z of [-21.3, -16.7, -12.1, -7.5, -1.7]) {
+    box(0, 6.2, z, 25, 0.34, 0.3, palette.woodDark);
+    box(0, 6.42, z, 24.7, 0.09, 0.4, palette.gold);
+  }
+  for (const x of [-9.1, -4.55, 0, 4.55, 9.1]) box(x, 6.16, -12, 0.18, 0.23, 19.6, palette.wood);
+  const ceilingRing = mesh(new THREE.TorusGeometry(2.15, 0.07, 5, 40), palette.gold, 0, 6.03, -11.8);
+  ceilingRing.rotation.x = Math.PI / 2;
+  for (let petal = 0; petal < 8; petal += 1) {
+    const angle = petal * Math.PI / 4;
+    const carving = sphere(Math.cos(angle) * 0.85, 6.0, -11.8 + Math.sin(angle) * 0.85, 0.55, palette.goldLight);
+    carving.scale.set(1.5, 0.12, 0.65);
+    carving.rotation.y = -angle;
+  }
+  roof(0, -12, 30, 23, 6.4, 2.2);
+  for (const z of [-20.1, -5.5]) {
+    box(0, 7.6, z, 23.7, 0.6, 0.25, tealTimber);
+    for (let x = -11.4; x <= 11.4; x += 0.76) box(x, 7.6, z + (z > -12 ? 0.15 : -0.15), 0.07, 0.65, 0.07, hallWood);
+  }
+  for (const x of [-11.8, 11.8]) box(x, 7.6, -12.8, 0.25, 0.6, 14.6, tealTimber);
+  roof(0, -12.8, 24.5, 15.5, 7.9, 1.45);
+  box(0, 5.1, -1.66, 4.4, 1.05, 0.18, palette.woodDark);
+  box(0, 5.1, -1.55, 4.15, 0.84, 0.04, palette.gold);
+  box(0, 5.1, -1.52, 3.9, 0.65, 0.025, palette.woodDark);
+  for (let petal = -2; petal <= 2; petal += 1) {
+    const carving = sphere(petal * 0.21, 5.1, -1.49, 0.17, palette.goldLight);
+    carving.scale.set(0.6, 1.35, 0.3);
+    carving.rotation.z = -petal * 0.32;
   }
 
   function lantern(x: number, y: number, z: number, scale = 1) {
@@ -302,53 +374,22 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       const rib = box(Math.cos(angle) * 0.21, 0, Math.sin(angle) * 0.21, 0.018, 0.4, 0.018, palette.gold, group);
       rib.rotation.y = -angle;
     }
+    batchMovingGroup(group);
     return group;
   }
-  const lanterns = [lantern(-3.45, 2.95, -3.25), lantern(3.45, 2.95, -3.25)];
-
-  // A seated golden figure and lotus altar at the back of the hall.
-  box(0, 0.33, -9.7, 3.5, 0.66, 1.7, palette.woodDark);
-  box(0, 0.71, -9.7, 3.8, 0.12, 1.9, palette.wood);
-  cylinder(0, 0.89, -9.75, 0.95, 1.08, 0.3, palette.gold);
-  for (let i = 0; i < 12; i++) {
-    const angle = (i / 12) * Math.PI * 2;
-    const petal = sphere(Math.sin(angle) * 0.82, 1.01, -9.75 + Math.cos(angle) * 0.62, 0.22, palette.goldLight);
-    petal.scale.set(0.6, 1, 1.4);
-    petal.rotation.y = angle;
-  }
-  const halo = mesh(new THREE.TorusGeometry(0.81, 0.035, 6, 40), palette.goldLight, 0, 2.15, -10.17);
-  halo.castShadow = false;
-  const body = sphere(0, 1.6, -9.8, 0.57, palette.gold);
-  body.scale.set(0.9, 1.2, 0.75);
-  const legs = sphere(0, 1.22, -9.58, 0.67, palette.gold);
-  legs.scale.set(1.38, 0.42, 0.8);
-  sphere(0, 2.35, -9.75, 0.33, palette.goldLight);
-  sphere(0, 2.69, -9.79, 0.14, palette.gold);
-  for (const side of [-1, 1]) {
-    const ear = sphere(side * 0.32, 2.31, -9.73, 0.1, palette.goldLight);
-    ear.scale.set(0.55, 1.45, 0.7);
-    beamBetween(new THREE.Vector3(side * 0.39, 1.94, -9.8), new THREE.Vector3(side * 0.59, 1.49, -9.5), 0.13, palette.gold);
-    beamBetween(new THREE.Vector3(side * 0.59, 1.49, -9.5), new THREE.Vector3(side * 0.08, 1.4, -9.38), 0.1, palette.goldLight);
-    const eye = box(side * 0.11, 2.37, -9.441, 0.1, 0.018, 0.018, palette.woodDark);
-    eye.rotation.z = side * 0.08;
-  }
-  collider(0, -9.7, 3.8, 2.1);
-  cylinder(0, 0.84, -8.95, 0.15, 0.11, 0.15, palette.gold);
-  for (let i = -1; i <= 1; i++) cylinder(i * 0.055, 1.07, -8.95, 0.009, 0.009, 0.38, palette.woodDark, world, 4);
-  for (const x of [-1.3, 1.3]) {
-    cylinder(x, 0.89, -9.45, 0.08, 0.14, 0.28, palette.gold);
-    const flame = sphere(x, 1.09, -9.45, 0.045, palette.lantern);
-    flame.scale.set(0.75, 1.6, 0.75);
-  }
+  const lanterns = [lantern(-5.8, 5.1, -1.6, 1.35), lantern(5.8, 5.1, -1.6, 1.35)];
+  const sacredArt = createSacredArt();
+  world.add(sacredArt.group);
+  colliders.push(...sacredArt.colliders);
 
   const altarFlowers = new THREE.Group();
   altarFlowers.visible = false;
   world.add(altarFlowers);
   const flowerPositions: Array<[number, number, number]> = [];
   for (const side of [-1, 1]) {
-    cylinder(side * 1.1, 0.88, -9.05, 0.14, 0.10, 0.28, palette.pink);
+    cylinder(side * 2.8, 1.08, -17.2, 0.2, 0.14, 0.38, palette.pink);
     for (let index = 0; index < 3; index += 1) {
-      flowerPositions.push([side * 1.1 + (index - 1) * 0.12, 0.98 + (index % 2) * 0.10, -9.05 + (index % 2) * 0.08]);
+      flowerPositions.push([side * 2.8 + (index - 1) * 0.17, 1.25 + (index % 2) * 0.15, -17.2 + (index % 2) * 0.08]);
     }
   }
   flowerPatch(flowerPositions, altarFlowers);
@@ -359,9 +400,9 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   ritualAura.visible = false;
   world.add(ritualAura);
   const ritualGlow = material('#ffe3a1', { emissive: '#edb860', emissiveIntensity: 0.9, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  const ritualHalo = mesh(new THREE.RingGeometry(0.87, 1.07, 40), ritualGlow, 0, 2.15, -10.1, ritualAura);
+  const ritualHalo = mesh(new THREE.RingGeometry(1.3, 1.42, 48), ritualGlow, 18, 2.05, -19.7, ritualAura);
   ritualHalo.castShadow = false;
-  const ritualFloor = mesh(new THREE.RingGeometry(1.5, 1.56, 48), ritualGlow, 0, 0.045, -7.85, ritualAura);
+  const ritualFloor = mesh(new THREE.RingGeometry(2, 2.07, 48), ritualGlow, 18, 0.13, -18, ritualAura);
   ritualFloor.rotation.x = -Math.PI / 2;
   ritualFloor.castShadow = false;
   let ritualUntil = 0;
@@ -390,15 +431,15 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   }
   tree(-10.8, 8.8, 1.3, 0);
   tree(11.3, 9.5, 1.4, 1);
-  tree(-11.5, -10.6, 1.5, 2);
-  tree(12.3, -11.5, 1.3, 0);
+  tree(-21.5, -13.5, 1.5, 2);
+  tree(21.5, -12.5, 1.3, 0);
   tree(-7.7, 7.7, 0.93, 1);
   tree(6.8, 9.6, 0.92, 0);
 
   // West bamboo grove, with separate stalks and branches that remain fully 3D.
   for (let i = 0; i < 17; i++) {
     const x = -11.6 + (i % 4) * 0.72 + Math.sin(i * 2.1) * 0.2;
-    const z = -2.3 + Math.floor(i / 4) * 1.1;
+    const z = -0.5 + Math.floor(i / 4) * 1.1;
     const height = 3.1 + ((i * 7) % 6) * 0.21;
     cylinder(x, height / 2, z, 0.045, 0.063, height, palette.bamboo, world, 6);
     for (let y = 0.65; y < height; y += 0.65) {
@@ -453,12 +494,14 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   const fish: THREE.Group[] = [];
   for (let i = 0; i < 3; i++) {
     const group = new THREE.Group();
+    group.name = `莲池锦鲤 ${i + 1}`;
     world.add(group);
     const body = sphere(0, 0, 0, 0.13, palette.koi, group);
     body.scale.set(0.75, 0.3, 1.9);
     const tail = mesh(new THREE.ConeGeometry(0.12, 0.22, 3), palette.koi, 0, 0, -0.3, group);
     tail.rotation.x = Math.PI / 2;
     tail.scale.y = 0.6;
+    batchMovingGroup(group);
     fish.push(group);
   }
   const rippleMaterial = material('#c8dfcb', { transparent: true, opacity: 0.3, depthWrite: false });
@@ -469,20 +512,34 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     ripple.castShadow = false;
     ripples.push(ripple);
   }
+  const crumbGeometry = new THREE.SphereGeometry(0.032, 5, 3);
+  geometries.add(crumbGeometry);
+  const foodCrumbs = new THREE.InstancedMesh(crumbGeometry, palette.goldLight, 9);
+  foodCrumbs.visible = false;
+  foodCrumbs.frustumCulled = false;
+  world.add(foodCrumbs);
+  instances.push(foodCrumbs);
+  const crumbTransform = new THREE.Object3D();
+  const feedRippleMaterial = material('#eee4b9', { transparent: true, opacity: 0, depthWrite: false });
+  const feedRipple = mesh(new THREE.RingGeometry(0.36, 0.38, 32), feedRippleMaterial, 6.8, 0.075, 2);
+  feedRipple.rotation.x = -Math.PI / 2;
+  feedRipple.castShadow = false;
+  feedRipple.visible = false;
+  let feedStarted = -Infinity;
 
   // The bell pavilion has four open sides and a small curved tiled roof.
-  box(9, 0.055, -7, 3.7, 0.11, 3.7, palette.stoneLight);
-  for (const x of [7.5, 10.5]) {
-    for (const z of [-8.5, -5.5]) {
+  box(18, 0.055, -8, 3.7, 0.11, 3.7, palette.stoneLight);
+  for (const x of [16.5, 19.5]) {
+    for (const z of [-9.5, -6.5]) {
       cylinder(x, 1.45, z, 0.11, 0.15, 2.9, palette.wood);
       cylinder(x, 0.12, z, 0.23, 0.25, 0.24, palette.stone);
       collider(x, z, 0.42, 0.42);
     }
   }
-  box(9, 2.83, -7, 3.4, 0.2, 0.2, palette.woodDark);
-  roof(9, -7, 4.5, 4.3, 2.88, 0.92);
+  box(18, 2.83, -8, 3.4, 0.2, 0.2, palette.woodDark);
+  roof(18, -8, 4.5, 4.3, 2.88, 0.92);
   const bell = new THREE.Group();
-  bell.position.set(9, 2.33, -7);
+  bell.position.set(18, 2.33, -8);
   world.add(bell);
   cylinder(0, 0.24, 0, 0.04, 0.04, 0.5, palette.woodDark, bell, 6);
   cylinder(0, -0.22, 0, 0.4, 0.58, 0.77, palette.gold, bell, 20);
@@ -490,9 +547,29 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   sphere(0, -0.72, 0, 0.13, palette.woodDark, bell);
   const bellRing = mesh(new THREE.TorusGeometry(0.42, 0.025, 4, 20), palette.goldLight, 0, -0.06, 0, bell);
   bellRing.rotation.x = Math.PI / 2;
-  collider(9, -7, 1.4, 1.4);
-  const striker = cylinder(9, 1.68, -5.95, 0.09, 0.09, 1.6, palette.woodDark);
+  batchMovingGroup(bell);
+  collider(18, -8, 1.4, 1.4);
+  const striker = cylinder(18, 1.68, -6.95, 0.09, 0.09, 1.6, palette.woodDark);
   striker.rotation.z = Math.PI / 2;
+  let bellStarted = -Infinity;
+
+  // An individually lit lotus lamp gives the quieter side aisle a small ritual of its own.
+  cylinder(8.8, 0.16, -16.4, 0.52, 0.62, 0.32, palette.stone, world, 16);
+  cylinder(8.8, 0.65, -16.4, 0.15, 0.23, 0.9, palette.gold, world, 12);
+  const lampPetals = material('#d5b774', { emissive: '#d8a751', emissiveIntensity: 0.07, metalness: 0.3, roughness: 0.45 });
+  for (let petal = 0; petal < 8; petal += 1) {
+    const angle = petal * Math.PI / 4;
+    const shape = sphere(8.8 + Math.cos(angle) * 0.24, 1.2, -16.4 + Math.sin(angle) * 0.24, 0.23, lampPetals);
+    shape.scale.set(0.7, 1.2, 0.7);
+    shape.rotation.set(Math.sin(angle) * 0.5, 0, -Math.cos(angle) * 0.5);
+  }
+  const lampFlameMaterial = material('#ffe2a1', { emissive: '#ffd391', emissiveIntensity: 1.6, transparent: true, opacity: 0.9 });
+  const lampFlame = sphere(8.8, 1.49, -16.4, 0.14, lampFlameMaterial);
+  lampFlame.scale.set(0.65, 1.6, 0.65);
+  lampFlame.visible = false;
+  lampFlame.castShadow = false;
+  collider(8.8, -16.4, 0.9, 0.9);
+  let lampUntil = 0;
 
   // Stone garden lanterns light the approach without obstructing the path.
   function stoneLantern(x: number, z: number) {
@@ -523,35 +600,35 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   stoneLantern(14, 8.5);
 
   // An open-sided meditation pavilion is reached through the western walkway.
-  box(-16, 0.04, -7, 5.8, 0.08, 5.8, palette.stoneLight);
-  for (const x of [-18.3, -13.7]) {
+  box(-18.2, 0.04, -7, 5.8, 0.08, 5.8, palette.stoneLight);
+  for (const x of [-20.5, -15.9]) {
     for (const z of [-9.3, -4.7]) {
       cylinder(x, 1.5, z, 0.12, 0.17, 3, palette.wood);
       cylinder(x, 0.12, z, 0.22, 0.26, 0.24, palette.stone);
       collider(x, z, 0.46, 0.46);
     }
   }
-  roof(-16, -7, 6.7, 6.4, 3.05, 0.95);
-  box(-16, 0.42, -7.5, 1.8, 0.84, 0.9, palette.woodDark);
-  box(-16, 0.89, -7.5, 2.1, 0.12, 1.15, palette.wood);
-  collider(-16, -7.5, 2.1, 1.15);
-  cylinder(-16, 1.03, -7.5, 0.13, 0.19, 0.18, palette.gold);
-  lanterns.push(lantern(-16, 2.6, -5, 0.85));
+  roof(-18.2, -7, 6.7, 6.4, 3.05, 0.95);
+  box(-18.2, 0.42, -7.5, 1.8, 0.84, 0.9, palette.woodDark);
+  box(-18.2, 0.89, -7.5, 2.1, 0.12, 1.15, palette.wood);
+  collider(-18.2, -7.5, 2.1, 1.15);
+  cylinder(-18.2, 1.03, -7.5, 0.13, 0.19, 0.18, palette.gold);
+  lanterns.push(lantern(-18.2, 2.6, -5, 0.85));
   tree(-20.5, -10.5, 1.25, 2);
   tree(-20.5, -1, 1.2, 0);
 
-  // The prayer terrace remains reachable around either side of the main hall.
-  cylinder(0, 0.045, -18, 2.8, 2.8, 0.09, palette.stoneLight, world, 32);
-  cylinder(0, 0.102, -18, 2.15, 2.15, 0.025, palette.path, world, 32);
-  box(0, 0.42, -19.5, 1.4, 0.84, 0.7, palette.woodDark);
-  box(0, 0.9, -19.5, 1.65, 0.12, 0.95, palette.wood);
-  collider(0, -19.5, 1.65, 0.95);
-  cylinder(0, 1.08, -19.5, 0.24, 0.16, 0.22, palette.gold);
-  tree(0, -21.5, 1.15, 1);
-  stoneLantern(-2.5, -20);
-  stoneLantern(2.5, -20);
+  // The eastern prayer terrace has its own approach beyond the enlarged hall.
+  cylinder(18, 0.045, -18, 2.8, 2.8, 0.09, palette.stoneLight, world, 32);
+  cylinder(18, 0.102, -18, 2.15, 2.15, 0.025, palette.path, world, 32);
+  box(18, 0.42, -19.5, 1.4, 0.84, 0.7, palette.woodDark);
+  box(18, 0.9, -19.5, 1.65, 0.12, 0.95, palette.wood);
+  collider(18, -19.5, 1.65, 0.95);
+  cylinder(18, 1.08, -19.5, 0.24, 0.16, 0.22, palette.gold);
+  tree(18, -21.5, 1.15, 1);
+  stoneLantern(15.5, -20);
+  stoneLantern(20.5, -20);
   for (let index = 0; index < 7; index += 1) {
-    const x = -0.9 + index * 0.3;
+    const x = 17.1 + index * 0.3;
     const ribbon = box(x, 1.6 + (index % 2) * 0.12, -21.15, 0.12, 0.45, 0.025, index % 2 ? palette.roof : palette.goldLight);
     ribbon.rotation.z = (index % 3 - 1) * 0.12;
   }
@@ -568,9 +645,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   // Small, deterministic ground details keep the garden tactile and lightweight.
   for (let i = 0; i < 35; i++) {
     const side = i % 2 ? -1 : 1;
-    const x = side * (6.2 + ((i * 13) % 59) / 10);
-    const z = -12 + ((i * 31) % 242) / 10;
-    if (x > 6 && z > -9 && z < 4.7) continue;
+    const x = side * (21.3 + (i % 5) * 0.22);
+    const z = -21 + ((i * 31) % 420) / 10;
     const tuft = new THREE.Group();
     tuft.position.set(x, 0.12, z);
     world.add(tuft);
@@ -595,7 +671,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   // Bake stationary shapes by material so the detailed garden stays light on phones.
   // Independent animated objects and the walkable raycast plane retain their identity.
-  const movingObjects = new Set<THREE.Object3D>([...lanterns, ...fish, bell, ...ripples, altarFlowers, ritualAura]);
+  const movingObjects = new Set<THREE.Object3D>([...lanterns, ...fish, bell, striker, ...ripples, feedRipple, lampFlame, altarFlowers, ritualAura, sacredArt.group]);
   const staticBatches = new Map<string, { surface: THREE.Material; castShadow: boolean; receiveShadow: boolean; pieces: THREE.BufferGeometry[]; objects: THREE.Mesh[] }>();
   world.updateMatrixWorld(true);
   world.traverse((object) => {
@@ -630,19 +706,26 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     colliders,
     cushions,
     landmarks: [
-      { name: '大殿', x: 0, z: -5.7 },
+      { name: '大殿', x: 0, z: -11.8 },
       { name: '莲池', x: 5.8, z: 2 },
       { name: '竹林', x: -8.4, z: 0.7 },
-      { name: '钟亭', x: 8.8, z: -4.8 },
+      { name: '钟亭', x: 18, z: -5.5 },
       { name: '山门', x: 0, z: 21.5 },
       { name: '花园', x: 16, z: 5 },
-      { name: '禅修院', x: -16, z: -5 },
-      { name: '祈愿台', x: 0, z: -18 },
+      { name: '禅修院', x: -18.2, z: -5 },
+      { name: '祈愿台', x: 18, z: -18 },
+      { name: '观音莲座', x: -7.7, z: -15.8 },
+      { name: '莲灯', x: 8.8, z: -15.5 },
+      { name: '壁画长廊', x: -11.2, z: -10 },
     ],
     interactions: [
-      { kind: 'incense', label: '♧ 敬香', x: 0, y: 1.0, z: -6.9 },
+      { kind: 'incense', label: '♧ 敬香', x: 0, y: 1.3, z: -13.8 },
       { kind: 'flower', label: '✿ 供花', x: 16, y: 0.7, z: 5 },
-      { kind: 'ritual', label: '✦ 做法事', x: 0, y: 0.9, z: -18 },
+      { kind: 'ritual', label: '✦ 做法事', x: 18, y: 0.9, z: -18 },
+      { kind: 'bell', label: '♩ 鸣钟', x: 18, y: 1.2, z: -5.5 },
+      { kind: 'fish', label: '◌ 喂锦鲤', x: 6, y: 0.7, z: 2 },
+      { kind: 'mural', label: '✧ 赏壁画', x: -11.2, y: 1.3, z: -10 },
+      { kind: 'lamp', label: '✺ 点莲灯', x: 8.8, y: 1.3, z: -15.5 },
     ],
     offerFlowers() {
       altarFlowers.visible = true;
@@ -652,6 +735,12 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     startRitual() {
       ritualAura.visible = true;
       ritualUntil = performance.now() + 30_000;
+    },
+    interact(kind) {
+      const now = performance.now();
+      if (kind === 'bell') bellStarted = now;
+      if (kind === 'fish') feedStarted = now;
+      if (kind === 'lamp') lampUntil = now + 90_000;
     },
     animate(t: number) {
       const now = performance.now();
@@ -667,16 +756,49 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       ritualFloor.scale.setScalar(1 + Math.sin(t * 1.1) * 0.04);
       palette.lantern.emissiveIntensity = ritualRemaining > 0 ? 0.4 + Math.sin(t * 1.8) * 0.12 : 0.19;
       for (const [index, group] of lanterns.entries()) group.rotation.z = Math.sin(t * 0.7 + index) * 0.035;
+      const feedAge = (now - feedStarted) / 1000;
+      const feedAmount = feedAge < 2 ? Math.max(0, feedAge / 2) : feedAge < 12 ? 1 : Math.max(0, 1 - (feedAge - 12) / 4);
       for (const [index, group] of fish.entries()) {
         const angle = t * 0.13 + index * 2.1;
-        group.position.set(9 + Math.cos(angle) * (1.5 + index * 0.2), 0.078, 2 + Math.sin(angle) * (1 + index * 0.15));
-        group.rotation.y = Math.atan2(-Math.sin(angle) * (1.5 + index * 0.2), Math.cos(angle) * (1 + index * 0.15));
+        const circleX = 9 + Math.cos(angle) * (1.5 + index * 0.2);
+        const circleZ = 2 + Math.sin(angle) * (1 + index * 0.15);
+        const feedingX = 6.95 + Math.cos(t * 1.5 + index * 2.1) * 0.25;
+        const feedingZ = 2 + Math.sin(t * 1.5 + index * 2.1) * 0.4;
+        const x = THREE.MathUtils.lerp(circleX, feedingX, feedAmount);
+        const z = THREE.MathUtils.lerp(circleZ, feedingZ, feedAmount);
+        const dx = x - group.position.x;
+        const dz = z - group.position.z;
+        if (Math.hypot(dx, dz) > 0.0001) group.rotation.y = Math.atan2(dx, dz);
+        group.position.set(x, 0.078, z);
       }
+      foodCrumbs.visible = feedAge < 12;
+      if (foodCrumbs.visible) {
+        for (let index = 0; index < 9; index += 1) {
+          const angle = index * 2.4;
+          const spread = 0.16 + (index % 3) * 0.12;
+          crumbTransform.position.set(6.8 + Math.cos(angle) * spread, 0.09 + Math.sin(t * 1.2 + index) * 0.01, 2 + Math.sin(angle) * spread);
+          crumbTransform.scale.setScalar(Math.min(1, (12 - feedAge) / 4));
+          crumbTransform.updateMatrix();
+          foodCrumbs.setMatrixAt(index, crumbTransform.matrix);
+        }
+        foodCrumbs.instanceMatrix.needsUpdate = true;
+      }
+      feedRipple.visible = feedAmount > 0;
+      feedRipple.scale.setScalar(1 + (t % 1.8) * 0.7);
+      feedRippleMaterial.opacity = feedAmount * (0.4 - (t % 1.8) * 0.17);
       for (const [index, ripple] of ripples.entries()) ripple.scale.setScalar(1 + Math.sin(t * 0.6 + index * 2) * 0.15);
-      bell.rotation.z = Math.sin(t * 0.45) * 0.012;
+      const bellAge = (now - bellStarted) / 1000;
+      const bellSwing = bellAge < 8 ? Math.sin(bellAge * 7) * Math.exp(-bellAge * 0.32) : 0;
+      bell.rotation.z = bellSwing * 0.23 + Math.sin(t * 0.45) * 0.012;
+      striker.position.z = -6.95 - Math.max(0, bellSwing) * 0.48;
+      const lampLit = now < lampUntil;
+      lampFlame.visible = lampLit;
+      lampPetals.emissiveIntensity = lampLit ? 0.85 + Math.sin(t * 2.5) * 0.1 : 0.07;
+      if (lampLit) lampFlame.scale.y = 1.6 + Math.sin(t * 4.2) * 0.12;
     },
     dispose() {
       scene.remove(world);
+      sacredArt.dispose();
       for (const instance of instances) instance.dispose();
       for (const geometry of geometries) geometry.dispose();
       for (const surface of materials) surface.dispose();

@@ -1,4 +1,4 @@
-export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell";
+export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water";
 
 export type TempleAudio = {
   unlock: () => Promise<boolean>;
@@ -18,6 +18,7 @@ const durations: Record<SynthSound, number> = {
   meditate: 3.8,
   incense: 2.2,
   bell: 3.2,
+  water: 0.85,
 };
 
 const peaks: Record<SynthSound, number> = {
@@ -27,6 +28,7 @@ const peaks: Record<SynthSound, number> = {
   meditate: 0.37,
   incense: 0.30,
   bell: 0.40,
+  water: 0.22,
 };
 
 // Damped, inharmonic modes give each instrument a physical body and a natural tail.
@@ -104,6 +106,15 @@ function createSamples(sound: SynthSound, sampleRate: number) {
       break;
     case "bell":
       addBowl(samples, sampleRate, 0, 329.63, 0.8, 1.05);
+      break;
+    case "water":
+      [0, 0.18, 0.4].forEach((offset, index) => {
+        addResonance(samples, sampleRate, offset, [
+          { frequency: 680 + index * 190, amplitude: 0.5, decay: 0.045 },
+          { frequency: 1450 + index * 230, amplitude: 0.12, decay: 0.03 },
+        ], 0.002);
+        addBrush(samples, sampleRate, offset, 0.11, 0.13, 127 + index);
+      });
       break;
   }
   let maximum = 0;
