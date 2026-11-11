@@ -191,7 +191,7 @@ export default function SocialTemple({ selfId, compact = false, incenseRequest =
       setCooldown(5);
       if (compact) setIncenseOpen(false);
       callbacks.current.onIncense?.(counts.mineToday);
-      inform("已敬上一炷清香，愿你心安。");
+      inform("心意已记下，正前往殿前敬香。");
     } catch (error) {
       if ((error as Error & { status?: number }).status === 429) setCooldown(5);
       inform(error instanceof Error ? error.message : "香火暂时没有送达，请稍后再试。");

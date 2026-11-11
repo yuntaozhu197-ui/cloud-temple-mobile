@@ -17,8 +17,8 @@ type Participant = {
   floor?: TempleFloor;
 };
 
-type Position = { x: number; z: number; heading: number; floor: TempleFloor };
-type Landmark = { name: string; x: number; z: number; floor?: TempleFloor };
+type Position = { x: number; z: number; heading: number; floor: 1 };
+type Landmark = { name: string; x: number; z: number };
 type ContextAction = "incense" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
 type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
@@ -43,6 +43,7 @@ type WorldProps = {
   onContextChange?: (context: WorldContext) => void;
   onSeatedChange?: (seated: boolean) => void;
   onFloorChange?: (floor: TempleFloor) => void;
+  onIncenseStage?: (stage: "begin" | "insert" | "complete") => void;
 };
 
 type MonkInstance = {
@@ -53,7 +54,7 @@ type MonkInstance = {
 
 const remoteColors = [0x96a78d, 0xb39274, 0x8ba7a0, 0xbd9c83, 0xaca17d];
 // Keep a monk-radius clearance inside every wall, including the open mountain gate.
-const TEMPLE_BOUNDS = { minX: -37.5, maxX: 37.5, minZ: -27.5, maxZ: 27.5 };
+const TEMPLE_BOUNDS = { minX: -51.5, maxX: 51.5, minZ: -39.5, maxZ: 39.5 };
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
@@ -109,8 +110,8 @@ export default function TempleWorld(props: WorldProps) {
 
         const scene = new T.Scene();
         scene.background = new T.Color(0xdce6d8);
-        scene.fog = new T.Fog(0xdce6d8, 30, 66);
-        const camera = new T.PerspectiveCamera(42, 1, 0.1, 90);
+        scene.fog = new T.Fog(0xdce6d8, 50, 125);
+        const camera = new T.PerspectiveCamera(42, 1, 0.1, 150);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
         let cameraRadius = mobile ? 7.8 : 10;
@@ -130,10 +131,10 @@ export default function TempleWorld(props: WorldProps) {
         sunlight.target.position.set(0, 0, -2);
         sunlight.castShadow = true;
         sunlight.shadow.mapSize.set(mobile ? 1024 : 1536, mobile ? 1024 : 1536);
-        sunlight.shadow.camera.left = -40;
-        sunlight.shadow.camera.right = 40;
-        sunlight.shadow.camera.top = 34;
-        sunlight.shadow.camera.bottom = -34;
+        sunlight.shadow.camera.left = -54;
+        sunlight.shadow.camera.right = 54;
+        sunlight.shadow.camera.top = 42;
+        sunlight.shadow.camera.bottom = -42;
         sunlight.shadow.camera.near = 0.5;
         sunlight.shadow.camera.far = 80;
         sunlight.shadow.bias = -0.00025;
@@ -146,7 +147,7 @@ export default function TempleWorld(props: WorldProps) {
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
         let observer: ResizeObserver | undefined;
-        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number; bowSpeed: number; floor: TempleFloor }>();
+        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number; bowSpeed: number }>();
         const cleanupListeners: (() => void)[] = [];
         const hotspotButtons: HTMLButtonElement[] = [];
         const ownedGeometries: THREE.BufferGeometry[] = [];
@@ -198,31 +199,12 @@ export default function TempleWorld(props: WorldProps) {
             event.preventDefault();
             event.stopPropagation();
             const state = latest.current;
-            if (state.auto || state.meditating || stairTransition || currentFloor !== (point.floor ?? 1) || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
+            if (state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
             if (performance.now() < nextActivation) return;
             nextActivation = performance.now() + (point.kind === "fish" ? 4000 : 1200);
             if (point.kind === "bell" || point.kind === "fish" || point.kind === "lamp" || point.kind === "release" || point.kind === "martial" || point.kind === "pagoda") world.interact(point.kind);
-            if (point.kind === "martial" || point.kind === "release" || point.kind === "pagoda") sceneAction = { kind: point.kind === "martial" ? "martial" : "incense", start: (performance.now() - started) / 1000, duration: 4 };
+            if (point.kind === "martial" || point.kind === "release" || point.kind === "pagoda") sceneAction = { kind: point.kind === "martial" ? "martial" : "salute", start: (performance.now() - started) / 1000, duration: 4 };
             state.onContextAction?.(point.kind);
-          };
-          button.addEventListener("click", activate);
-          cleanupListeners.push(() => button.removeEventListener("click", activate));
-          hotspots.appendChild(button);
-          hotspotButtons.push(button);
-          return { ...point, button };
-        });
-        const stairPoints = world.upperFloors.stairs.map(point => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "world-hotspot world-stair-hotspot";
-          button.textContent = `↟ ${point.label}`;
-          button.setAttribute("aria-label", point.label);
-          button.style.cssText = hotspotStyle;
-          const activate = (event: MouseEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (currentFloor !== point.floor || stairTransition || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 3.5) return;
-            navigate({ name: point.label, x: point.targetX, z: point.targetZ, floor: point.to });
           };
           button.addEventListener("click", activate);
           cleanupListeners.push(() => button.removeEventListener("click", activate));
@@ -241,7 +223,7 @@ export default function TempleWorld(props: WorldProps) {
           event.preventDefault();
           event.stopPropagation();
           const state = latest.current;
-          if (currentFloor !== 1 || stairTransition || nearestCushionIndex < 0 || state.seat !== null || state.auto || state.meditating) return;
+          if (nearestCushionIndex < 0 || state.seat !== null || state.auto || state.meditating) return;
           state.onSeatSelect(nearestCushionIndex);
         };
         cushionButton.addEventListener("click", sitOnNearbyCushion);
@@ -251,7 +233,7 @@ export default function TempleWorld(props: WorldProps) {
         offering = createIncenseOffering(scene);
         world.colliders.push({ minX: -0.45, maxX: 0.45, minZ: -15.15, maxZ: -14.45 });
         const roofSurfaces: THREE.Mesh[] = [];
-        const hallRoofs = new Set<THREE.Object3D>();
+        const hallRoofs = new Set<THREE.Mesh>();
         scene.updateMatrixWorld(true);
         scene.traverse(object => {
           if (!(object instanceof T.Mesh) || Array.isArray(object.material) || object.material.side !== T.DoubleSide) return;
@@ -260,7 +242,7 @@ export default function TempleWorld(props: WorldProps) {
             object.material.transparent = true;
             roofSurfaces.push(object);
             // Each roof has separate front/back slopes; match their overlap with the hall.
-            if (bounds.min.z < -2 && bounds.max.z > -22 && bounds.max.x - bounds.min.x > 20) hallRoofs.add(object);
+            if (bounds.min.z < -2 && bounds.max.z > -22 && bounds.max.x - bounds.min.x > 24 && Math.abs(bounds.min.x + bounds.max.x) < 1) hallRoofs.add(object);
           }
         });
         setPlaces([...world.landmarks, { name: "回到庭院", x: 0, z: 7 }]);
@@ -321,13 +303,10 @@ export default function TempleWorld(props: WorldProps) {
         let approachingIncense = false;
         let incensePrayerUntil = 0;
         let incensePrayerStart = 0;
-        let currentFloor: TempleFloor = 1;
-        let pendingTravel: Landmark | null = null;
-        let stairApproach: (typeof world.upperFloors.stairs)[number] | null = null;
-        let stairTransition: { stair: (typeof world.upperFloors.stairs)[number]; start: number; from: THREE.Vector3 } | null = null;
+        let incenseInserted = false;
         let zoomScale = 1;
         let mapFollowing = false;
-        let sceneAction: { kind: "martial" | "incense"; start: number; duration: number } | null = null;
+        let sceneAction: { kind: "martial" | "salute"; start: number; duration: number } | null = null;
         const touchPoints = new Map<number, { x: number; y: number }>();
         let pinchDistance = 0;
         function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.65, 1.55); }
@@ -347,11 +326,6 @@ export default function TempleWorld(props: WorldProps) {
         function blocked(x: number, z: number) {
           if (x < TEMPLE_BOUNDS.minX || x > TEMPLE_BOUNDS.maxX || z < TEMPLE_BOUNDS.minZ || z > TEMPLE_BOUNDS.maxZ) return true;
           const radius = 0.26;
-          if (currentFloor > 1) {
-            const bounds = world.upperFloors.bounds;
-            if (x < bounds.minX || x > bounds.maxX || z < bounds.minZ || z > bounds.maxZ) return true;
-            return world.upperFloors.colliders[currentFloor].some(box => x > box.minX - radius && x < box.maxX + radius && z > box.minZ - radius && z < box.maxZ + radius);
-          }
           return world.colliders.some(box => x > box.minX - radius && x < box.maxX + radius && z > box.minZ - radius && z < box.maxZ + radius);
         }
 
@@ -384,9 +358,9 @@ export default function TempleWorld(props: WorldProps) {
           if (clearLine(origin.x, origin.z, target.x, target.z)) return [target];
 
           // A small navigation grid routes taps around the hall, pond, and trees.
-          const size = 129;
+          const size = 175;
           const spacing = 0.6;
-          const half = 38.4;
+          const half = 52.2;
           const position = (index: number) => ({ x: (index % size) * spacing - half, z: Math.floor(index / size) * spacing - half });
           const indexOf = (x: number, z: number) => clamp(Math.round((z + half) / spacing), 0, size - 1) * size + clamp(Math.round((x + half) / spacing), 0, size - 1);
           const walkable = new Uint8Array(size * size);
@@ -467,37 +441,21 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function walkTo(x: number, z: number) {
-          if (latest.current.auto || latest.current.meditating || stairTransition) return;
+          if (latest.current.auto || latest.current.meditating) return;
           leaveSeat();
           userMoved = true;
           mapFollowing = true;
           route = pathTo(x, z);
           if (route.length) {
             const end = route[route.length - 1];
-            destination.position.set(end.x, world.upperFloors.heights[currentFloor] + 0.03, end.z);
+            destination.position.set(end.x, world.floorHeightAt(end.x, end.z) + 0.03, end.z);
             destination.visible = true;
           }
-        }
-        function navigate(landmark: Landmark) {
-          if (latest.current.auto || latest.current.meditating || stairTransition) return;
-          const targetFloor = landmark.floor ?? 1;
-          if (currentFloor === targetFloor) {
-            pendingTravel = null;
-            stairApproach = null;
-            walkTo(landmark.x, landmark.z);
-            return;
-          }
-          const nextFloor = (currentFloor + (targetFloor > currentFloor ? 1 : -1)) as TempleFloor;
-          const stair = world.upperFloors.stairs.find(point => point.floor === currentFloor && point.to === nextFloor);
-          if (!stair) return;
-          pendingTravel = landmark;
-          stairApproach = stair;
-          walkTo(stair.x, stair.z);
         }
         travel.current = landmark => {
           approachingIncense = false;
           incensePrayerUntil = 0;
-          navigate(landmark);
+          walkTo(landmark.x, landmark.z);
         };
 
         function updatePointer(event: PointerEvent) {
@@ -587,11 +545,9 @@ export default function TempleWorld(props: WorldProps) {
           if (holdTimer) clearTimeout(holdTimer);
           if (!pointerState.dragged && !pointerState.held && !pointerState.self && !latest.current.auto && !latest.current.meditating) {
             updatePointer(event);
-            const cushion = currentFloor === 1 ? raycaster.intersectObjects(cushionTargets, false)[0] : undefined;
+            const cushion = raycaster.intersectObjects(cushionTargets, false)[0];
             if (cushion) latest.current.onSeatSelect(cushion.object.userData.seat as number);
             else if (raycaster.ray.intersectPlane(groundPlane, groundPoint)) {
-              pendingTravel = null;
-              stairApproach = null;
               approachingIncense = false;
               incensePrayerUntil = 0;
               walkTo(groundPoint.x, groundPoint.z);
@@ -693,7 +649,7 @@ export default function TempleWorld(props: WorldProps) {
           const ownName = state.participants.find(person => person.id === state.selfId)?.name;
           if (ownName && selfLabel.textContent !== `● ${ownName}`) { selfLabel.textContent = `● ${ownName}`; selfLabel.title = ownName; }
           // Keep the nearest real visitors visible on crowded mobile devices.
-          const visitors = state.participants.filter(person => person.id !== state.selfId && (person.floor ?? 1) === currentFloor).sort((a, b) => {
+          const visitors = state.participants.filter(person => person.id !== state.selfId).sort((a, b) => {
             if (a.seat !== null && b.seat === null) return -1;
             if (a.seat === null && b.seat !== null) return 1;
             const ap = a.seat === null ? { x: a.x ?? 0, z: a.z ?? 9 } : world.cushions[a.seat];
@@ -706,10 +662,10 @@ export default function TempleWorld(props: WorldProps) {
           });
           visitors.forEach(person => {
             const seatPosition = (person.floor ?? 1) !== 1 || person.seat === null ? null : world.cushions[person.seat];
-            const x = clamp(seatPosition?.x ?? person.x ?? 0, TEMPLE_BOUNDS.minX, TEMPLE_BOUNDS.maxX);
-            const z = clamp(seatPosition?.z ?? person.z ?? 9, TEMPLE_BOUNDS.minZ, TEMPLE_BOUNDS.maxZ);
-            const floor = person.floor ?? 1;
-            const height = world.upperFloors.heights[floor] + (seatPosition ? 0.12 : 0);
+            const legacyFloor = (person.floor ?? 1) > 1;
+            const x = clamp(legacyFloor ? 0 : seatPosition?.x ?? person.x ?? 0, TEMPLE_BOUNDS.minX, TEMPLE_BOUNDS.maxX);
+            const z = clamp(legacyFloor ? 9 : seatPosition?.z ?? person.z ?? 9, TEMPLE_BOUNDS.minZ, TEMPLE_BOUNDS.maxZ);
+            const height = world.floorHeightAt(x, z) + (seatPosition ? 0.12 : 0);
             let existing = remote.get(person.id);
             if (!existing) {
               const colorIndex = Array.from(person.id).reduce((sum, letter) => sum + letter.charCodeAt(0), 0) % remoteColors.length;
@@ -719,11 +675,10 @@ export default function TempleWorld(props: WorldProps) {
               const label = document.createElement("div");
               label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;will-change:transform";
               labels!.appendChild(label);
-              existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1, floor };
+              existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1 };
               remote.set(person.id, existing);
             }
             existing.target.set(x, height, z);
-            existing.floor = floor;
             existing.heading = seatPosition ? Math.PI : person.heading ?? 0;
             const nextAction = person.meditating ? "meditate" : person.action === "idle" && seatPosition ? "sit" : person.action;
             if (nextAction !== existing.action || existing.bowSpeed !== (person.bowSpeed ?? 1)) existing.actionStart = time;
@@ -748,7 +703,8 @@ export default function TempleWorld(props: WorldProps) {
           if ((state.incensePulse ?? 0) !== incensePulse) {
             incensePulse = state.incensePulse ?? 0;
             if (!state.auto && !state.meditating) {
-              navigate({ name: "一层大殿 · 敬香", x: 0, z: -13.8, floor: 1 });
+              incensePrayerUntil = 0;
+              walkTo(0, -13.8);
               approachingIncense = true;
             }
           }
@@ -765,13 +721,13 @@ export default function TempleWorld(props: WorldProps) {
             hydratedIdentity = state.selfId;
             const self = state.participants.find(person => person.id === state.selfId);
             if (!userMoved && self && Number.isFinite(self.x) && Number.isFinite(self.z)) {
-              currentFloor = self.floor ?? 1;
-              const valid = !blocked(self.x!, self.z!);
-              if (!valid) currentFloor = 1;
-              position.set(valid ? self.x! : 0, world.upperFloors.heights[currentFloor], valid ? self.z! : 9);
-              groundPlane.constant = -world.upperFloors.heights[currentFloor];
+              const valid = (self.floor ?? 1) === 1 && !blocked(self.x!, self.z!);
+              const x = valid ? self.x! : 0;
+              const z = valid ? self.z! : 9;
+              position.set(x, world.floorHeightAt(x, z), z);
+              groundPlane.constant = -position.y;
               mapFocus.set(position.x, position.y + 0.65, position.z);
-              state.onFloorChange?.(currentFloor);
+              state.onFloorChange?.(1);
               actor.group.rotation.y = self.heading ?? 0;
             }
           }
@@ -779,13 +735,13 @@ export default function TempleWorld(props: WorldProps) {
           if (state.seat !== lastSeat) {
             lastSeat = state.seat;
             releasedSeat = false;
-            if (currentFloor === 1 && state.seat !== null && world.cushions[state.seat]) {
+            if (state.seat !== null && world.cushions[state.seat]) {
               const cushion = world.cushions[state.seat];
               route = pathTo(cushion.x, cushion.z);
               destination.visible = false;
             }
           }
-          if (currentFloor === 1 && (state.auto || state.meditating) && state.seat !== null && world.cushions[state.seat]) {
+          if ((state.auto || state.meditating) && state.seat !== null && world.cushions[state.seat]) {
             const cushion = world.cushions[state.seat];
             position.set(cushion.x, 0.12, cushion.z);
             route = [];
@@ -801,13 +757,11 @@ export default function TempleWorld(props: WorldProps) {
           if (keys.has("KeyS") || keys.has("ArrowDown")) inputY += 1;
           let dx = 0;
           let dz = 0;
-          if (!state.auto && !state.meditating && !dialogOpen && !stairTransition) {
+          if (!state.auto && !state.meditating && !dialogOpen) {
             const strength = Math.min(1, Math.hypot(inputX, inputY));
             if (strength > 0.1) {
               approachingIncense = false;
               incensePrayerUntil = 0;
-              pendingTravel = null;
-              stairApproach = null;
               const length = Math.hypot(inputX, inputY);
               inputX = inputX / length * strength;
               inputY = inputY / length * strength;
@@ -822,8 +776,13 @@ export default function TempleWorld(props: WorldProps) {
             } else if (route.length) {
               const target = route[0];
               const distance = Math.hypot(target.x - position.x, target.z - position.z);
-              if (distance < 0.09) route.shift();
-              else { dx = (target.x - position.x) / distance; dz = (target.z - position.z) / distance; }
+              if (distance < 0.001) route.shift();
+              else {
+                // Reach each corner before turning, and stop a frame exactly at its waypoint.
+                const stepScale = Math.min(1, distance / (2.9 * dt));
+                dx = (target.x - position.x) / distance * stepScale;
+                dz = (target.z - position.z) / distance * stepScale;
+              }
               if (!route.length) destination.visible = false;
             }
           }
@@ -841,30 +800,8 @@ export default function TempleWorld(props: WorldProps) {
             }
             if (Math.hypot(position.x - previousX, position.z - previousZ) < 0.001 && route.length) { route = []; destination.visible = false; }
           }
-          if (stairApproach && !route.length && Math.hypot(position.x - stairApproach.x, position.z - stairApproach.z) < 0.4 && !dialogOpen) {
-            stairTransition = { stair: stairApproach, start: time, from: position.clone() };
-            stairApproach = null;
-            destination.visible = false;
-          }
-          const climbing = Boolean(stairTransition);
-          if (stairTransition) {
-            const { stair, start, from } = stairTransition;
-            const progress = Math.min(1, (time - start) / 3);
-            position.set(from.x + (stair.targetX - from.x) * progress, from.y + (world.upperFloors.heights[stair.to] - from.y) * progress, from.z + (stair.targetZ - from.z) * progress);
-            actor.group.rotation.y += angleDelta(actor.group.rotation.y, stair.targetZ < from.z ? Math.PI : 0) * Math.min(1, dt * 8);
-            if (progress === 1) {
-              currentFloor = stair.to;
-              stairTransition = null;
-              groundPlane.constant = -world.upperFloors.heights[currentFloor];
-              mapFocus.set(position.x, position.y + 0.65, position.z);
-              cameraTarget.set(position.x, position.y + 0.95, position.z);
-              state.onFloorChange?.(currentFloor);
-              lastRemoteSync = -1;
-              if (pendingTravel) navigate(pendingTravel);
-            }
-          }
-          const walking = climbing || Math.hypot(position.x - previousX, position.z - previousZ) > 0.001;
-          const cushion = currentFloor !== 1 || state.seat === null ? null : world.cushions[state.seat];
+          const walking = Math.hypot(position.x - previousX, position.z - previousZ) > 0.001;
+          const cushion = state.seat === null ? null : world.cushions[state.seat];
           const seated = Boolean(cushion && !walking && Math.hypot(position.x - cushion.x, position.z - cushion.z) < 0.18);
           if (seated !== actualSeated) {
             actualSeated = seated;
@@ -872,7 +809,7 @@ export default function TempleWorld(props: WorldProps) {
           }
           nearestCushionIndex = -1;
           let nearestCushionDistance = 4;
-          if (currentFloor === 1 && !climbing && state.seat === null) world.cushions.forEach((point, index) => {
+          if (state.seat === null) world.cushions.forEach((point, index) => {
             if (state.participants.some(person => person.id !== state.selfId && person.seat === index)) return;
             const distance = Math.hypot(position.x - point.x, position.z - point.z);
             if (distance < nearestCushionDistance) {
@@ -881,24 +818,35 @@ export default function TempleWorld(props: WorldProps) {
             }
           });
           const context: WorldContext = {
-            nearCushion: currentFloor === 1 && world.cushions.some(point => Math.hypot(position.x - point.x, position.z - point.z) <= 2),
-            nearAltar: currentFloor === 1 && Math.hypot(position.x, position.z + 13.8) <= 5,
-            nearFlowers: currentFloor === 1 && Math.hypot(position.x - 16, position.z - 5) <= 5,
-            nearRitual: currentFloor === 1 && Math.hypot(position.x - 18, position.z + 18) <= 5,
+            nearCushion: world.cushions.some(point => Math.hypot(position.x - point.x, position.z - point.z) <= 2),
+            nearAltar: Math.hypot(position.x, position.z + 13.8) <= 5,
+            nearFlowers: Math.hypot(position.x - 16, position.z - 5) <= 5,
+            nearRitual: Math.hypot(position.x - 42, position.z + 12) <= 5,
           };
           if (!lastContext || context.nearCushion !== lastContext.nearCushion || context.nearAltar !== lastContext.nearAltar || context.nearFlowers !== lastContext.nearFlowers || context.nearRitual !== lastContext.nearRitual) {
             lastContext = context;
             state.onContextChange?.(context);
           }
-          if (currentFloor === 1 && !climbing && approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 13.8) < 0.6) {
+          if (approachingIncense && route.length === 0 && Math.hypot(position.x, position.z + 13.8) < 0.6) {
             approachingIncense = false;
             incensePrayerStart = time;
-            incensePrayerUntil = time + 4;
-            offering?.offer();
+            incensePrayerUntil = time + 8.4;
+            incenseInserted = false;
+            state.onIncenseStage?.("begin");
+          }
+          if (incensePrayerUntil > 0 && time >= incensePrayerUntil) {
+            incensePrayerUntil = 0;
+            state.onIncenseStage?.("complete");
           }
           const incensePrayer = time < incensePrayerUntil;
-          if (!climbing) position.y = world.upperFloors.heights[currentFloor] + (seated ? 0.12 : 0);
-          if (walking && !climbing) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(dx, dz)) * Math.min(1, dt * 13);
+          if (incensePrayer && !incenseInserted && time - incensePrayerStart >= 8.4 * 0.68) {
+            offering?.offer();
+            incenseInserted = true;
+            state.onIncenseStage?.("insert");
+          }
+          position.y = world.floorHeightAt(position.x, position.z) + (seated ? 0.12 : 0);
+          groundPlane.constant = -position.y;
+          if (walking) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(dx, dz)) * Math.min(1, dt * 13);
           else if (seated || incensePrayer) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.PI) * Math.min(1, dt * 5);
           else if (firstPerson) actor.group.rotation.y = yaw + Math.PI;
 
@@ -911,7 +859,7 @@ export default function TempleWorld(props: WorldProps) {
           if (sceneAction && time - sceneAction.start >= sceneAction.duration) sceneAction = null;
           const pose = walking ? "idle" : incensePrayer ? "incense" : sceneAction ? sceneAction.kind : state.action === "idle" && seated ? "sit" : state.action;
           const bowPhase = Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1);
-          const incensePhase = incensePrayer ? incenseAge / 4 : sceneAction ? (time - sceneAction.start) / sceneAction.duration : 0;
+          const incensePhase = incensePrayer ? incenseAge / 8.4 : sceneAction ? (time - sceneAction.start) / sceneAction.duration : 0;
           actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "bow" ? bowPhase : undefined);
           selfRing.position.set(position.x, position.y + 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
@@ -928,9 +876,9 @@ export default function TempleWorld(props: WorldProps) {
           world.animate(time);
           offering?.animate(time);
 
-          const indoors = Math.abs(position.x) < 12.6 && position.z < -2.2 && position.z > -21.6;
-          world.upperFloors.setView(currentFloor, indoors || climbing);
-          const floorHeight = climbing ? position.y : world.upperFloors.heights[currentFloor];
+          const activeRoom = world.rooms.find(room => position.x > room.minX && position.x < room.maxX && position.z > room.minZ && position.z < room.maxZ);
+          const indoors = Boolean(activeRoom);
+          const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
           const nextCameraMode = state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
@@ -964,9 +912,9 @@ export default function TempleWorld(props: WorldProps) {
             cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-            if (indoors) {
+            if (activeRoom) {
               for (const turn of [0, Math.PI / 3, -Math.PI / 3, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI]) {
-                cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2 * zoomScale, -12.2, 12.2), floorHeight + 2.6 * zoomScale, clamp(position.z + Math.cos(yaw + turn) * 5.2 * zoomScale, -21.2, -2.6));
+                cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2 * zoomScale, activeRoom.minX + 0.4, activeRoom.maxX - 0.4), floorHeight + 2.6 * zoomScale, clamp(position.z + Math.cos(yaw + turn) * 5.2 * zoomScale, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4));
                 if (!blocked(cameraGoal.x, cameraGoal.z) && Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) > 1.8) break;
               }
             } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius * zoomScale, floorHeight + cameraHeight * zoomScale, position.z + Math.cos(yaw) * cameraRadius * zoomScale);
@@ -983,7 +931,10 @@ export default function TempleWorld(props: WorldProps) {
             occlusionRay.ray.set(camera.position, occlusionDirection.normalize());
             obscuredRoofs.clear();
             occlusionRay.intersectObjects(roofSurfaces, false).forEach(hit => obscuredRoofs.add(hit.object));
-            if (indoors && mapMode) hallRoofs.forEach(roof => obscuredRoofs.add(roof));
+            if (activeRoom && mapMode) {
+              const roomRoofs = activeRoom.name === "大雄宝殿" ? hallRoofs : activeRoom.roofs;
+              roomRoofs.forEach(roof => obscuredRoofs.add(roof));
+            }
             lastOcclusionCheck = time;
           }
           roofSurfaces.forEach(roof => {
@@ -992,14 +943,15 @@ export default function TempleWorld(props: WorldProps) {
             material.opacity += (opacity - material.opacity) * Math.min(1, dt * 9);
             material.depthWrite = material.opacity > 0.98;
           });
+          world.rooms.forEach(room => {
+            const roomRoofs = room.name === "大雄宝殿" ? [...hallRoofs] : room.roofs;
+            const hidden = (activeRoom === room && mapMode) || roomRoofs.some(roof => (roof.material as THREE.Material).opacity < 0.98);
+            room.roofDetails?.forEach(details => { details.visible = !hidden; });
+          });
           renderer.render(scene, camera);
           interactivePoints.forEach(point => {
-            const nearby = !climbing && currentFloor === (point.floor ?? 1) && Math.hypot(position.x - point.x, position.z - point.z) <= 5;
+            const nearby = Math.hypot(position.x - point.x, position.z - point.z) <= 5;
             positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen);
-          });
-          stairPoints.forEach(point => {
-            const nearby = currentFloor === point.floor && !climbing && Math.hypot(position.x - point.x, position.z - point.z) <= 3.5;
-            positionHotspot(point.button, point.x, world.upperFloors.heights[point.floor] + 1, point.z, nearby && !state.auto && !state.meditating && !dialogOpen);
           });
           const availableCushion = world.cushions[nearestCushionIndex];
           positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen);
@@ -1007,15 +959,14 @@ export default function TempleWorld(props: WorldProps) {
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
 
-          if (state.selfId && time - lastSent > 0.2 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05 || lastPosition.floor !== currentFloor)) {
+          if (state.selfId && time - lastSent > 0.2 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05)) {
             lastSent = time;
-            lastPosition = { x: Math.round(position.x * 100) / 100, z: Math.round(position.z * 100) / 100, heading: Math.atan2(Math.sin(actor.group.rotation.y), Math.cos(actor.group.rotation.y)), floor: currentFloor };
+            lastPosition = { x: Math.round(position.x * 100) / 100, z: Math.round(position.z * 100) / 100, heading: Math.atan2(Math.sin(actor.group.rotation.y), Math.cos(actor.group.rotation.y)), floor: 1 };
             state.onPositionChange(lastPosition);
           }
-          let place = currentFloor === 2 ? "二层藏经阁" : currentFloor === 3 ? "三层观云阁" : "静心庭院";
+          let place = activeRoom?.name ?? "静心庭院";
           let nearest = 4.5;
           world.landmarks.forEach(landmark => {
-            if ((landmark.floor ?? 1) !== currentFloor) return;
             const distance = Math.hypot(position.x - landmark.x, position.z - landmark.z);
             if (distance < nearest) { nearest = distance; place = landmark.name; }
           });
@@ -1077,7 +1028,13 @@ export default function TempleWorld(props: WorldProps) {
           <button aria-label="地图导航，去走走" aria-expanded={placeMenu} disabled={controlsDisabled} onClick={() => setPlaceMenu(value => !value)} style={{ display: "flex", alignItems: "center", gap: 4, border: "1px solid #79916844", borderRadius: 20, background: "rgba(250,251,238,.94)", color: "#465b3e", fontSize: 14, fontWeight: 750, minHeight: 44, padding: "8px 9px", whiteSpace: "nowrap" }}>⌖ 地图导航</button>
           <button aria-label="到处走走，随机前往一个地点" disabled={controlsDisabled} onClick={() => { const place = places[Math.floor(Math.random() * places.length)]; if (place) travel.current(place); setPlaceMenu(false); }} style={{ border: "1px solid #79916844", borderRadius: 20, padding: "8px 9px", minHeight: 44, background: "#e3eccff2", color: "#405438", fontSize: 14, fontWeight: 750, whiteSpace: "nowrap" }}>到处走走</button>
         </div>
-        {placeMenu && <div role="group" aria-label="前往寺庙地点" style={{ display: "grid", gap: 5, padding: 7, borderRadius: 14, background: "rgba(251,251,240,.95)", border: "1px solid #899b7633", boxShadow: "0 4px 20px #314c3020" }}>{places.map((place, index) => <button key={`${place.name}-${index}`} disabled={controlsDisabled} onClick={() => { travel.current(place); setPlaceMenu(false); }} style={{ border: 0, borderRadius: 8, padding: "10px 13px", minHeight: 44, background: "#edf0e4", color: "#465b3e", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>⌖ &nbsp; {place.name}</button>)}</div>}
+        {placeMenu && <div role="group" aria-label="前往寺庙地点" style={{ display: "grid", gap: 5, padding: 7, borderRadius: 14, background: "rgba(251,251,240,.95)", border: "1px solid #899b7633", boxShadow: "0 4px 20px #314c3020" }}>
+          {places.map((place, index) => <button key={`${place.name}-${index}`} aria-label={`前往${place.name}`} title={place.name} disabled={controlsDisabled}
+            onClick={() => { travel.current(place); setPlaceMenu(false); }}
+            style={{ border: 0, borderRadius: 8, minHeight: 44, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+            ⌖ &nbsp; {place.name}
+          </button>)}
+        </div>}
         <span className="world-look-hint" style={{ fontSize: 14, fontWeight: 700, color: "#465b3e", textShadow: "0 1px 3px #fff" }}>{props.cameraMode === "map" ? "上下左右拖动地图" : "拖动右侧看风景"}</span>
       </div>
       <div className="world-zoom-controls" role="group" aria-label="缩放视角" style={{ position: "absolute", right: "var(--hud-right, 12px)", top: "calc(var(--hud-top, 12px) + 52px)", display: "flex", zIndex: 9, borderRadius: 22, overflow: "hidden", boxShadow: "0 2px 10px #344e251a", background: "#f7faedee" }}>

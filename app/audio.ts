@@ -11,26 +11,15 @@ type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode };
 type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
 
-const durations: Record<SynthSound, number> = {
-  prayer: 2.4,
-  bow: 0.9,
-  beads: 0.85,
-  meditate: 3.8,
-  incense: 2.2,
-  bell: 3.2,
-  water: 0.85,
-  martial: 1.1,
-};
-
-const peaks: Record<SynthSound, number> = {
-  prayer: 0.31,
-  bow: 0.27,
-  beads: 0.34,
-  meditate: 0.37,
-  incense: 0.30,
-  bell: 0.40,
-  water: 0.22,
-  martial: 0.34,
+const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number }> = {
+  prayer: { duration: 2.8, peak: 0.29, cutoff: 3200, room: 0.7 },
+  bow: { duration: 0.95, peak: 0.23, cutoff: 2400, room: 0.35 },
+  beads: { duration: 0.9, peak: 0.23, cutoff: 3900, room: 0.45 },
+  meditate: { duration: 4.8, peak: 0.33, cutoff: 2600, room: 0.8 },
+  incense: { duration: 2.5, peak: 0.27, cutoff: 3100, room: 0.6 },
+  bell: { duration: 4.2, peak: 0.36, cutoff: 3300, room: 1.0 },
+  water: { duration: 1.1, peak: 0.23, cutoff: 3800, room: 0.15 },
+  martial: { duration: 1.2, peak: 0.29, cutoff: 2500, room: 0.3 },
 };
 
 // Damped, inharmonic modes give each instrument a physical body and a natural tail.
@@ -38,7 +27,7 @@ function addResonance(samples: Float32Array, sampleRate: number, offset: number,
   const start = Math.round(offset * sampleRate);
   for (let index = start; index < samples.length; index += 1) {
     const time = (index - start) / sampleRate;
-    const onset = 1 - Math.exp(-time / attack);
+    const onset = (1 - Math.exp(-time / attack)) ** 2;
     let value = 0;
     for (const mode of modes) {
       value += mode.amplitude * Math.exp(-time / mode.decay) * Math.sin(2 * Math.PI * mode.frequency * time);
@@ -51,91 +40,158 @@ function addBrush(samples: Float32Array, sampleRate: number, offset: number, dur
   const start = Math.round(offset * sampleRate);
   const end = Math.min(samples.length, start + Math.round(duration * sampleRate));
   let filtered = 0;
+  let low = 0;
+  const filterAmount = 1 - Math.exp(-2 * Math.PI * 1800 / sampleRate);
+  const lowAmount = 1 - Math.exp(-2 * Math.PI * 120 / sampleRate);
   let randomState = seed;
   for (let index = start; index < end; index += 1) {
     randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
     const noise = randomState / 2147483648 - 1;
-    filtered += (noise - filtered) * 0.17;
+    filtered += (noise - filtered) * filterAmount;
+    low += (filtered - low) * lowAmount;
     const phase = (index - start) / (end - start);
-    samples[index] += filtered * amplitude * Math.sin(Math.PI * phase) * Math.exp(-phase * 3);
+    const envelope = Math.sin(Math.PI * phase) ** 2 * Math.exp(-phase * 2);
+    samples[index] += (filtered - low) * amplitude * envelope;
   }
 }
 
 function addWood(samples: Float32Array, sampleRate: number, offset: number, strength = 1, pitch = 1, damping = 1) {
   addResonance(samples, sampleRate, offset, [
-    { frequency: 506 * pitch, amplitude: 0.72 * strength, decay: 0.095 * damping },
-    { frequency: 794 * pitch, amplitude: 0.42 * strength, decay: 0.066 * damping },
-    { frequency: 1091 * pitch, amplitude: 0.22 * strength, decay: 0.047 * damping },
-    { frequency: 1617 * pitch, amplitude: 0.10 * strength, decay: 0.028 * damping },
-    { frequency: 2312 * pitch, amplitude: 0.035 * strength, decay: 0.017 * damping },
+    { frequency: 506 * pitch, amplitude: 0.65 * strength, decay: 0.095 * damping },
+    { frequency: 794 * pitch, amplitude: 0.28 * strength, decay: 0.066 * damping },
+    { frequency: 1091 * pitch, amplitude: 0.16 * strength, decay: 0.047 * damping },
+    { frequency: 1617 * pitch, amplitude: 0.06 * strength, decay: 0.028 * damping },
+    { frequency: 2312 * pitch, amplitude: 0.018 * strength, decay: 0.017 * damping },
     { frequency: 218 * pitch, amplitude: 0.16 * strength, decay: 0.035 * damping },
-  ], 0.0008);
-  addBrush(samples, sampleRate, offset, 0.014, 0.44 * strength, Math.round(97 + pitch * 310));
+  ], 0.0014);
+  addBrush(samples, sampleRate, offset, 0.019, 0.22 * strength, Math.round(97 + pitch * 310));
 }
 
 function addBowl(samples: Float32Array, sampleRate: number, offset: number, frequency: number, strength: number, decay: number) {
   addResonance(samples, sampleRate, offset, [
-    { frequency, amplitude: strength * 0.67, decay },
-    { frequency: frequency * 2.013, amplitude: strength * 0.22, decay: decay * 0.70 },
-    { frequency: frequency * 2.019, amplitude: strength * 0.075, decay: decay * 0.67 },
-    { frequency: frequency * 2.682, amplitude: strength * 0.10, decay: decay * 0.43 },
-    { frequency: frequency * 4.07, amplitude: strength * 0.025, decay: decay * 0.25 },
-  ], 0.004);
+    { frequency, amplitude: strength * 0.55, decay },
+    { frequency: frequency * 1.0037, amplitude: strength * 0.11, decay: decay * 0.93 },
+    { frequency: frequency * 2.756, amplitude: strength * 0.12, decay: decay * 0.62 },
+    { frequency: frequency * 4.181, amplitude: strength * 0.045, decay: decay * 0.39 },
+    { frequency: frequency * 5.393, amplitude: strength * 0.017, decay: decay * 0.24 },
+  ], 0.006);
+  addBrush(samples, sampleRate, offset, 0.028, strength * 0.065, Math.round(frequency));
+}
+
+function addWaterDrop(samples: Float32Array, sampleRate: number, offset: number, frequency: number, strength: number) {
+  const start = Math.round(offset * sampleRate);
+  const end = Math.min(samples.length, start + Math.round(0.22 * sampleRate));
+  for (let index = start; index < end; index += 1) {
+    const time = (index - start) / sampleRate;
+    const phase = 2 * Math.PI * frequency * (0.72 * time + 0.28 * 0.021 * (1 - Math.exp(-time / 0.021)));
+    const envelope = (1 - Math.exp(-time / 0.0025)) ** 2 * Math.exp(-time / 0.046);
+    samples[index] += strength * envelope * (Math.sin(phase) + Math.sin(phase * 1.67) * 0.17);
+  }
+  addBrush(samples, sampleRate, offset, 0.075, strength * 0.45, Math.round(frequency));
+}
+
+function softenSamples(samples: Float32Array, sampleRate: number, cutoff: number, room: number, fadeIn: number, fadeOut: number) {
+  let mean = 0;
+  for (const sample of samples) mean += sample;
+  mean /= Math.max(1, samples.length);
+  const dcRetention = Math.exp(-2 * Math.PI * 14 / sampleRate);
+  const angle = 2 * Math.PI * Math.min(cutoff, sampleRate * 0.42) / sampleRate;
+  const cosine = Math.cos(angle);
+  const alpha = Math.sin(angle) / Math.SQRT2;
+  const denominator = 1 + alpha;
+  const b0 = (1 - cosine) / (2 * denominator);
+  const b1 = (1 - cosine) / denominator;
+  const b2 = b0;
+  const a1 = -2 * cosine / denominator;
+  const a2 = (1 - alpha) / denominator;
+  let previousInput = 0;
+  let previousHighPass = 0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    const input = samples[index] - mean;
+    const highPass = input - previousInput + dcRetention * previousHighPass;
+    const output = b0 * highPass + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    previousInput = input;
+    previousHighPass = highPass;
+    x2 = x1;
+    x1 = highPass;
+    y2 = y1;
+    y1 = output;
+    samples[index] = output;
+  }
+  // Sparse early reflections add the small hall's air without a continuous audio graph.
+  const dry = samples.slice();
+  for (const [delay, level] of [[0.019, 0.09], [0.039, 0.05], [0.068, 0.025]]) {
+    const distance = Math.round(delay * sampleRate);
+    for (let index = distance; index < samples.length; index += 1) samples[index] += dry[index - distance] * level * room;
+  }
+  const attackSamples = Math.max(1, Math.round(fadeIn * sampleRate));
+  const releaseSamples = Math.max(1, Math.round(fadeOut * sampleRate));
+  for (let index = 0; index < samples.length; index += 1) {
+    const attack = Math.min(1, index / attackSamples);
+    const release = Math.min(1, (samples.length - 1 - index) / releaseSamples);
+    const envelope = (0.5 - Math.cos(Math.PI * attack) * 0.5) * (0.5 - Math.cos(Math.PI * release) * 0.5);
+    samples[index] *= envelope;
+  }
+  samples[0] = 0;
+  samples[samples.length - 1] = 0;
+}
+
+function normalizeChannels(channels: Float32Array[], peak: number) {
+  let maximum = 0;
+  for (const samples of channels) {
+    for (const sample of samples) maximum = Math.max(maximum, Math.abs(sample));
+  }
+  const level = peak / Math.max(maximum, 0.000001);
+  for (const samples of channels) {
+    for (let index = 0; index < samples.length; index += 1) samples[index] *= level;
+  }
 }
 
 function createSamples(sound: SynthSound, sampleRate: number) {
-  const samples = new Float32Array(Math.ceil(durations[sound] * sampleRate));
+  const profile = soundProfiles[sound];
+  const samples = new Float32Array(Math.ceil(profile.duration * sampleRate));
   switch (sound) {
     case "prayer":
-      addBowl(samples, sampleRate, 0, 587.33, 0.65, 0.70);
+      addBowl(samples, sampleRate, 0, 392, 0.65, 0.8);
       break;
     case "bow":
-      addBrush(samples, sampleRate, 0, 0.24, 0.18, 71);
-      addWood(samples, sampleRate, 0.43, 0.23, 0.48, 0.48);
+      addBrush(samples, sampleRate, 0, 0.32, 0.14, 71);
+      addWood(samples, sampleRate, 0.43, 0.19, 0.42, 0.42);
       break;
     case "beads":
-      [0, 0.17, 0.37, 0.60].forEach((offset, index) => {
-        addWood(samples, sampleRate, offset, 0.25, 2.05 + index * 0.07, 0.18);
+      [0, 0.21, 0.49].forEach((offset, index) => {
+        addWood(samples, sampleRate, offset, 0.16, [1.48, 1.62, 1.43][index], 0.19);
       });
-      addBrush(samples, sampleRate, 0.025, 0.70, 0.035, 83);
+      addBrush(samples, sampleRate, 0.025, 0.70, 0.045, 83);
       break;
     case "meditate":
-      addBowl(samples, sampleRate, 0, 220, 0.8, 1.25);
+      addBowl(samples, sampleRate, 0, 220, 0.8, 1.4);
       break;
     case "incense":
-      addBowl(samples, sampleRate, 0, 783.99, 0.6, 0.62);
-      addBowl(samples, sampleRate, 0.23, 1046.5, 0.16, 0.48);
+      addBowl(samples, sampleRate, 0, 493.88, 0.6, 0.72);
       break;
     case "bell":
-      addBowl(samples, sampleRate, 0, 329.63, 0.8, 1.05);
+      addBowl(samples, sampleRate, 0, 196, 0.8, 1.2);
       break;
     case "water":
-      [0, 0.18, 0.4].forEach((offset, index) => {
-        addResonance(samples, sampleRate, offset, [
-          { frequency: 680 + index * 190, amplitude: 0.5, decay: 0.045 },
-          { frequency: 1450 + index * 230, amplitude: 0.12, decay: 0.03 },
-        ], 0.002);
-        addBrush(samples, sampleRate, offset, 0.11, 0.13, 127 + index);
+      [0, 0.09, 0.25, 0.48].forEach((offset, index) => {
+        addWaterDrop(samples, sampleRate, offset, [880, 620, 740, 1040][index], 0.4 - index * 0.045);
       });
+      addBrush(samples, sampleRate, 0.035, 0.42, 0.16, 127);
       break;
     case "martial":
       [0, 0.28, 0.57].forEach((offset, index) => {
-        addBrush(samples, sampleRate, offset, 0.18, 0.34, 193 + index * 13);
+        addBrush(samples, sampleRate, offset, 0.20, 0.42, 193 + index * 13);
         addResonance(samples, sampleRate, offset + 0.12, [
-          { frequency: 108 + index * 7, amplitude: 0.28, decay: 0.055 },
-          { frequency: 177 + index * 9, amplitude: 0.10, decay: 0.032 },
-        ], 0.001);
+          { frequency: 108 + index * 7, amplitude: 0.21, decay: 0.065 },
+          { frequency: 177 + index * 9, amplitude: 0.06, decay: 0.04 },
+        ], 0.0025);
       });
       break;
   }
-  let maximum = 0;
-  for (const sample of samples) maximum = Math.max(maximum, Math.abs(sample));
-  const level = peaks[sound] / Math.max(maximum, 0.0001);
-  const fadeLength = Math.min(samples.length, Math.round(0.035 * sampleRate));
-  for (let index = 0; index < samples.length; index += 1) {
-    const fade = Math.min(1, (samples.length - 1 - index) / fadeLength);
-    samples[index] *= level * fade;
-  }
+  softenSamples(samples, sampleRate, profile.cutoff, profile.room, 0.003, 0.075);
+  normalizeChannels([samples], profile.peak);
   return samples;
 }
 
@@ -208,15 +264,13 @@ export function createTempleAudio(): TempleAudio {
       if (!response.ok) throw new Error("木鱼录音暂时无法加载");
       const recorded = await audioContext.decodeAudioData(await response.arrayBuffer());
       if (disposed || context !== audioContext) return null;
-      let maximum = 0;
-      for (let channel = 0; channel < recorded.numberOfChannels; channel += 1) {
-        for (const sample of recorded.getChannelData(channel)) maximum = Math.max(maximum, Math.abs(sample));
-      }
-      const level = 0.68 / Math.max(maximum, 0.0001);
+      const channels: Float32Array[] = [];
       for (let channel = 0; channel < recorded.numberOfChannels; channel += 1) {
         const samples = recorded.getChannelData(channel);
-        for (let index = 0; index < samples.length; index += 1) samples[index] *= level;
+        softenSamples(samples, audioContext.sampleRate, 4600, 0.2, 0.0015, 0.03);
+        channels.push(samples);
       }
+      normalizeChannels(channels, 0.68);
       buffers.set("wood", recorded);
       const pending = pendingWood;
       pendingWood = null;

@@ -148,18 +148,34 @@ svg { vertical-align: middle; }
   bottom: auto !important;
   z-index: 7;
   justify-items: start !important;
-  max-width: min(196px, calc(100vw - 24px));
+  width: min(196px, calc(100vw - var(--hud-left) - var(--hud-right)));
+  max-width: 196px;
   pointer-events: none;
 }
 .world-landmarks > button, .world-landmarks > [role="group"] { pointer-events: auto; }
 .temple-game .world-landmarks.is-open { z-index: 12; }
 .world-landmarks > button { font-size: 16px !important; }
 .world-landmarks > [role="group"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   max-height: calc(var(--temple-viewport-height, 100dvh) - 220px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.world-landmarks > [role="group"] button { font-size: 16px !important; }
+.world-landmarks > [role="group"] button {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  color: #fff;
+  background: #657c56;
+  font-size: 14px !important;
+  line-height: 1.35;
+  white-space: nowrap;
+}
 .temple-game .world-look-hint { display: none; }
 .temple-game .world-joystick {
   z-index: 6;
@@ -425,6 +441,25 @@ svg { vertical-align: middle; }
 .woodfish-shortcut:disabled { opacity: .55; }
 .floor-activity-icon { display: block; margin: 20px auto 12px; color: #77895e; }
 .sutra-passage { padding: 20px; border: 1px solid #e4d6ac; border-radius: 12px; background: #faf3df; color: #66553e; font-size: 21px; font-weight: 700; line-height: 1.9; }
+.reading-tabs { display: flex; gap: 8px; margin: 18px 0 12px; }
+.reading-tabs > button { flex: 1; min-width: 0; min-height: 44px; border: 1px solid #c9d4ba; border-radius: 12px; color: #526a44; background: #f0f3e7; font-size: 15px; font-weight: 750; }
+.reading-tabs > button.is-selected { background: #dfe9cd; border-color: #839b6d; color: #354f2b; }
+.reading-figure { margin: 18px 0; padding: 10px; border: 1px solid #d9c99d; border-radius: 12px; background: #f4edda; }
+.reading-figure > a { display: block; border-radius: 6px; overflow: hidden; }
+.reading-image { display: block; width: 100%; height: auto; }
+.reading-figure figcaption { margin-top: 10px; color: #6b5e41; font-size: 14px; font-weight: 750; line-height: 1.65; }
+.reading-figure figcaption > span { display: block; color: #85795d; font-size: 12px; font-weight: 600; }
+.reading-manuscript > a { overflow-x: auto; overscroll-behavior: contain; direction: rtl; }
+.reading-manuscript .reading-image { height: 170px; width: auto; max-width: none; background: #dcd2b7; }
+.reading-description { color: #526549; font-size: 16px; line-height: 1.85; font-weight: 600; }
+.reading-note { padding: 15px; border-left: 3px solid #a5b58b; border-radius: 0 10px 10px 0; background: #edf1e3; color: #526549; font-size: 15px; line-height: 1.8; }
+.reading-note p { margin: 7px 0 0; }
+.reading-source { margin: 12px 0 0; color: #7b826b; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.reading-source a { color: #60764d; text-decoration: underline; text-underline-offset: 3px; }
+.reading-pagination { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.reading-pagination > button { min-width: 0; min-height: 44px; padding: 8px 14px; border: 1px solid #d1dbbf; border-radius: 11px; background: #e5edd8; color: #466138; font-size: 15px; font-weight: 750; }
+.reading-pagination > button:disabled { opacity: .4; }
+.reading-pagination > span { color: #798469; font-size: 14px; white-space: nowrap; }
 .breathing-cloud { width: 126px; height: 126px; margin: 30px auto; border: 1px solid #a9bc99; border-radius: 50%; display: grid; place-items: center; color: #6c865a; background: #e8efdd; transform: scale(.76); }
 .breathing-cloud.is-running { animation: temple-breath 10s ease-in-out infinite; }
 .breathing-prompt { text-align: center; color: #49623c; font-size: 23px; font-weight: 800; }

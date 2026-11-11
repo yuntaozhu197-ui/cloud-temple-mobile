@@ -67,14 +67,14 @@ export function createScenicAreas() {
 
  // Brick pagodas use repeated tapering stories, deep eaves and a small finial.
  const pagodas = [
-  { x: -32.5, z: -19, stories: 5, scale: 1 },
-  { x: -26.5, z: -20, stories: 7, scale: 1 },
-  { x: -22, z: -15, stories: 4, scale: .85 },
-  { x: -33, z: -12, stories: 4, scale: .9 },
-  { x: -27.5, z: -10.5, stories: 5, scale: .85 },
-  { x: -23.5, z: -5.5, stories: 3, scale: .8 },
+  { x: -47.5, z: 16, stories: 5, scale: 1 },
+  { x: -41.5, z: 15, stories: 7, scale: 1 },
+  { x: -37, z: 20, stories: 4, scale: .85 },
+  { x: -48, z: 23, stories: 4, scale: .9 },
+  { x: -42.5, z: 24.5, stories: 5, scale: .85 },
+  { x: -38.5, z: 29.5, stories: 3, scale: .8 },
  ];
- box(-28, .025, -13, 15, .05, 19, paleStone);
+ box(-43, .025, 22, 15, .05, 19, paleStone);
  for (const pagoda of pagodas) {
   const { x, z, stories, scale } = pagoda;
   cylinder(x, .13, z, 1.3 * scale, 1.45 * scale, .26, stone, 8);
@@ -91,10 +91,10 @@ export function createScenicAreas() {
   cylinder(x, top + .5, z, .04, .14, .55, gold, 8);
   block(x, z, 2.7 * scale, 2.7 * scale);
  }
- for (let index = 0; index < 9; index++) box(-28.8, .06, -20.5 + index * 1.8, .7, .06, .8, stone);
- box(-28.8, .3, -15.6, 1.5, .6, .5, shadowBrick);
- box(-28.8, .95, -15.6, 1.2, 1.1, .28, brick);
- block(-28.8, -15.6, 1.6, .7);
+ for (let index = 0; index < 9; index++) box(-43.8, .06, 14.5 + index * 1.8, .7, .06, .8, stone);
+ box(-43.8, .3, 19.4, 1.5, .6, .5, shadowBrick);
+ box(-43.8, .95, 19.4, 1.2, 1.1, .28, brick);
+ block(-43.8, 19.4, 1.6, .7);
 
  // A clear practice court with a wooden dummy, drum and weapon rack.
  box(28, .04, 12, 12.5, .08, 12, paleStone);
@@ -144,7 +144,7 @@ export function createScenicAreas() {
  martialRing.rotation.x = -Math.PI / 2;
  martialRing.castShadow = false;
  martialRing.visible = false;
- const prayerRing = mesh(new THREE.RingGeometry(.7, .78, 32), glow, -28, .14, -14, group);
+ const prayerRing = mesh(new THREE.RingGeometry(.7, .78, 32), glow, -43, .14, 21, group);
  prayerRing.rotation.x = -Math.PI / 2;
  prayerRing.castShadow = false;
  prayerRing.visible = false;
@@ -174,12 +174,12 @@ export function createScenicAreas() {
   colliders,
   landmarks: [
    { name: "放生池", x: -22.5, z: 8 },
-   { name: "少林塔林", x: -28, z: -14 },
+   { name: "少林塔林", x: -43, z: 21 },
    { name: "习武广场", x: 28, z: 12 },
   ],
   interactions: [
    { kind: "release" as const, label: "◌ 放生小鱼", x: -22.5, y: 1.1, z: 8 },
-   { kind: "pagoda" as const, label: "♧ 塔前合掌", x: -28, y: 1.2, z: -14 },
+   { kind: "pagoda" as const, label: "♧ 塔前合掌", x: -43, y: 1.2, z: 21 },
    { kind: "martial" as const, label: "✧ 习武练拳", x: 28, y: 1.1, z: 12 },
   ],
   interact(kind: ScenicAction) {

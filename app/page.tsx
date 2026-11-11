@@ -7,6 +7,7 @@ import SocialTemple from "./SocialTemple";
 import TempleLife from "./TempleLife";
 import AccountGate, { type AccountUser } from "./AccountGate";
 import FloorActivity from "./FloorActivity";
+import TempleReading from "./TempleReading";
 import { createTempleAudio, type TempleSound } from "./audio";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
@@ -246,6 +247,11 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       onPositionChange={movePosition}
       onPlaceChange={setPlace}
       onContextAction={contextAction}
+      onIncenseStage={stage => {
+       if (stage === "begin") tone("incense");
+       if (stage === "insert") tone("prayer");
+       if (stage === "complete") notify("清香已安放，愿你心安。");
+      }}
       onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
      />
     </div>
@@ -262,7 +268,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <strong className="player-menu-name" title={selfName}>{selfName}</strong>
      <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
      <button onClick={toggleSound}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}声音{sound ? "已开启" : "已关闭"}</button>
-     <SocialTemple compact incenseRequest={incenseRequest} selfId={account.id} onInteraction={unlockAudio} onIncense={() => { setIncensePulse(count => count + 1); tone("incense"); }} onNotice={notify} />
+     <SocialTemple compact incenseRequest={incenseRequest} selfId={account.id} onInteraction={unlockAudio} onIncense={() => { setIncensePulse(count => count + 1); }} onNotice={notify} />
      <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       tone(kind === "flower" ? "incense" : kind === "ritual" ? "meditate" : "prayer");
@@ -321,20 +327,14 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       <div className="practice-total"><Wind size={20} />今日静坐<strong>{clock(stats.seconds)}</strong></div>
       <p className="modal-small">记录保存在本设备当前小和尚，按本地日期更新。</p>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
-     </> : modal === "sutra" || modal === "breathe" ? <FloorActivity kind={modal} onSound={tone} /> : modal === "mural" ? <>
-      <p className="eyebrow">莲池云山，静观一念</p>
-      <h2 id="modal-title">看一幅殿内壁画</h2>
-      <img className="mural-preview" src="/art/lotus-paradise-mural.jpg" alt="青绿山水与莲池、流云、仙鹤交织的原创寺院壁画" />
-      <p className="modal-description">莲花舒展，流云绕山，仙鹤掠过水面。这幅壁画借传统矿物色与莲花纹样，画出一方安静的天地。</p>
-      <button className="primary-button" onClick={() => setModal(null)}>继续逛逛大殿</button>
-     </> : <>
+     </> : modal === "sutra" || modal === "breathe" ? <FloorActivity kind={modal} onSound={tone} /> : modal === "mural" ? <TempleReading kind="mural" onSound={tone} /> : <>
       <p className="eyebrow">欢迎来到云间寺</p>
       <h2 id="modal-title">慢慢走，随心坐</h2>
       <ul className="help-list">
-       <li><b>漫游</b><span>左上「地图导航」选择地点或楼层，点「到处走走」自动前往一处风景。左下摇杆行走，也可点地面前往。地图可上下左右拖动。</span></li>
+       <li><b>漫游</b><span>左上「地图导航」选择殿堂或景点，点「到处走走」自动前往一处风景。左下摇杆行走，也可点地面前往。地图可上下左右拖动。</span></li>
        <li><b>视角</b><span>双指开合或点加减按钮缩放。右上菜单内可切换地图、第一人称和第三人称。</span></li>
        <li><b>动作</b><span>右侧「敲木鱼」随时可点。走近蒲团坐稳后，点右下「修行」展开合掌、跪拜、佛珠和静坐。</span></li>
-       <li><b>登楼</b><span>一层可敬香，二层藏经阁可诵读心经，三层可观云调息。走近楼梯或用「去走走」前往。</span></li>
+       <li><b>殿堂</b><span>大雄宝殿可敬香，藏经阁可看经文，观云阁可静心调息。三栋殿堂沿步道相连。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
        <li><b>景观</b><span>钟亭鸣钟，莲池喂锦鲤，放生池放生小鱼，塔林合掌祈愿，习武广场练拳。大雄宝殿可敬香、点莲灯、赏壁画。</span></li>
