@@ -20,7 +20,7 @@ type Participant = {
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
 type Landmark = { name: string; x: number; z: number };
-type ContextAction = "incense" | "incenseGuanyin" | "incenseWenshu" | "longLamp" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
+type ContextAction = "incense" | "incenseGuanyin" | "incenseWenshu" | "incenseCaishen" | "longLamp" | "drum" | "towerBell" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
 type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
   action: string;
@@ -47,6 +47,7 @@ type WorldProps = {
   onSeatedChange?: (seated: boolean) => void;
   onFloorChange?: (floor: TempleFloor) => void;
   onIncenseStage?: (stage: "begin" | "insert" | "complete") => void;
+  onLampStage?: (stage: "begin" | "complete") => void;
 };
 
 type MonkInstance = {
@@ -204,9 +205,13 @@ export default function TempleWorld(props: WorldProps) {
             const state = latest.current;
             if (state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
             if (performance.now() < nextActivation) return;
-            nextActivation = performance.now() + (point.kind === "fish" ? 4000 : 1200);
-            if (point.kind === "bell" || point.kind === "fish" || point.kind === "lamp" || point.kind === "release" || point.kind === "martial" || point.kind === "pagoda") world.interact(point.kind);
+            nextActivation = performance.now() + (point.kind === "fish" ? 4000 : point.kind === "towerBell" ? 3500 : 1200);
+            if (point.kind === "bell" || point.kind === "fish" || point.kind === "lamp" || point.kind === "release" || point.kind === "martial" || point.kind === "pagoda" || point.kind === "drum" || point.kind === "towerBell") world.interact(point.kind);
             if (point.kind === "martial" || point.kind === "release" || point.kind === "pagoda") sceneAction = { kind: point.kind === "martial" ? "martial" : "salute", start: (performance.now() - started) / 1000, duration: 4 };
+            if (point.kind === "drum" || point.kind === "towerBell") {
+              actor.group.rotation.y = Math.atan2(point.x - actor.group.position.x, point.z - 3.5 - actor.group.position.z);
+              sceneAction = { kind: "strike", start: (performance.now() - started) / 1000, duration: 1.2 };
+            }
             state.onContextAction?.(point.kind);
           };
           button.addEventListener("click", activate);
@@ -311,9 +316,12 @@ export default function TempleWorld(props: WorldProps) {
         let incensePrayerUntil = 0;
         let incensePrayerStart = 0;
         let incenseInserted = false;
+        let approachingLamp = false;
+        let lampPrayerUntil = 0;
+        let lampPrayerStart = 0;
         let zoomScale = 1;
         let mapFollowing = false;
-        let sceneAction: { kind: "martial" | "salute"; start: number; duration: number } | null = null;
+        let sceneAction: { kind: "martial" | "salute" | "strike"; start: number; duration: number } | null = null;
         const touchPoints = new Map<number, { x: number; y: number }>();
         let pinchDistance = 0;
         function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.45, 3.2); }
@@ -462,6 +470,8 @@ export default function TempleWorld(props: WorldProps) {
         travel.current = landmark => {
           approachingIncense = false;
           incensePrayerUntil = 0;
+          approachingLamp = false;
+          lampPrayerUntil = 0;
           walkTo(landmark.x, landmark.z);
         };
 
@@ -557,6 +567,8 @@ export default function TempleWorld(props: WorldProps) {
             else if (raycaster.ray.intersectPlane(groundPlane, groundPoint)) {
               approachingIncense = false;
               incensePrayerUntil = 0;
+              approachingLamp = false;
+              lampPrayerUntil = 0;
               walkTo(groundPoint.x, groundPoint.z);
             }
           }
@@ -718,6 +730,8 @@ export default function TempleWorld(props: WorldProps) {
             incensePulse = state.incensePulse ?? 0;
             if (!state.auto && !state.meditating) {
               incensePrayerUntil = 0;
+              approachingLamp = false;
+              lampPrayerUntil = 0;
               incenseTarget = state.incenseShrine ?? "rulai";
               walkTo(SHRINES[incenseTarget].x, SHRINES[incenseTarget].z);
               approachingIncense = true;
@@ -725,7 +739,13 @@ export default function TempleWorld(props: WorldProps) {
           }
           if ((state.lampPulse ?? 0) !== lampPulse) {
             lampPulse = state.lampPulse ?? 0;
-            world.lightLongLamp();
+            if (!state.auto && !state.meditating) {
+              approachingIncense = false;
+              incensePrayerUntil = 0;
+              lampPrayerUntil = 0;
+              walkTo(40, 32.5);
+              approachingLamp = true;
+            }
           }
           if ((state.flowerPulse ?? 0) !== flowerPulse) {
             flowerPulse = state.flowerPulse ?? 0;
@@ -755,6 +775,8 @@ export default function TempleWorld(props: WorldProps) {
             lastSeat = state.seat;
             releasedSeat = false;
             if (state.seat !== null && world.cushions[state.seat]) {
+              approachingLamp = false;
+              lampPrayerUntil = 0;
               const cushion = world.cushions[state.seat];
               route = pathTo(cushion.x, cushion.z);
               destination.visible = false;
@@ -781,6 +803,8 @@ export default function TempleWorld(props: WorldProps) {
             if (strength > 0.1) {
               approachingIncense = false;
               incensePrayerUntil = 0;
+              approachingLamp = false;
+              lampPrayerUntil = 0;
               const length = Math.hypot(inputX, inputY);
               inputX = inputX / length * strength;
               inputY = inputY / length * strength;
@@ -847,6 +871,18 @@ export default function TempleWorld(props: WorldProps) {
             state.onContextChange?.(context);
           }
           const prayerSpot = SHRINES[incenseTarget];
+          if (approachingLamp && route.length === 0 && Math.hypot(position.x - 40, position.z - 32.5) < 0.6 && !dialogOpen) {
+            approachingLamp = false;
+            lampPrayerStart = time;
+            lampPrayerUntil = time + 24;
+            world.lightLongLamp();
+            state.onLampStage?.("begin");
+          }
+          if (lampPrayerUntil > 0 && time >= lampPrayerUntil) {
+            lampPrayerUntil = 0;
+            state.onLampStage?.("complete");
+          }
+          const lampPrayer = time < lampPrayerUntil;
           if (approachingIncense && route.length === 0 && Math.hypot(position.x - prayerSpot.x, position.z - prayerSpot.z) < 0.6) {
             approachingIncense = false;
             incensePrayerStart = time;
@@ -867,7 +903,7 @@ export default function TempleWorld(props: WorldProps) {
           position.y = world.floorHeightAt(position.x, position.z) + (seated ? 0.12 : 0);
           groundPlane.constant = -position.y;
           if (walking) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(dx, dz)) * Math.min(1, dt * 13);
-          else if (seated || incensePrayer) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.PI) * Math.min(1, dt * 5);
+          else if (seated || incensePrayer || lampPrayer) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.PI) * Math.min(1, dt * 5);
           else if (firstPerson) actor.group.rotation.y = yaw + Math.PI;
 
           if (state.actionPulse !== actionPulse || state.action !== localAction) {
@@ -877,10 +913,10 @@ export default function TempleWorld(props: WorldProps) {
           }
           const incenseAge = time - incensePrayerStart;
           if (sceneAction && time - sceneAction.start >= sceneAction.duration) sceneAction = null;
-          const pose = walking ? "idle" : incensePrayer ? "incense" : sceneAction ? sceneAction.kind : state.action === "idle" && seated ? "sit" : state.action;
+          const pose = walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction ? sceneAction.kind : state.action === "idle" && seated ? "sit" : state.action;
           const bowPhase = Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1);
           const incensePhase = incensePrayer ? incenseAge / 8.4 : sceneAction ? (time - sceneAction.start) / sceneAction.duration : 0;
-          actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "bow" ? bowPhase : undefined);
+          actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "light" ? (time - lampPrayerStart) / 24 : pose === "strike" ? incensePhase : pose === "bow" ? bowPhase : undefined);
           selfRing.position.set(position.x, position.y + 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
           selfRing.visible = !seated && !firstPerson;
@@ -931,10 +967,15 @@ export default function TempleWorld(props: WorldProps) {
             );
             cameraTarget.copy(cameraLook);
           } else {
-            cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
+            if (lampPrayer) cameraLook.set(40, 3.8, 28);
+            else cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-            if (activeRoom) {
+            if (lampPrayer) {
+              const lampZoom = clamp(zoomScale, 0.95, 1.35);
+              const lampDistance = 32 * Math.max(1, 0.5 / camera.aspect) * lampZoom;
+              cameraGoal.set(40, 8 * lampZoom, 28 + lampDistance);
+            } else if (activeRoom) {
               const indoorZoom = clamp(zoomScale, 0.65, 1.35);
               for (const turn of [0, Math.PI / 3, -Math.PI / 3, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI]) {
                 cameraGoal.set(clamp(position.x + Math.sin(yaw + turn) * 5.2 * indoorZoom, activeRoom.minX + 0.4, activeRoom.maxX - 0.4), floorHeight + 2.6 * indoorZoom, clamp(position.z + Math.cos(yaw + turn) * 5.2 * indoorZoom, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4));

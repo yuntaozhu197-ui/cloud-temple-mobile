@@ -1,4 +1,4 @@
-export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda";
+export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda" | "drum" | "towerBell" | "lamp";
 
 export type TempleAudio = {
   unlock: () => Promise<boolean>;
@@ -8,10 +8,10 @@ export type TempleAudio = {
 };
 
 type Mode = { frequency: number; amplitude: number; decay: number };
-type Voice = { source: AudioBufferSourceNode; gain: GainNode };
+type Voice = { source: AudioBufferSourceNode; gain: GainNode; sound: TempleSound };
 type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
 
-const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number }> = {
+const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number; fadeOut?: number }> = {
   prayer: { duration: 2.8, peak: 0.29, cutoff: 3200, room: 0.7 },
   bow: { duration: 0.95, peak: 0.23, cutoff: 2400, room: 0.35 },
   beads: { duration: 0.9, peak: 0.23, cutoff: 3900, room: 0.45 },
@@ -20,6 +20,9 @@ const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff
   bell: { duration: 4.2, peak: 0.36, cutoff: 3300, room: 1.0 },
   water: { duration: 1.1, peak: 0.23, cutoff: 3800, room: 0.15 },
   martial: { duration: 1.2, peak: 0.29, cutoff: 2500, room: 0.3 },
+  drum: { duration: 3.6, peak: 0.38, cutoff: 2100, room: 0.75, fadeOut: 0.22 },
+  towerBell: { duration: 11.2, peak: 0.36, cutoff: 2800, room: 1.2, fadeOut: 0.65 },
+  lamp: { duration: 12, peak: 0.25, cutoff: 2700, room: 1.0, fadeOut: 0.8 },
 };
 
 // Damped, inharmonic modes give each instrument a physical body and a natural tail.
@@ -174,6 +177,51 @@ function createSamples(sound: SynthSound, sampleRate: number) {
     case "bell":
       addBowl(samples, sampleRate, 0, 196, 0.8, 1.2);
       break;
+    case "drum":
+      // A stretched hide falls slightly in pitch after the padded beater lands.
+      for (let index = 0; index < samples.length; index += 1) {
+        const time = index / sampleRate;
+        const phase = 2 * Math.PI * (64 * time + 12 * 0.045 * (1 - Math.exp(-time / 0.045)));
+        const envelope = (1 - Math.exp(-time / 0.0035)) ** 2 * Math.exp(-time / 0.62);
+        samples[index] += Math.sin(phase) * envelope * 0.7;
+      }
+      addResonance(samples, sampleRate, 0, [
+        { frequency: 103, amplitude: 0.27, decay: 0.43 },
+        { frequency: 136, amplitude: 0.19, decay: 0.36 },
+        { frequency: 174, amplitude: 0.12, decay: 0.25 },
+        { frequency: 220, amplitude: 0.07, decay: 0.19 },
+        { frequency: 295, amplitude: 0.035, decay: 0.12 },
+        { frequency: 388, amplitude: 0.012, decay: 0.075 },
+      ], 0.0038);
+      addBrush(samples, sampleRate, 0, 0.047, 0.2, 353);
+      break;
+    case "towerBell":
+      // Nearby bronze modes beat gently, while high partials die away first.
+      addResonance(samples, sampleRate, 0, [
+        { frequency: 98, amplitude: 0.38, decay: 3.7 },
+        { frequency: 196, amplitude: 0.5, decay: 3.8 },
+        { frequency: 196.65, amplitude: 0.12, decay: 3.6 },
+        { frequency: 263.3, amplitude: 0.16, decay: 2.8 },
+        { frequency: 392.8, amplitude: 0.13, decay: 2.2 },
+        { frequency: 539.5, amplitude: 0.06, decay: 1.6 },
+        { frequency: 706, amplitude: 0.03, decay: 1.15 },
+        { frequency: 1014, amplitude: 0.012, decay: 0.8 },
+      ], 0.008);
+      addBrush(samples, sampleRate, 0, 0.055, 0.085, 439);
+      break;
+    case "lamp":
+      [0, 1.15, 2.55, 4.15, 6.05].forEach((offset, index) => {
+        const frequency = [587.33, 739.99, 880, 1174.66, 1479.98][index];
+        const strength = 0.5 - index * 0.065;
+        addResonance(samples, sampleRate, offset, [
+          { frequency, amplitude: strength, decay: 1.3 + index * 0.1 },
+          { frequency: frequency * 1.0018, amplitude: strength * 0.14, decay: 1.2 },
+          { frequency: frequency * 2.002, amplitude: strength * 0.085, decay: 0.7 },
+          { frequency: frequency * 3.005, amplitude: strength * 0.02, decay: 0.35 },
+        ], 0.014);
+      });
+      addBowl(samples, sampleRate, 0, 146.83, 0.19, 2.1);
+      break;
     case "water":
       [0, 0.09, 0.25, 0.48].forEach((offset, index) => {
         addWaterDrop(samples, sampleRate, offset, [880, 620, 740, 1040][index], 0.4 - index * 0.045);
@@ -190,7 +238,7 @@ function createSamples(sound: SynthSound, sampleRate: number) {
       });
       break;
   }
-  softenSamples(samples, sampleRate, profile.cutoff, profile.room, 0.003, 0.075);
+  softenSamples(samples, sampleRate, profile.cutoff, profile.room, 0.003, profile.fadeOut ?? 0.075);
   normalizeChannels([samples], profile.peak);
   return samples;
 }
@@ -234,6 +282,10 @@ export function createTempleAudio(): TempleAudio {
 
   function startVoice(sound: TempleSound, buffer: AudioBuffer, audioContext: AudioContext) {
     if (!enabled || disposed || !master || context !== audioContext) return;
+    // Repeated makeup lights renew one ceremony instead of stacking its whole melody.
+    if (sound === "lamp") {
+      for (const voice of voices) if (voice.sound === "lamp") stopVoice(voice, audioContext);
+    }
     // Bound overlapping voices even if someone taps rapidly for a long time.
     if (voices.size >= 10) {
       const oldest = voices.values().next().value;
@@ -246,7 +298,7 @@ export function createTempleAudio(): TempleAudio {
     gain.gain.value = sound === "wood" ? 1 : 0.94 + Math.random() * 0.06;
     source.connect(gain);
     gain.connect(master);
-    const voice = { source, gain };
+    const voice = { source, gain, sound };
     voices.add(voice);
     source.onended = () => releaseVoice(voice);
     source.start();

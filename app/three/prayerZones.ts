@@ -29,6 +29,7 @@ export function createPrayerZones() {
   const white = surface("#f0e6cd");
   const ink = surface("#5b5748");
   const lampSurface = surface("#ffc977", { emissive: "#da8d37", emissiveIntensity: 0.18, metalness: 0.15 });
+  const towerLamps = Array.from({ length: 4 }, () => surface("#ffd990", { emissive: "#e6a348", emissiveIntensity: 0.12, metalness: 0.1 }));
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = staticGroup) => {
     geometries.add(geometry);
     const mesh = new THREE.Mesh(geometry, material);
@@ -243,7 +244,7 @@ export function createPrayerZones() {
       const lampZ = towerZ + Math.cos(angle) * radius * 0.87;
       const niche = box(lampX, baseY + 0.57, lampZ, 0.54, 0.72, 0.08, gold);
       niche.rotation.y = angle;
-      oval(lampX + Math.sin(angle) * 0.055, baseY + 0.59, lampZ + Math.cos(angle) * 0.055, 0.17, 0.27, 0.17, lampSurface);
+      oval(lampX + Math.sin(angle) * 0.055, baseY + 0.59, lampZ + Math.cos(angle) * 0.055, 0.17, 0.27, 0.17, towerLamps[story]);
       cylinder(lampX, baseY + 0.31, lampZ, 0.2, 0.15, 0.07, gold, 8);
     }
   }
@@ -252,6 +253,69 @@ export function createPrayerZones() {
   plaque("长明灯塔", towerX, 1.7, towerZ + 2.2);
   block(towerX, towerZ, 6.3, 6.3);
   batch(staticGroup);
+
+  const ceremony = new THREE.Group();
+  ceremony.name = "长明灯点亮仪式 · 二十四秒";
+  ceremony.visible = false;
+  group.add(ceremony);
+  const glowMaterial = new THREE.MeshBasicMaterial({ color: "#ffdba0", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const petalMaterial = new THREE.MeshStandardMaterial({ color: "#ffdda3", emissive: "#eeb45d", emissiveIntensity: 1.1, transparent: true, opacity: 0, depthWrite: false, roughness: 0.6 });
+  materials.add(glowMaterial);
+  materials.add(petalMaterial);
+  const ringGeometry = new THREE.RingGeometry(0.95, 1, 64);
+  const rings = Array.from({ length: 3 }, (_, index) => {
+    const ringMaterial = glowMaterial.clone();
+    materials.add(ringMaterial);
+    const ring = add(ringGeometry, ringMaterial, towerX, 0.26 + index * 0.06, towerZ, ceremony);
+    ring.name = `莲光涟漪 ${index + 1}`;
+    ring.rotation.x = -Math.PI / 2;
+    ring.castShadow = false;
+    return ring;
+  });
+  const petalGeometry = new THREE.SphereGeometry(1, 8, 5);
+  geometries.add(petalGeometry);
+  const petals = new THREE.InstancedMesh(petalGeometry, petalMaterial, 16);
+  petals.name = "环塔莲光花瓣";
+  petals.frustumCulled = false;
+  ceremony.add(petals);
+  const transform = new THREE.Object3D();
+  const crownMaterial = glowMaterial.clone();
+  materials.add(crownMaterial);
+  const crown = add(new THREE.SphereGeometry(1, 12, 8), crownMaterial, towerX, 8.6, towerZ, ceremony);
+  crown.name = "塔顶心灯辉光";
+  crown.castShadow = false;
+  const crownHalo = add(new THREE.TorusGeometry(1, 0.035, 5, 48), crownMaterial, towerX, 8.6, towerZ, ceremony);
+  crownHalo.name = "塔顶金光环";
+  crownHalo.rotation.x = Math.PI / 2;
+  crownHalo.castShadow = false;
+
+  // A radial alpha texture gives the single particle batch soft, rounded fireflies.
+  const pointSize = 32;
+  const pointPixels = new Uint8Array(pointSize * pointSize * 4);
+  for (let y = 0; y < pointSize; y++) for (let x = 0; x < pointSize; x++) {
+    const distance = Math.hypot((x + 0.5) / pointSize * 2 - 1, (y + 0.5) / pointSize * 2 - 1);
+    const alpha = Math.round(Math.max(0, 1 - distance) ** 2 * 255);
+    pointPixels.set([255, 255, 255, alpha], (y * pointSize + x) * 4);
+  }
+  const pointTexture = new THREE.DataTexture(pointPixels, pointSize, pointSize, THREE.RGBAFormat);
+  pointTexture.magFilter = THREE.LinearFilter;
+  pointTexture.minFilter = THREE.LinearFilter;
+  pointTexture.needsUpdate = true;
+  textures.add(pointTexture);
+  const particleCount = 96;
+  const particlePositions = new Float32Array(particleCount * 3);
+  const particleGeometry = new THREE.BufferGeometry();
+  particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3).setUsage(THREE.DynamicDrawUsage));
+  geometries.add(particleGeometry);
+  const particleMaterial = new THREE.PointsMaterial({ color: "#ffe3ac", map: pointTexture, size: 0.18, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+  materials.add(particleMaterial);
+  const particles = new THREE.Points(particleGeometry, particleMaterial);
+  particles.name = "沿塔升起的九十六点灯火";
+  particles.frustumCulled = false;
+  ceremony.add(particles);
+
+  const smooth = (value: number, start: number, end: number) => THREE.MathUtils.smoothstep(value, start, end);
+  let litAt = -Infinity;
   let litUntil = 0;
   let disposed = false;
   return {
@@ -268,14 +332,66 @@ export function createPrayerZones() {
       { kind: "incenseWenshu" as const, label: "♧ 文殊菩萨敬香", x: 15, y: 1.1, z: 31 },
       { kind: "longLamp" as const, label: "✺ 长明灯许愿", x: 40, y: 1.1, z: 32.5 },
     ],
-    light() { litUntil = performance.now() + 300_000; },
+    light() {
+      if (disposed) return;
+      litAt = performance.now();
+      litUntil = litAt + 900_000;
+      ceremony.visible = true;
+    },
     animate(time: number) {
       if (disposed) return;
-      lampSurface.emissiveIntensity = performance.now() < litUntil ? 1.2 + Math.sin(time * 2.1) * 0.1 : 0.18;
+      const now = performance.now();
+      const age = (now - litAt) / 1000;
+      const lit = now < litUntil;
+      towerLamps.forEach((lamp, story) => {
+        const progress = smooth(age, story * 1.6, story * 1.6 + 2.4);
+        lamp.emissiveIntensity = lit ? 0.12 + progress * (1.18 + Math.sin(time * 2.1 + story * 0.6) * 0.09) : 0.12;
+      });
+      ceremony.visible = age >= 0 && age < 24;
+      if (!ceremony.visible) return;
+      const entrance = smooth(age, 0, 2.5);
+      const fade = 1 - smooth(age, 18, 24);
+      glowMaterial.opacity = entrance * fade * 0.35;
+      petalMaterial.opacity = entrance * fade * 0.42;
+      particleMaterial.opacity = smooth(age, 1, 5) * fade * 0.82;
+      for (const [index, ring] of rings.entries()) {
+        const ripple = ((age + index * 2.4) % 8) / 8;
+        ring.scale.setScalar(2.2 + ripple * 3.2);
+        ring.position.y = 0.25 + ripple * 0.55;
+        ring.material.opacity = entrance * fade * Math.sin(ripple * Math.PI) * 0.42;
+      }
+      for (let index = 0; index < 16; index++) {
+        const angle = index * Math.PI / 8 + Math.sin(time * 0.16) * 0.08;
+        const opening = smooth(age, 1, 7);
+        const radius = 2.2 + opening * 1.3;
+        transform.position.set(towerX + Math.sin(angle) * radius, 0.35 + Math.sin(opening * Math.PI) * 0.4, towerZ + Math.cos(angle) * radius);
+        transform.rotation.set(0.35 + opening * 0.45, angle, 0);
+        transform.scale.set(0.32 + opening * 0.12, 0.12, 0.9 + opening * 0.55);
+        transform.updateMatrix();
+        petals.setMatrixAt(index, transform.matrix);
+      }
+      petals.instanceMatrix.needsUpdate = true;
+      const crownStrength = smooth(age, 7, 13) * fade;
+      crownMaterial.opacity = crownStrength * 0.24;
+      crown.scale.set(0.5 + crownStrength * 0.7, 0.7 + crownStrength * 1.1, 0.5 + crownStrength * 0.7);
+      crown.visible = age >= 7;
+      crownHalo.visible = age >= 7;
+      crownHalo.scale.setScalar(0.8 + crownStrength * 1.3);
+      crownHalo.rotation.z = time * 0.16;
+      for (let index = 0; index < particleCount; index++) {
+        const phase = (age * (0.07 + index % 5 * 0.004) + index / particleCount) % 1;
+        const angle = phase * Math.PI * 4 + index * 2.399;
+        const radius = 2.05 + Math.sin(phase * Math.PI) * 0.5 + index % 4 * 0.08;
+        particlePositions[index * 3] = towerX + Math.cos(angle) * radius;
+        particlePositions[index * 3 + 1] = 0.6 + phase * (8.3 + crownStrength * 1.1);
+        particlePositions[index * 3 + 2] = towerZ + Math.sin(angle) * radius;
+      }
+      particleGeometry.getAttribute("position").needsUpdate = true;
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      petals.dispose();
       group.removeFromParent();
       group.clear();
       geometries.forEach(geometry => geometry.dispose());

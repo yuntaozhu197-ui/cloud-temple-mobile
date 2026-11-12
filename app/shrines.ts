@@ -1,4 +1,4 @@
-export type ShrineId = "rulai" | "guanyin" | "wenshu";
+export type ShrineId = "rulai" | "guanyin" | "wenshu" | "caishen";
 
 export const SHRINES = {
   rulai: {
@@ -12,5 +12,9 @@ export const SHRINES = {
   wenshu: {
     name: "文殊菩萨", hall: "文殊殿", intention: "学业 · 高考 · 智慧",
     description: "愿学子专注笃行，愿每一份努力有所收获。", x: 15, z: 31, furnaceZ: 30,
+  },
+  caishen: {
+    name: "财神", hall: "财神庙", intention: "事业 · 勤勉 · 丰足",
+    description: "愿勤勉有所获，愿生活安稳丰足。", x: 0, z: -28, furnaceZ: -29,
   },
 } satisfies Record<ShrineId, { name: string; hall: string; intention: string; description: string; x: number; z: number; furnaceZ: number }>;

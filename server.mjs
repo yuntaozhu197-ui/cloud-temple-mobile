@@ -376,7 +376,7 @@ export function createTempleServer({
 
   function incenseCounts(identity, timestamp) {
     const day = offeringDayFormatter.format(new Date(timestamp));
-    const shrines = Object.fromEntries(["rulai", "guanyin", "wenshu"].map(id => [id, { today: 0, total: 0, mineToday: 0 }]));
+    const shrines = Object.fromEntries(["rulai", "guanyin", "wenshu", "caishen"].map(id => [id, { today: 0, total: 0, mineToday: 0 }]));
     for (const { shrine, ...counts } of queries.shrineCounts.all(day, identity.id, day)) {
       if (Object.hasOwn(shrines, shrine)) shrines[shrine] = counts;
     }
@@ -480,7 +480,7 @@ export function createTempleServer({
     registerUser(identity, timestamp);
     if (pathname === "/api/incense") {
       const shrine = body.shrine ?? "rulai";
-      if (!["rulai", "guanyin", "wenshu"].includes(shrine)) {
+      if (!["rulai", "guanyin", "wenshu", "caishen"].includes(shrine)) {
         sendJson(response, { error: "invalid_shrine", message: "请选择一处殿堂敬香。" }, 400, identity);
         return;
       }

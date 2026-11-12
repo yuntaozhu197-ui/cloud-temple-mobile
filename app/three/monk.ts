@@ -133,6 +133,25 @@ export function createMonk(color = 0xcf895c): {
     oval(heldIncense, incenseEmber, side * 0.025, 0.47, 0, 0.012, 0.018, 0.012);
   }
 
+  const heldLamp = new THREE.Group();
+  heldLamp.name = "ritual-lotus-lamp";
+  heldLamp.position.set(0, 0.03, 0.1);
+  heldLamp.visible = false;
+  prayerHands.add(heldLamp);
+  const lampGold = material(0xd9b469, 0.5);
+  const lampFlameMaterial = new THREE.MeshBasicMaterial({ color: 0xffe8a0 });
+  materials.add(lampFlameMaterial);
+  const lampPetalGeometry = new THREE.SphereGeometry(1, 8, 6);
+  for (let index = 0; index < 7; index++) {
+    const angle = index / 7 * Math.PI * 2;
+    const petal = mesh(lampPetalGeometry, lampGold, heldLamp, Math.sin(angle) * 0.055, 0, Math.cos(angle) * 0.055);
+    petal.scale.set(0.035, 0.045, 0.07);
+    petal.rotation.y = angle;
+    petal.rotation.x = -0.5;
+  }
+  const lampFlame = mesh(lampPetalGeometry, lampFlameMaterial, heldLamp, 0, 0.065, 0);
+  lampFlame.scale.set(0.022, 0.055, 0.022);
+
   const standingLegs = new THREE.Group();
   group.add(standingLegs);
   const legPivots: THREE.Group[] = [];
@@ -179,7 +198,8 @@ export function createMonk(color = 0xcf895c): {
   oval(mallet, woodLight, 0.16, 0.105, 0, 0.043, 0.037, 0.04);
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
-    const seated = !walking && !["idle", "walk", "incense", "salute", "martial"].includes(action);
+    if (walking && (action === "light" || action === "strike")) action = "walk";
+    const seated = !walking && !["idle", "walk", "incense", "salute", "martial", "light", "strike"].includes(action);
     const animationPhase = phase ?? 0;
     const sway = Math.sin(t * 9 + animationPhase);
     standingLegs.visible = !seated;
@@ -193,9 +213,10 @@ export function createMonk(color = 0xcf895c): {
       legPivots[index].rotation.set(walking ? -sway * side * 0.43 : 0, 0, 0);
       palms[index].visible = true;
     }
-    prayerHands.visible = action === "prayer" || action === "incense" || action === "salute";
+    prayerHands.visible = action === "prayer" || action === "incense" || action === "salute" || action === "light";
     prayerHands.position.set(0, 0.245, 0.265);
     heldIncense.visible = action === "incense" && (phase ?? 0) < 0.68;
+    heldLamp.visible = action === "light";
     beadRing.visible = action === "beads";
     woodenFish.visible = action === "wood";
 
@@ -203,11 +224,27 @@ export function createMonk(color = 0xcf895c): {
       arms[0].rotation.set(-0.62, 0, 0.62);
       arms[1].rotation.set(-0.62, 0, -0.62);
     }
-    if (action === "prayer" || action === "incense" || action === "salute") {
+    if (action === "prayer" || action === "incense" || action === "salute" || action === "light") {
       arms[0].rotation.set(-0.90, -0.05, 0.79);
       arms[1].rotation.set(-0.90, 0.05, -0.79);
       palms[0].visible = false;
       palms[1].visible = false;
+    }
+    if (action === "light") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const lift = THREE.MathUtils.smoothstep(progress, 0.05, 0.25) * (1 - THREE.MathUtils.smoothstep(progress, 0.78, 0.96));
+      prayerHands.position.y += lift * 0.24;
+      prayerHands.position.z += lift * 0.09;
+      arms[0].rotation.x -= lift * 0.2;
+      arms[1].rotation.x -= lift * 0.2;
+      head.rotation.x = Math.sin(progress * Math.PI) * 0.09;
+      lampFlame.scale.y = 0.055 * (1 + Math.sin(t * 4.1) * 0.09);
+    }
+    if (action === "strike") {
+      const strike = Math.sin(THREE.MathUtils.clamp(phase ?? 0, 0, 1) * Math.PI);
+      arms[0].rotation.set(-0.8 - strike * 0.6, -0.08, 0.25);
+      arms[1].rotation.set(-1.1 - strike * 0.4, 0.08, -0.25);
+      torso.rotation.x = strike * 0.1;
     }
     if (action === "incense") {
       const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);

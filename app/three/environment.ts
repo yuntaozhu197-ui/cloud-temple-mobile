@@ -6,6 +6,7 @@ import { createScenicAreas } from './scenicAreas';
 import { createTempleMountain } from './mountain';
 import { createFishSchool } from './fishSchool';
 import { createPrayerZones } from './prayerZones';
+import { createFortuneTowers } from './fortuneTowers';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -14,13 +15,13 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   colliders: Collider[];
   cushions: Array<{ x: number; z: number }>;
   landmarks: Array<{ name: string; x: number; z: number }>;
-  interactions: Array<{ kind: 'incense' | 'incenseGuanyin' | 'incenseWenshu' | 'longLamp' | 'flower' | 'ritual' | 'bell' | 'fish' | 'mural' | 'lamp' | 'sutra' | 'breathe' | 'release' | 'martial' | 'pagoda'; label: string; x: number; y: number; z: number }>;
+  interactions: Array<{ kind: 'incense' | 'incenseGuanyin' | 'incenseWenshu' | 'incenseCaishen' | 'longLamp' | 'drum' | 'towerBell' | 'flower' | 'ritual' | 'bell' | 'fish' | 'mural' | 'lamp' | 'sutra' | 'breathe' | 'release' | 'martial' | 'pagoda'; label: string; x: number; y: number; z: number }>;
   rooms: TempleRoom[];
   floorHeightAt: (x: number, z: number) => number;
   offerFlowers: () => void;
   startRitual: () => void;
   lightLongLamp: () => void;
-  interact: (kind: 'bell' | 'fish' | 'lamp' | 'release' | 'martial' | 'pagoda') => void;
+  interact: (kind: 'bell' | 'fish' | 'lamp' | 'release' | 'martial' | 'pagoda' | 'drum' | 'towerBell') => void;
   animate: (t: number) => void;
   dispose: () => void;
 } {
@@ -693,10 +694,13 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   const prayerZones = createPrayerZones();
   world.add(prayerZones.group);
   colliders.push(...prayerZones.colliders);
+  const fortuneTowers = createFortuneTowers();
+  world.add(fortuneTowers.group);
+  colliders.push(...fortuneTowers.colliders);
 
   // Bake stationary shapes by material so the detailed garden stays light on phones.
   // Independent animated objects and the walkable raycast plane retain their identity.
-  const movingObjects = new Set<THREE.Object3D>([...lanterns, fishSchool.group, bell, striker, ...ripples, feedRipple, lampFlame, altarFlowers, ritualAura, sacredArt.group, detachedHalls.group, scenicAreas.group, ...mainRoofDetails, mountain.group, prayerZones.group]);
+  const movingObjects = new Set<THREE.Object3D>([...lanterns, fishSchool.group, bell, striker, ...ripples, feedRipple, lampFlame, altarFlowers, ritualAura, sacredArt.group, detachedHalls.group, scenicAreas.group, ...mainRoofDetails, mountain.group, prayerZones.group, fortuneTowers.group]);
   const staticBatches = new Map<string, { surface: THREE.Material; castShadow: boolean; receiveShadow: boolean; pieces: THREE.BufferGeometry[]; objects: THREE.Mesh[] }>();
   world.updateMatrixWorld(true);
   world.traverse((object) => {
@@ -730,11 +734,12 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     ground,
     colliders,
     cushions,
-    rooms: [{ name: '大雄宝殿', minX: -12.6, maxX: 12.6, minZ: -21.6, maxZ: -2.2, roofs: [], roofDetails: mainRoofDetails, elevation: 0 }, ...detachedHalls.rooms, ...prayerZones.rooms],
+    rooms: [{ name: '大雄宝殿', minX: -12.6, maxX: 12.6, minZ: -21.6, maxZ: -2.2, roofs: [], roofDetails: mainRoofDetails, elevation: 0 }, ...detachedHalls.rooms, ...prayerZones.rooms, ...fortuneTowers.rooms],
     floorHeightAt: detachedHalls.floorHeightAt,
     landmarks: [
       ...scenicAreas.landmarks,
       ...prayerZones.landmarks,
+      ...fortuneTowers.landmarks,
       { name: '大雄宝殿', x: 0, z: -13.8 },
       { name: '藏经阁', x: -30, z: -13.5 },
       { name: '观云阁', x: 30, z: -16 },
@@ -752,6 +757,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     interactions: [
       ...scenicAreas.interactions,
       ...prayerZones.interactions,
+      ...fortuneTowers.interactions,
       { kind: 'incense', label: '♧ 如来敬香', x: 0, y: 1.3, z: -13.8 },
       { kind: 'flower', label: '✿ 供花', x: 16, y: 0.7, z: 5 },
       { kind: 'ritual', label: '✦ 做法事', x: 42, y: 0.9, z: -12 },
@@ -773,6 +779,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     },
     lightLongLamp() { prayerZones.light(); },
     interact(kind) {
+      if (kind === 'drum' || kind === 'towerBell') { fortuneTowers.interact(kind); return; }
       if (kind === 'release' || kind === 'martial' || kind === 'pagoda') { scenicAreas.interact(kind); return; }
       const now = performance.now();
       if (kind === 'bell') bellStarted = now;
@@ -782,6 +789,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     animate(t: number) {
       scenicAreas.animate(t);
       prayerZones.animate(t);
+      fortuneTowers.animate(t);
       const now = performance.now();
       altarFlowers.visible = now < flowersUntil;
       if (altarFlowers.visible) {
@@ -830,6 +838,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       scenicAreas.dispose();
       mountain.dispose();
       prayerZones.dispose();
+      fortuneTowers.dispose();
       fishSchool.dispose();
       for (const instance of instances) instance.dispose();
       for (const geometry of geometries) geometry.dispose();

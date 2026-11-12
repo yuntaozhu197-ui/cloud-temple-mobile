@@ -18,6 +18,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onLight?: () => void;
+  onViewCeremony?: () => void;
 };
 
 async function lampRequest(selfId: string, signal: AbortSignal, body?: Record<string, unknown>): Promise<LampSnapshot> {
@@ -55,7 +56,7 @@ function shanghaiDay() {
   return `${calendar.year}-${calendar.month}-${calendar.day}`;
 }
 
-export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
+export default function TempleLamps({ selfId, open, onClose, onLight, onViewCeremony }: Props) {
   const [snapshot, setSnapshot] = useState<LampSnapshot | null>(null);
   const [wish, setWish] = useState("");
   const [makeupDay, setMakeupDay] = useState("");
@@ -64,12 +65,14 @@ export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loadKey, setLoadKey] = useState(0);
+  const [ceremonyUntil, setCeremonyUntil] = useState(0);
+  const [ceremonyRemaining, setCeremonyRemaining] = useState(0);
   const panel = useRef<HTMLElement>(null);
   const operation = useRef<AbortController | null>(null);
   const version = useRef(0);
   const loadedClientDay = useRef("");
-  const callbacks = useRef({ onClose, onLight });
-  callbacks.current = { onClose, onLight };
+  const callbacks = useRef({ onClose, onLight, onViewCeremony });
+  callbacks.current = { onClose, onLight, onViewCeremony };
 
   useEffect(() => {
     const currentVersion = ++version.current;
@@ -81,6 +84,8 @@ export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
     setBusy("");
     setMessage("");
     setError("");
+    setCeremonyUntil(0);
+    setCeremonyRemaining(0);
     setLoading(Boolean(open && selfId));
     if (!open || !selfId) return;
     const controller = new AbortController();
@@ -111,6 +116,20 @@ export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
       operation.current?.abort();
     };
   }, [open, selfId, loadKey]);
+
+  useEffect(() => {
+    if (!open || !ceremonyUntil) return;
+    let interval: number | undefined;
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((ceremonyUntil - Date.now()) / 1000));
+      setCeremonyRemaining(remaining);
+      if (!remaining && interval !== undefined) window.clearInterval(interval);
+    };
+    update();
+    if (Date.now() >= ceremonyUntil) return;
+    interval = window.setInterval(update, 500);
+    return () => window.clearInterval(interval);
+  }, [open, ceremonyUntil]);
 
   useEffect(() => {
     if (!open || !selfId) return;
@@ -186,7 +205,11 @@ export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
         setMessage(result.wish.text ? "心愿已安放，愿你日日心有光。" : "心愿已清空。");
       } else {
         setMessage(day && day < result.today ? `${displayDay(day)}的灯已补亮。` : "今日长明灯已点亮。愿你平安从容。");
-        callbacks.current.onLight?.();
+        if (result.total > snapshot.total) {
+          setCeremonyUntil(Date.now() + 24_000);
+          setCeremonyRemaining(24);
+          callbacks.current.onLight?.();
+        }
       }
     } catch (failure) {
       if (version.current === currentVersion) setError(failure instanceof Error && failure.name !== "AbortError" ? failure.message : "连接超时，请重试。重复点灯会保留同一天的一次记录。");
@@ -212,13 +235,15 @@ export default function TempleLamps({ selfId, open, onClose, onLight }: Props) {
         {loading && <p className="lamp-status" role="status">正在迎回你的灯火…</p>}
         {!selfId && <p className="lamp-status">取一个名字入寺后，就能保存自己的长明灯。</p>}
         {snapshot && <>
-          <div className={`lamp-hero ${snapshot.litToday ? "is-lit" : ""}`}>
+          <div className={`lamp-hero ${snapshot.litToday || ceremonyRemaining > 0 ? "is-lit" : ""} ${ceremonyRemaining > 0 ? "is-ceremonial" : ""}`}>
+            {ceremonyRemaining > 0 && <div className="lamp-sparkles" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <i key={index} style={{ left: `${10 + index * 7}%`, animationDelay: `${index * -0.34}s` }} />)}</div>}
             <div className="lamp-lantern" aria-hidden="true"><div className="lamp-flame" /></div>
             <strong>{snapshot.litToday ? "今日灯火已亮" : "为今天点一盏灯"}</strong>
             <span>已点亮 {snapshot.total} 天</span>
             <button className="lamp-primary" type="button" disabled={Boolean(busy) || snapshot.litToday} onClick={() => void submit("light")}>
               <Flame size={18} />{busy === snapshot.today ? "点亮中…" : snapshot.litToday ? "今日已点亮" : "亲手点亮今日长明灯"}
             </button>
+            {ceremonyRemaining > 0 && <div className="lamp-ceremony-status" role="status"><span>{ceremonyRemaining > 17 ? "灯火逐层亮起" : ceremonyRemaining > 8 ? "莲光与心愿缓缓升起" : "愿这一盏温柔长伴"}</span><small>点灯仪式 · {ceremonyRemaining}秒</small>{onViewCeremony && <button className="lamp-secondary" type="button" onClick={() => callbacks.current.onViewCeremony?.()}>观看灯塔仪式</button>}</div>}
           </div>
           <form className="lamp-wish" onSubmit={event => { event.preventDefault(); void submit("wish"); }}>
             <label htmlFor="lamp-wish">我的心愿</label>

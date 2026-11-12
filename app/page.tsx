@@ -215,15 +215,19 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setDeparted(true);
   void sync({ leave: true });
  };
- const contextAction = (kind: "incense" | "incenseGuanyin" | "incenseWenshu" | "longLamp" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda") => {
-  if (kind === "incense" || kind === "incenseGuanyin" || kind === "incenseWenshu") {
-   setIncenseShrine(kind === "incenseGuanyin" ? "guanyin" : kind === "incenseWenshu" ? "wenshu" : "rulai");
+ const contextAction = (kind: "incense" | "incenseGuanyin" | "incenseWenshu" | "incenseCaishen" | "longLamp" | "drum" | "towerBell" | "flower" | "ritual" | "bell" | "fish" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda") => {
+  const incenseTargets: Partial<Record<typeof kind, ShrineId>> = { incense: "rulai", incenseGuanyin: "guanyin", incenseWenshu: "wenshu", incenseCaishen: "caishen" };
+  const shrine = incenseTargets[kind];
+  if (shrine) {
+   setIncenseShrine(shrine);
    setIncenseRequest(value => value + 1);
   }
   if (kind === "longLamp") setLampOpen(true);
   if (kind === "flower") setFlowerRequest(value => value + 1);
   if (kind === "ritual") setRitualRequest(value => value + 1);
   if (kind === "bell") { tone("bell"); notify("钟声已响，让这一念慢慢安定。"); }
+  if (kind === "drum") { tone("drum"); notify("鼓声沉稳，余音慢慢散入山间。"); }
+  if (kind === "towerBell") { tone("towerBell"); notify("铜钟轻撞，愿这一声悠远陪你静心。"); }
   if (kind === "fish") { tone("water"); notify("撒下一点鱼食，锦鲤正向你游来。"); }
   if (kind === "lamp") { tone("incense"); notify("莲灯已点亮，愿这一盏温柔陪着你。"); }
   if (kind === "mural") setModal("mural");
@@ -234,8 +238,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
-  <div className="site-shell temple-game" onKeyDownCapture={unlockAudio}>
-   <main className="temple-stage" aria-label="云间寺三维庭院" onPointerDownCapture={unlockAudio}>
+  <div className="site-shell temple-game" onKeyDownCapture={unlockAudio} onPointerDownCapture={unlockAudio}>
+   <main className="temple-stage" aria-label="云间寺三维庭院">
     <div className="courtyard world-courtyard">
      <TempleWorld
       cameraMode={cameraMode}
@@ -262,6 +266,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        if (stage === "begin") tone("incense");
        if (stage === "insert") tone("prayer");
        if (stage === "complete") notify("清香已安放，愿你心安。");
+      }}
+      onLampStage={stage => {
+       if (stage === "begin") { tone("lamp"); notify("灯火逐层点亮，愿你心中常有光。"); }
+       if (stage === "complete") notify("点灯仪式圆满，灯塔的暖光会继续陪伴你。");
       }}
       onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
      />
@@ -320,7 +328,17 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
-   <TempleLamps selfId={account.id} open={lampOpen} onClose={() => setLampOpen(false)} onLight={() => { tone("incense"); setLampPulse(value => value + 1); }} />
+   <TempleLamps selfId={account.id} open={lampOpen} onClose={() => setLampOpen(false)}
+    onLight={() => { tone("incense"); setLampPulse(value => value + 1); }}
+    onViewCeremony={() => {
+     unlockAudio();
+     if (autoRef.current) stopAuto();
+     if (meditatingRef.current) finishMeditation();
+     setLampOpen(false);
+     setCameraMode("third");
+     setLampPulse(value => value + 1);
+     notify("正前往长明灯塔，抵达后开始点灯仪式。");
+    }} />
    {toast && createPortal(<div className="toast game-toast" role="status"><Leaf size={18} />{toast}</div>, document.body)}
    {modal && <div className="modal-backdrop" onClick={() => setModal(null)}>
     <section className="modal game-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={event => event.stopPropagation()}>
@@ -349,6 +367,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        <li><b>动作</b><span>右侧「敲木鱼」随时可点。走近蒲团坐稳后，点右下「修行」展开合掌、跪拜、佛珠和静坐。</span></li>
        <li><b>殿堂</b><span>大雄宝殿向如来敬香，观音殿与文殊殿各有独立香炉。文殊殿可为学业、高考祈愿。藏经阁读经，观云阁调息。</span></li>
        <li><b>点灯</b><span>长明灯塔可写下私密心愿，每日手动点亮，漏点日期可免费补点。地图导航可前往灯塔，菜单可打开我的长明灯。</span></li>
+       <li><b>钟鼓</b><span>地图导航可前往鼓楼、钟楼，走近后敲鼓或撞钟。财神庙设有独立敬香入口。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
        <li><b>景观</b><span>钟亭鸣钟，莲池喂锦鲤，放生池放生小鱼，塔林合掌祈愿，习武广场练拳。大雄宝殿可敬香、点莲灯、赏壁画。</span></li>
