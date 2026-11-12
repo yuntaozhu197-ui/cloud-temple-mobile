@@ -15,6 +15,8 @@ import { TEMPLE_SEATS } from "./templeSeats";
 import { lampRequest } from "./lampArchive";
 import TempleAmbience from "./TempleAmbience";
 import TempleLanterns from "./TempleLanterns";
+import TempleResidents from "./TempleResidents";
+import type { NpcResidentId } from "./npcResidents";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
@@ -42,6 +44,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [lampLit, setLampLit] = useState(false);
  const [skyLanternOpen, setSkyLanternOpen] = useState(false);
  const [skyLanternPulse, setSkyLanternPulse] = useState(0);
+ const [residentId, setResidentId] = useState<NpcResidentId | null>(null);
+ const [talkingNpcId, setTalkingNpcId] = useState<NpcResidentId | null>(null);
  const [audioUnlocked, setAudioUnlocked] = useState(false);
  const [ambientPosition, setAmbientPosition] = useState({ x: 0, z: 9 });
  const ambientPositionRef = useRef(ambientPosition);
@@ -287,6 +291,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       lampPulse={lampPulse}
       lampLit={lampLit}
       skyLanternPulse={skyLanternPulse}
+      talkingNpcId={talkingNpcId}
+      onNpcEncounter={setResidentId}
       action={action}
       actionPulse={pulse}
       auto={auto}
@@ -374,6 +380,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
+   <TempleResidents residentId={menuOpen ? null : residentId} onConversationChange={setTalkingNpcId} />
    <TempleAmbience position={ambientPosition} sound={sound} unlocked={audioUnlocked} audio={audioRef.current} />
    <TempleLanterns selfId={account.id} open={skyLanternOpen} onClose={() => setSkyLanternOpen(false)} onRelease={() => {
     if (autoRef.current) stopAuto();

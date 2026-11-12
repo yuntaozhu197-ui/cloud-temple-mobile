@@ -61,10 +61,9 @@ export function createScenicAreas() {
   cylinder(-22.7, .55, z, .13, .17, 1.1, stone);
   box(-22.7, 1.1, z, .48, .14, .48, paleStone);
  }
- box(-22.7, .74, 8, .14, .12, 4.4, wood);
- // A central opening in the shore rail marks the offering platform.
- box(-22.7, .74, 8, .2, .2, .9, paleStone);
- for (let plank = 0; plank < 5; plank++) box(-22.7, .07, 7.5 + plank * .25, 1.7, .1, .21, wood);
+ // The middle of the rail stays open, and decking ends before the fish enters water.
+ for (const z of [6.45, 9.55]) box(-22.7, .74, z, .14, .12, 1.3, wood);
+ for (let plank = 0; plank < 5; plank++) box(-22.65, .025, 7.5 + plank * .25, 1.45, .05, .21, wood);
 
  // Brick pagodas use repeated tapering stories, deep eaves and a small finial.
  const pagodas = [
@@ -131,9 +130,10 @@ export function createScenicAreas() {
   name: "放生池 · 多彩鱼群", count: 24, capacity: 72,
   x: -28, z: 8, radiusX: 3.8, radiusZ: 3.8, waterY: .15,
   feedX: -25, feedZ: 8,
+  releaseX: -24.3, releaseZ: 8,
  });
  group.add(fishSchool.group);
- const releaseRipple = mesh(new THREE.RingGeometry(.28, .34, 32), glow, -24.6, .13, 8, group);
+ const releaseRipple = mesh(new THREE.RingGeometry(.28, .34, 32), glow, -24.3, .13, 8, group);
  releaseRipple.rotation.x = -Math.PI / 2;
  releaseRipple.castShadow = false;
  releaseRipple.visible = false;

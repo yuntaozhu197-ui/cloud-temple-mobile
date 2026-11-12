@@ -5,6 +5,8 @@ import type * as THREE from "three";
 import { SHRINES, type ShrineId } from "./shrines";
 import { MARTIAL_DURATION } from "./three/martial";
 import { getTempleSchedule } from "./templeSchedule";
+import type { NpcResidentId } from "./npcResidents";
+import { findNpcEncounter } from "./npcEncounters";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -55,6 +57,8 @@ type WorldProps = {
   onMartialStage?: (stage: "begin" | "complete" | "cancel") => void;
   onFishStage?: (kind: "fish" | "release", stage: "begin" | "offer" | "complete") => void;
   onSkyLanternStage?: (stage: "begin" | "release" | "complete") => void;
+  talkingNpcId?: NpcResidentId | null;
+  onNpcEncounter?: (id: NpcResidentId | null) => void;
 };
 
 type MonkInstance = {
@@ -71,7 +75,7 @@ const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from),
 const FISH_ACTIONS = {
   fish: { x: 5.8, z: 2, heading: Math.PI / 2, duration: 4.2, offerAt: 1.8 },
   pondFeed: { x: -22.5, z: 8, heading: -Math.PI / 2, duration: 4.2, offerAt: 1.8 },
-  release: { x: -22.5, z: 8, heading: -Math.PI / 2, duration: 5.5, offerAt: 3.1 },
+  release: { x: -23.1, z: 8, heading: -Math.PI / 2, duration: 5.5, offerAt: 3.1 },
 };
 
 export default function TempleWorld(props: WorldProps) {
@@ -370,6 +374,8 @@ export default function TempleWorld(props: WorldProps) {
         let currentPlace = "静心庭院";
         let actualSeated: boolean | undefined;
         let lastContext: WorldContext | undefined;
+        let encounteredNpc: NpcResidentId | null = null;
+        let talkingNpc: NpcResidentId | null = null;
         let lastSent = -1;
         let lastPosition: Position = { x: 100, z: 100, heading: 0, floor: 1 };
         let lastRemoteSync = -1;
@@ -788,6 +794,19 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          const conversationResident = lessonActive ? undefined : world.residents.find(resident => resident.id === state.talkingNpcId);
+          const conversationId = conversationResident?.id ?? null;
+          if (conversationId !== talkingNpc) {
+            talkingNpc = conversationId;
+            if (talkingNpc) {
+              route = [];
+              destination.visible = false;
+              keys.clear();
+              joystick.current = { x: 0, y: 0 };
+              setKnob({ x: 0, y: 0 });
+            }
+          }
+          world.setNpcConversation(conversationId, position);
           let firstPerson = state.cameraMode === "first";
           let mapMode = state.cameraMode === "map";
 
@@ -1058,8 +1077,10 @@ export default function TempleWorld(props: WorldProps) {
           const fishView = sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release";
           const skyLanternView = sceneAction?.kind === "skyLantern";
           const practiceView = seated && ["prayer", "beads", "bow", "meditate"].includes(state.action);
+          const conversationView = Boolean(conversationResident);
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
-          if (martialView || fishView || practiceView || skyLanternView) { firstPerson = false; mapMode = false; }
+          if (martialView || fishView || practiceView || skyLanternView || conversationView) { firstPerson = false; mapMode = false; }
+          if (conversationResident) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationResident.x - position.x, conversationResident.z - position.z)) * Math.min(1, dt * 7);
           const schedulePose = lessonActive && state.action === "idle" ? seated ? "chantSit" : "chant" : state.action;
           const pose = walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
           const bowPhase = Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1);
@@ -1085,7 +1106,7 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Boolean(activeRoom);
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
-          const nextCameraMode = martialView || fishView || practiceView || skyLanternView ? "third" : state.cameraMode ?? "third";
+          const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
           const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 42, 85) : mapMode || martialView ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
@@ -1116,7 +1137,8 @@ export default function TempleWorld(props: WorldProps) {
             );
             cameraTarget.copy(cameraLook);
           } else {
-            if (martialView) cameraLook.set(28, 1.1, 12);
+            if (conversationResident) cameraLook.set((position.x + conversationResident.x) / 2, floorHeight + 0.8, (position.z + conversationResident.z) / 2);
+            else if (martialView) cameraLook.set(28, 1.1, 12);
             else if (skyLanternView) cameraLook.set(0, 1.4, 28);
             else if (practiceView) cameraLook.set(position.x, floorHeight + 0.65, position.z);
             else if (fishView) cameraLook.set(position.x + (sceneAction?.kind === "fish" ? 0.5 : -0.5), floorHeight + 0.6, position.z);
@@ -1124,7 +1146,13 @@ export default function TempleWorld(props: WorldProps) {
             else cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-            if (martialView) {
+            if (conversationResident) {
+              const distance = Math.max(4.2, 1.3 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, 0.85, 1.25);
+              const directionX = conversationResident.x - position.x;
+              const directionZ = conversationResident.z - position.z;
+              const length = Math.max(0.1, Math.hypot(directionX, directionZ));
+              cameraGoal.set(cameraLook.x - directionZ / length * distance, floorHeight + 2.4, cameraLook.z + directionX / length * distance);
+            } else if (martialView) {
               const martialZoom = clamp(zoomScale, 0.85, 1.25);
               const distance = Math.max(9.5, 4.2 / (Math.tan(Math.PI * 48 / 360) * camera.aspect)) * martialZoom;
               const orbit = Math.sin(martialProgress * Math.PI * 2) * 0.24;
@@ -1192,6 +1220,16 @@ export default function TempleWorld(props: WorldProps) {
             room.roofDetails?.forEach(details => { details.visible = !hidden; });
           });
           renderer.render(scene, camera);
+          const canEncounter = !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && !approachingIncense && !approachingLamp && !approachingFish && !approachingMartial && !approachingSkyLantern && !incensePrayer && !lampPrayer && (!dialogOpen || conversationView);
+          const nextEncounter = conversationId ?? (canEncounter ? findNpcEncounter(world.residents, encounteredNpc, position, resident => {
+            if (!clearLine(position.x, position.z, resident.x, resident.z)) return false;
+            projected.set(resident.x, world.floorHeightAt(resident.x, resident.z) + 0.9, resident.z).project(camera);
+            return projected.z > -1 && projected.z < 1 && Math.abs(projected.x) < 0.95 && Math.abs(projected.y) < 0.95;
+          }) : null);
+          if (nextEncounter !== encounteredNpc) {
+            encounteredNpc = nextEncounter;
+            state.onNpcEncounter?.(nextEncounter);
+          }
           interactivePoints.forEach(point => {
             const nearby = Math.hypot(position.x - point.x, position.z - point.z) <= 5;
             positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView);

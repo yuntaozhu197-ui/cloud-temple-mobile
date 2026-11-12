@@ -11,6 +11,8 @@ type FishPond = {
   waterY: number;
   feedX?: number;
   feedZ?: number;
+  releaseX?: number;
+  releaseZ?: number;
 };
 
 type Swimmer = {
@@ -105,8 +107,8 @@ export function createFishSchool(pond: FishPond) {
     sequence += 1;
     const angle = random() * Math.PI * 2;
     const lane = 0.2 + random() * 0.72;
-    const spawnX = pond.x + pond.radiusX * (0.77 + random() * 0.08);
-    const spawnZ = pond.z + (random() - 0.5) * pond.radiusZ * 0.22;
+    const spawnX = pond.releaseX === undefined ? pond.x + pond.radiusX * (0.77 + random() * 0.08) : pond.releaseX + (random() - 0.5) * 0.06;
+    const spawnZ = pond.releaseZ === undefined ? pond.z + (random() - 0.5) * pond.radiusZ * 0.22 : pond.releaseZ + (random() - 0.5) * 0.12;
     const x = Number.isFinite(releasedAt) ? spawnX : pond.x + Math.cos(angle) * pond.radiusX * lane;
     const z = Number.isFinite(releasedAt) ? spawnZ : pond.z + Math.sin(angle) * pond.radiusZ * lane;
     fish[index] = {
@@ -117,7 +119,7 @@ export function createFishSchool(pond: FishPond) {
       reverse: random() < 0.4 ? -1 : 1,
       x,
       z,
-      heading: angle,
+      heading: Number.isFinite(releasedAt) ? Math.atan2(pond.x - spawnX, pond.z - spawnZ) : angle,
       releasedAt,
       spawnX,
       spawnZ,
@@ -142,7 +144,7 @@ export function createFishSchool(pond: FishPond) {
       pond.waterY + dy * size,
       fishState.z + (-dx * sine + dz * cosine) * size,
     );
-    transform.rotation.set(tilt, fishState.heading + turn, 0);
+    transform.rotation.set(tilt, fishState.heading + turn, 0, "YXZ");
     transform.scale.set(sx * size, sy * size, sz * size);
     transform.updateMatrix();
     object.setMatrixAt(index, transform.matrix);

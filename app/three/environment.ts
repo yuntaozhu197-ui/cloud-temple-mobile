@@ -11,6 +11,7 @@ import { createSkyLanterns } from './skyLanterns';
 import { createNpcMonks } from './npcMonks';
 import { createAltarAtmosphere } from './altarAtmosphere';
 import { TEMPLE_SEATS } from '../templeSeats';
+import type { NpcResidentId } from '../npcResidents';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -22,6 +23,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   interactions: Array<{ kind: 'incense' | 'incenseGuanyin' | 'incenseWenshu' | 'incenseCaishen' | 'longLamp' | 'skyLantern' | 'drum' | 'towerBell' | 'flower' | 'ritual' | 'bell' | 'fish' | 'pondFeed' | 'mural' | 'lamp' | 'sutra' | 'breathe' | 'release' | 'martial' | 'pagoda'; label: string; x: number; y: number; z: number }>;
   rooms: TempleRoom[];
   floorHeightAt: (x: number, z: number) => number;
+  residents: ReturnType<typeof createNpcMonks>['residents'];
+  setNpcConversation: (id: NpcResidentId | null, player?: { x: number; z: number }) => void;
   offerFlowers: () => void;
   startRitual: () => void;
   lightLongLamp: () => void;
@@ -746,6 +749,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     cushions,
     rooms: [{ name: '大雄宝殿', minX: -12.6, maxX: 12.6, minZ: -21.6, maxZ: -2.2, roofs: [], roofDetails: mainRoofDetails, elevation: 0 }, ...detachedHalls.rooms, ...prayerZones.rooms, ...fortuneTowers.rooms],
     floorHeightAt: detachedHalls.floorHeightAt,
+    residents: npcMonks.residents,
+    setNpcConversation: npcMonks.setConversation,
     landmarks: [
       ...scenicAreas.landmarks,
       ...prayerZones.landmarks,

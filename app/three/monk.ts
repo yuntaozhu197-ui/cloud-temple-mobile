@@ -173,7 +173,10 @@ export function createMonk(color = 0xcf895c): {
   const foodTransform = new THREE.Object3D();
   const releaseHands = new THREE.Group();
   releaseHands.name = "cupped-fish-release-hands";
-  torso.add(releaseHands);
+  motionRig.add(releaseHands);
+  const releaseArmTarget = new THREE.Vector3();
+  const armRestDirection = new THREE.Vector3(0, -1, 0);
+  const bendAxis = new THREE.Vector3(1, 0, 0);
   for (const side of [-1, 1]) oval(releaseHands, skin, side * 0.043, 0, 0, 0.06, 0.035, 0.1);
   const heldFish = new THREE.Group();
   heldFish.name = "gently-held-small-fish";
@@ -290,7 +293,7 @@ export function createMonk(color = 0xcf895c): {
     thrownFood.visible = action === "feed";
     releaseHands.visible = action === "releaseFish";
     heldFish.visible = action === "releaseFish" && (phase ?? 0) < 0.56;
-    releaseHands.position.set(0, 0.18, 0.32);
+    releaseHands.position.set(0, 0.68, 0.25);
     heldFish.position.set(0, 0, 0);
     heldFish.rotation.set(0, 0, 0);
     heldSkyLantern.rotation.set(0, 0, 0);
@@ -343,21 +346,27 @@ export function createMonk(color = 0xcf895c): {
     if (action === "releaseFish") {
       const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
       const lean = THREE.MathUtils.smoothstep(progress, 0.1, 0.48) * (1 - THREE.MathUtils.smoothstep(progress, 0.7, 1));
+      const slip = THREE.MathUtils.smoothstep(progress, 0.48, 0.56);
       torso.position.y = 0.45 - lean * 0.15;
       torso.rotation.x = lean * 0.85;
       head.rotation.x = lean * 0.18;
-      releaseHands.position.set(0, 0.23 - lean * 0.01, 0.25 + lean * 0.08);
-      heldFish.position.set(0, -THREE.MathUtils.smoothstep(progress, 0.48, 0.56) * 0.15, 0.04 + lean * 0.06);
+      // Cupped hands reach beyond the open landing before the fish slips into water.
+      releaseHands.position.set(0, 0.68 - lean * 0.46, 0.25 + lean * 0.6);
+      heldFish.position.set(0, -slip * 0.1, slip * 0.25);
       heldFish.rotation.y = Math.sin(t * 8) * 0.12;
-      arms[0].rotation.set(-0.95 - lean * 0.2, -0.1, 0.65);
-      arms[1].rotation.set(-0.95 - lean * 0.2, 0.1, -0.65);
-      arms[0].position.z += lean * 0.06;
-      arms[1].position.z += lean * 0.06;
-      arms[0].scale.y = 1 + lean * 0.35;
-      arms[1].scale.y = 1 + lean * 0.35;
       palms[0].visible = false;
       palms[1].visible = false;
-      for (let index = 0; index < 2; index++) legPivots[index].rotation.z = (index === 0 ? -1 : 1) * lean * 0.2;
+      for (let index = 0; index < 2; index++) {
+        const side = index === 0 ? -1 : 1;
+        const arm = arms[index];
+        arm.position.z += lean * 0.06;
+        releaseArmTarget.set(side * 0.043, releaseHands.position.y - torso.position.y, releaseHands.position.z);
+        releaseArmTarget.applyAxisAngle(bendAxis, -torso.rotation.x).sub(arm.position);
+        const reach = releaseArmTarget.length();
+        arm.quaternion.setFromUnitVectors(armRestDirection, releaseArmTarget.divideScalar(reach));
+        arm.scale.y = reach / 0.25;
+        legPivots[index].rotation.z = side * lean * 0.2;
+      }
     }
     if (action === "light") {
       const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
