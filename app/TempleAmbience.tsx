@@ -90,7 +90,6 @@ export default function TempleAmbience({ position, sound, unlocked, audio }: Pro
 
   const retryAudio = () => {
     if (!sound || !audio) return;
-    audio.setEnabled(true);
     void audio.unlock().then(ready => {
       setManualUnlocked(ready);
       setRetry(value => value + 1);
@@ -112,6 +111,6 @@ export default function TempleAmbience({ position, sound, unlocked, audio }: Pro
   if (!lesson) return null;
   return <aside className="temple-lesson-notice" role="status" aria-label={lesson.label}>
     <div><strong>{lesson.label}</strong><span aria-live="off">剩余 {remaining(lesson.remainingSeconds)}</span></div>
-    {!sound ? <small>声音已关闭</small> : !(unlocked || manualUnlocked) ? <button type="button" onClick={retryAudio}>轻点开启念诵声音</button> : status === "unavailable" ? <button type="button" onClick={retryAudio}>念诵暂未连接 · 重试播放</button> : status === "loading" ? <small>正在迎来心经念诵…</small> : <small>全寺共修 · 北京时间</small>}
+    {!sound ? <small>寺庙声音已关闭</small> : !(unlocked || manualUnlocked) ? <button type="button" onClick={retryAudio}>轻点开启念诵声音</button> : status === "unavailable" ? <button type="button" onClick={retryAudio}>念诵暂未连接 · 重试播放</button> : status === "loading" ? <small>正在迎来心经念诵…</small> : <small>全寺共修 · 北京时间</small>}
   </aside>;
 }

@@ -565,7 +565,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   box(18, 2.83, -8, 3.4, 0.2, 0.2, palette.woodDark);
   roof(18, -8, 4.5, 4.3, 2.88, 0.92);
   const bell = new THREE.Group();
-  bell.position.set(18, 2.33, -8);
+  bell.position.set(18, 2.0, -8);
   world.add(bell);
   cylinder(0, 0.24, 0, 0.04, 0.04, 0.5, palette.woodDark, bell, 6);
   cylinder(0, -0.22, 0, 0.4, 0.58, 0.77, palette.gold, bell, 20);
@@ -575,7 +575,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   bellRing.rotation.x = Math.PI / 2;
   batchMovingGroup(bell);
   collider(18, -8, 1.4, 1.4);
-  const striker = cylinder(18, 1.68, -6.95, 0.09, 0.09, 1.6, palette.woodDark);
+  const striker = cylinder(18, 1.35, -6.95, 0.09, 0.09, 1.6, palette.woodDark);
   striker.rotation.z = Math.PI / 2;
   let bellStarted = -Infinity;
 

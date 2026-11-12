@@ -242,6 +242,9 @@ export function createFortuneTowers() {
   striker.position.set(44, 4.1, -31.95);
   group.add(striker);
   for (const z of [-32.55, -31.45]) curve([[44, 5.7, z], [44, 4.1, z]], 0.018, gold);
+  curve([[44, 4.1, -31.45], [44, 2.9, -30.4], [44, .93, -30.4]], .018, gold);
+  const bellRopeHandle = meshes(new THREE.TorusGeometry(.1, .018, 5, 16), darkWood, 44, .91, -30.4, group);
+  bellRopeHandle.name = "钟楼拉绳握环";
   block(44, -33.3, 2.4, 2.8);
 
   const drum = new THREE.Group();
@@ -257,13 +260,13 @@ export function createFortuneTowers() {
     }
   }
   batch(drum);
-  drum.position.set(20, 3.7, -32);
+  drum.position.set(20, 1.2, -32);
   group.add(drum);
   for (const side of [-1, 1]) {
-    box(20 + side * 0.72, 1.35, -32, 0.23, 2.7, 1.8, darkWood).rotation.z = side * 0.08;
-    box(20 + side * 0.72, 2.78, -32, 0.48, 0.18, 1.65, gold);
+    box(20 + side * 0.72, .32, -32, 0.23, .64, 1.8, darkWood).rotation.z = side * 0.08;
+    box(20 + side * 0.72, .62, -32, 0.48, .18, 1.65, gold);
   }
-  box(20, 0.3, -32, 2.5, 0.2, 1.65, darkWood);
+  box(20, .12, -32, 2.5, .2, 1.65, darkWood);
   block(20, -32, 2.8, 2.4);
   const mallets = new THREE.Group();
   mallets.name = "鼓楼双槌";
@@ -273,7 +276,7 @@ export function createFortuneTowers() {
     oval(side * 0.5, 0.34, 0.28, 0.085, 0.1, 0.1, darkWood, mallets);
   }
   batch(mallets);
-  mallets.position.set(20, 3.5, -30.92);
+  mallets.position.set(20, 1, -31.1);
   group.add(mallets);
   const waveMaterial = new THREE.MeshBasicMaterial({ color: "#e7cc8a", transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
   materials.add(waveMaterial);
@@ -298,6 +301,8 @@ export function createFortuneTowers() {
     bell.rotation.z = bellSwing * 0.09;
     striker.position.z = -31.95 - (bellAge < 1.1 ? Math.sin(Math.min(1, bellAge / 0.65) * Math.PI) * 0.39 : 0);
     const drumHit = drumAge < 2.4 ? Math.sin(drumAge * 17) * Math.exp(-drumAge * 2.5) : 0;
+    mallets.visible = drumAge >= 1.2;
+    bellRopeHandle.position.y = .91 - (bellAge >= 0 && bellAge < .7 ? Math.sin(bellAge / .7 * Math.PI) * .1 : 0);
     drum.scale.z = 1 + drumHit * 0.026;
     mallets.rotation.x = drumAge < 1.2 ? Math.sin(drumAge * 11) * Math.exp(-drumAge * 3) * 0.4 : 0;
     const recentBell = bellAt > drumAt;
@@ -307,7 +312,7 @@ export function createFortuneTowers() {
       waveMaterial.opacity = Math.max(0, 1 - age / 8) * 0.24;
       for (let index = 0; index < 6; index++) {
         const phase = (age * 0.65 + index / 3) % 2;
-        transform.position.set(recentBell ? 44 : 20, recentBell ? 4.25 : 3.7, recentBell ? -32.5 : -31.2);
+        transform.position.set(recentBell ? 44 : 20, recentBell ? 4.25 : 1.2, recentBell ? -32.5 : -31.2);
         transform.rotation.set(0, 0, 0);
         transform.scale.setScalar(1 + phase * 0.7);
         transform.updateMatrix();

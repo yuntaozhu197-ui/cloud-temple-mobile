@@ -1,6 +1,7 @@
 import { MARTIAL_BEATS, MARTIAL_DURATION } from "./three/martial";
+import { TEMPLE_LESSON_DURATION_MS } from "./templeSchedule";
 
-export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda" | "drum" | "towerBell" | "lamp";
+export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda" | "drum" | "towerBell" | "lamp" | "flower" | "ritual";
 export type TempleAmbienceRequest = { kind: "hall" } | { kind: "lesson"; start: number };
 
 export type TempleAudio = {
@@ -10,6 +11,8 @@ export type TempleAudio = {
   setAmbience: (request: TempleAmbienceRequest | null) => Promise<boolean>;
   ringTimeBell: () => boolean;
   setEnabled: (enabled: boolean) => void;
+  setGameVolume: (volume: number) => void;
+  setTempleVolume: (volume: number) => void;
   dispose: () => void;
 };
 
@@ -17,6 +20,7 @@ type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode; sound: TempleSound };
 type AmbienceVoice = { source: AudioBufferSourceNode; gain: GainNode; endAt?: number };
 type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
+type AudioChannel = "game" | "temple";
 const MASTER_GAIN = 1.1;
 
 const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number; fadeOut?: number }> = {
@@ -28,10 +32,16 @@ const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff
   bell: { duration: 4.2, peak: 0.36, cutoff: 3300, room: 1.0 },
   water: { duration: 1.1, peak: 0.23, cutoff: 3800, room: 0.15 },
   martial: { duration: MARTIAL_DURATION, peak: 0.32, cutoff: 2700, room: 0.38, fadeOut: 0.6 },
-  drum: { duration: 3.6, peak: 0.38, cutoff: 2100, room: 0.75, fadeOut: 0.22 },
-  towerBell: { duration: 11.2, peak: 0.36, cutoff: 2800, room: 1.2, fadeOut: 0.65 },
+  drum: { duration: 3.6, peak: 0.64, cutoff: 2100, room: 0.75, fadeOut: 0.22 },
+  towerBell: { duration: 11.2, peak: 0.62, cutoff: 2800, room: 1.2, fadeOut: 0.65 },
   lamp: { duration: 12, peak: 0.25, cutoff: 2700, room: 1.0, fadeOut: 0.8 },
+  flower: { duration: 2.6, peak: 0.28, cutoff: 3100, room: 0.55, fadeOut: 0.2 },
+  ritual: { duration: 5.4, peak: 0.31, cutoff: 2900, room: 0.9, fadeOut: 0.45 },
 };
+
+function soundChannel(sound: TempleSound): AudioChannel {
+  return sound === "water" || sound === "release" || sound === "martial" ? "game" : "temple";
+}
 
 // Damped, inharmonic modes give each instrument a physical body and a natural tail.
 function addResonance(samples: Float32Array, sampleRate: number, offset: number, modes: Mode[], attack: number) {
@@ -182,6 +192,16 @@ function createSamples(sound: SynthSound, sampleRate: number) {
     case "incense":
       addBowl(samples, sampleRate, 0, 493.88, 0.6, 0.72);
       break;
+    case "flower":
+      addBrush(samples, sampleRate, 0, 0.28, 0.09, 613);
+      addBowl(samples, sampleRate, 0.12, 659.25, 0.42, 0.65);
+      addBowl(samples, sampleRate, 0.52, 783.99, 0.18, 0.55);
+      break;
+    case "ritual":
+      addBowl(samples, sampleRate, 0, 261.63, 0.52, 1.65);
+      [0.65, 1.35, 2.1].forEach((offset, index) => addWood(samples, sampleRate, offset, 0.13, 0.85 + index * 0.04, 0.6));
+      addBowl(samples, sampleRate, 2.9, 392, 0.26, 0.9);
+      break;
     case "bell":
       addBowl(samples, sampleRate, 0, 196, 0.8, 1.2);
       break;
@@ -267,7 +287,9 @@ function createSamples(sound: SynthSound, sampleRate: number) {
 export function createTempleAudio(): TempleAudio {
   let context: AudioContext | null = null;
   let master: GainNode | null = null;
-  let limiter: DynamicsCompressorNode | null = null;
+  const outputs: Partial<Record<AudioChannel, GainNode>> = {};
+  const limiters: DynamicsCompressorNode[] = [];
+  const volumes: Record<AudioChannel, number> = { game: 1, temple: 1 };
   let gestureUnlocked = false;
   let enabled = false;
   let disposed = false;
@@ -294,16 +316,24 @@ export function createTempleAudio(): TempleAudio {
     context = new AudioContextClass();
     master = context.createGain();
     master.gain.value = MASTER_GAIN;
-    if (typeof context.createDynamicsCompressor === "function") {
-      limiter = context.createDynamicsCompressor();
-      limiter.threshold.value = -3;
-      limiter.knee.value = 2;
-      limiter.ratio.value = 20;
-      limiter.attack.value = 0.003;
-      limiter.release.value = 0.16;
-      master.connect(limiter);
-      limiter.connect(context.destination);
-    } else master.connect(context.destination);
+    master.connect(context.destination);
+    for (const channel of ["game", "temple"] as const) {
+      const output = context.createGain();
+      output.gain.value = volumes[channel];
+      outputs[channel] = output;
+      // Each channel limits only its own voices, so bells cannot duck water or movement.
+      if (typeof context.createDynamicsCompressor === "function") {
+        const limiter = context.createDynamicsCompressor();
+        limiter.threshold.value = -3;
+        limiter.knee.value = 2;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.003;
+        limiter.release.value = 0.16;
+        output.connect(limiter);
+        limiter.connect(master);
+        limiters.push(limiter);
+      } else output.connect(master);
+    }
     return context;
   }
 
@@ -321,14 +351,17 @@ export function createTempleAudio(): TempleAudio {
   }
 
   function startVoice(sound: TempleSound, buffer: AudioBuffer, audioContext: AudioContext, when = audioContext.currentTime, level = 1) {
-    if (!enabled || disposed || !master || context !== audioContext) return;
+    const channel = soundChannel(sound);
+    const output = outputs[channel];
+    if (!enabled || disposed || !output || volumes[channel] <= 0 || context !== audioContext) return;
     // A renewed long ceremony replaces its previous soundtrack with a short fade.
     if (sound === "lamp" || sound === "martial") {
       for (const voice of voices) if (voice.sound === sound) stopVoice(voice, audioContext);
     }
     // Bound overlapping voices even if someone taps rapidly for a long time.
-    if (voices.size >= 10) {
-      const oldest = voices.values().next().value;
+    const channelVoices = [...voices].filter(voice => soundChannel(voice.sound) === channel);
+    if (channelVoices.length >= 10) {
+      const oldest = channelVoices[0];
       if (oldest) stopVoice(oldest, audioContext);
     }
     const source = audioContext.createBufferSource();
@@ -337,7 +370,7 @@ export function createTempleAudio(): TempleAudio {
     source.playbackRate.value = sound === "beads" ? 0.99 + Math.random() * 0.02 : 1;
     gain.gain.value = (sound === "wood" ? 1 : 0.94 + Math.random() * 0.06) * level;
     source.connect(gain);
-    gain.connect(master);
+    gain.connect(output);
     const voice = { source, gain, sound };
     voices.add(voice);
     source.onended = () => releaseVoice(voice);
@@ -356,7 +389,7 @@ export function createTempleAudio(): TempleAudio {
   }
 
   function ringTimeBell() {
-    if (!enabled || disposed || !gestureUnlocked || context?.state !== "running") return false;
+    if (!enabled || disposed || volumes.temple <= 0 || !gestureUnlocked || context?.state !== "running") return false;
     try {
       const buffer = synthBuffer("towerBell", context);
       const start = context.currentTime;
@@ -404,13 +437,13 @@ export function createTempleAudio(): TempleAudio {
   function setAmbience(request: TempleAmbienceRequest | null): Promise<boolean> {
     const sameRequest = request?.kind === ambienceRequest?.kind &&
       (request?.kind !== "lesson" || (ambienceRequest?.kind === "lesson" && request.start === ambienceRequest.start));
-    if (sameRequest && ambienceVoice && enabled && context?.state === "running") return Promise.resolve(true);
+    if (sameRequest && ambienceVoice && enabled && volumes.temple > 0 && context?.state === "running") return Promise.resolve(true);
     if (sameRequest && ambiencePending) return ambiencePending;
     const generation = ++ambienceGeneration;
     ambienceRequest = request;
     stopAmbienceVoice();
     if (!request) return Promise.resolve(true);
-    if (!enabled || disposed || !gestureUnlocked || !context || !master) return Promise.resolve(false);
+    if (!enabled || disposed || volumes.temple <= 0 || !gestureUnlocked || !context || !outputs.temple) return Promise.resolve(false);
     const audioContext = context;
     const pending = (async () => {
       if (audioContext.state !== "running") {
@@ -418,9 +451,9 @@ export function createTempleAudio(): TempleAudio {
       }
       if (audioContext.state !== "running") return false;
       const buffer = await loadAmbience(request.kind, audioContext);
-      if (!buffer || !enabled || disposed || generation !== ambienceGeneration || context !== audioContext || !master) return false;
+      if (!buffer || !enabled || disposed || volumes.temple <= 0 || generation !== ambienceGeneration || context !== audioContext || !outputs.temple) return false;
       const elapsed = request.kind === "lesson" ? Math.max(0, Date.now() - request.start) / 1000 : 0;
-      const remaining = request.kind === "lesson" ? 15 * 60 - elapsed : Infinity;
+      const remaining = request.kind === "lesson" ? TEMPLE_LESSON_DURATION_MS / 1000 - elapsed : Infinity;
       if (remaining <= 0) return false;
       const source = audioContext.createBufferSource();
       const gain = audioContext.createGain();
@@ -429,7 +462,7 @@ export function createTempleAudio(): TempleAudio {
       gain.gain.value = 0;
       gain.gain.setTargetAtTime(request.kind === "lesson" ? 0.8 : 0.24, audioContext.currentTime, 0.22);
       source.connect(gain);
-      gain.connect(master);
+      gain.connect(outputs.temple);
       const voice: AmbienceVoice = { source, gain, endAt: request.kind === "lesson" ? audioContext.currentTime + remaining : undefined };
       ambienceVoice = voice;
       ambienceVoices.add(voice);
@@ -509,7 +542,7 @@ export function createTempleAudio(): TempleAudio {
   }
 
   function play(requestedSound: TempleSound) {
-    if (!enabled || disposed) return;
+    if (!enabled || disposed || volumes[soundChannel(requestedSound)] <= 0) return;
     try {
       let sound = requestedSound;
       if (sound === "release") sound = "water";
@@ -555,6 +588,28 @@ export function createTempleAudio(): TempleAudio {
     if (!enabled) [...voices].forEach(voice => stopVoice(voice, context!));
   }
 
+  function setVolume(channel: AudioChannel, value: number) {
+    const volume = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+    volumes[channel] = volume;
+    const output = outputs[channel];
+    if (context && output) {
+      output.gain.cancelScheduledValues(context.currentTime);
+      output.gain.setTargetAtTime(volume, context.currentTime, 0.012);
+    }
+    if (volume > 0) return;
+    if (channel === "temple") {
+      playbackGeneration += 1;
+      pendingWood = null;
+      ambienceGeneration += 1;
+      ambienceRequest = null;
+      ambiencePending = null;
+      stopAmbienceVoice();
+    }
+    if (context) for (const voice of [...voices]) {
+      if (soundChannel(voice.sound) === channel) stopVoice(voice, context);
+    }
+  }
+
   function dispose() {
     disposed = true;
     enabled = false;
@@ -579,11 +634,15 @@ export function createTempleAudio(): TempleAudio {
     });
     buffers.clear();
     master?.disconnect();
-    limiter?.disconnect();
+    for (const output of Object.values(outputs)) output.disconnect();
+    limiters.forEach(limiter => limiter.disconnect());
+    limiters.length = 0;
+    delete outputs.game;
+    delete outputs.temple;
     if (context) void context.close().catch(() => {});
     context = null;
     master = null;
   }
 
-  return { unlock, play, stop, setAmbience, ringTimeBell, setEnabled, dispose };
+  return { unlock, play, stop, setAmbience, ringTimeBell, setEnabled, setGameVolume: volume => setVolume("game", volume), setTempleVolume: volume => setVolume("temple", volume), dispose };
 }

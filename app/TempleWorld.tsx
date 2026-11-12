@@ -7,6 +7,7 @@ import { MARTIAL_DURATION } from "./three/martial";
 import { getTempleSchedule } from "./templeSchedule";
 import type { NpcResidentId } from "./npcResidents";
 import { findNpcEncounter } from "./npcEncounters";
+import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -59,6 +60,7 @@ type WorldProps = {
   onSkyLanternStage?: (stage: "begin" | "release" | "complete") => void;
   talkingNpcId?: NpcResidentId | null;
   onNpcEncounter?: (id: NpcResidentId | null) => void;
+  onInteractionStage?: (kind: TempleInteractionKind, stage: "begin" | "impact" | "complete") => void;
 };
 
 type MonkInstance = {
@@ -224,6 +226,12 @@ export default function TempleWorld(props: WorldProps) {
             if ((point.kind === "fish" || point.kind === "pondFeed" || point.kind === "release") && (approachingFish || sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release")) return;
             if (performance.now() < nextActivation) return;
             nextActivation = performance.now() + (point.kind === "fish" ? 4000 : point.kind === "towerBell" ? 3500 : 1200);
+            if (isTempleInteraction(point.kind)) {
+              if (approachingInteraction === point.kind || sceneAction?.kind === point.kind) return;
+              if (point.kind === "flower" || point.kind === "ritual") state.onContextAction?.(point.kind);
+              else approachInteraction(point.kind);
+              return;
+            }
             cancelMartial();
             cancelFish();
             cancelSkyLantern();
@@ -243,12 +251,6 @@ export default function TempleWorld(props: WorldProps) {
               const shore = FISH_ACTIONS[point.kind];
               walkTo(shore.x, shore.z);
               approachingFish = point.kind;
-            }
-            if (point.kind === "bell" || point.kind === "lamp" || point.kind === "pagoda" || point.kind === "drum" || point.kind === "towerBell") world.interact(point.kind);
-            if (point.kind === "pagoda") sceneAction = { kind: "salute", start: (performance.now() - started) / 1000, duration: 4 };
-            if (point.kind === "drum" || point.kind === "towerBell") {
-              actor.group.rotation.y = Math.atan2(point.x - actor.group.position.x, point.z - 3.5 - actor.group.position.z);
-              sceneAction = { kind: "strike", start: (performance.now() - started) / 1000, duration: 1.2 };
             }
             state.onContextAction?.(point.kind);
           };
@@ -277,7 +279,7 @@ export default function TempleWorld(props: WorldProps) {
         hotspots.appendChild(cushionButton);
         hotspotButtons.push(cushionButton);
         for (const [id, shrine] of Object.entries(SHRINES)) {
-          offerings.set(id as ShrineId, createIncenseOffering(scene, { x: shrine.x, z: shrine.furnaceZ }));
+          offerings.set(id as ShrineId, createIncenseOffering(scene, { x: shrine.x, z: shrine.furnaceZ, smoke: id !== "caishen" }));
           world.colliders.push({ minX: shrine.x - 0.45, maxX: shrine.x + 0.45, minZ: shrine.furnaceZ - 0.35, maxZ: shrine.furnaceZ + 0.35 });
         }
         const roofSurfaces: THREE.Mesh[] = [];
@@ -362,9 +364,10 @@ export default function TempleWorld(props: WorldProps) {
         let approachingFish: "fish" | "pondFeed" | "release" | null = null;
         let skyLanternPulse = latest.current.skyLanternPulse ?? 0;
         let approachingSkyLantern = false;
+        let approachingInteraction: TempleInteractionKind | null = null;
         let zoomScale = 1;
         let mapFollowing = false;
-        let sceneAction: { kind: "martial" | "salute" | "strike" | "fish" | "pondFeed" | "release" | "skyLantern"; start: number; duration: number; offered?: boolean } | null = null;
+        let sceneAction: { kind: "martial" | "fish" | "pondFeed" | "release" | "skyLantern" | TempleInteractionKind; start: number; duration: number; offered?: boolean; impactsHandled?: number } | null = null;
         let lastScheduleCheck = -Infinity;
         let lessonActive = false;
         const touchPoints = new Map<number, { x: number; y: number }>();
@@ -507,6 +510,7 @@ export default function TempleWorld(props: WorldProps) {
           cancelMartial();
           cancelFish();
           cancelSkyLantern();
+          cancelInteraction();
           leaveSeat();
           userMoved = true;
           mapFollowing = true;
@@ -540,6 +544,19 @@ export default function TempleWorld(props: WorldProps) {
         function cancelSkyLantern() {
           approachingSkyLantern = false;
           if (sceneAction?.kind === "skyLantern") sceneAction = null;
+        }
+        function cancelInteraction() {
+          approachingInteraction = null;
+          if (sceneAction && isTempleInteraction(sceneAction.kind)) sceneAction = null;
+        }
+        function approachInteraction(kind: TempleInteractionKind) {
+          approachingIncense = false;
+          incensePrayerUntil = 0;
+          approachingLamp = false;
+          lampPrayerUntil = 0;
+          const target = TEMPLE_INTERACTIONS[kind];
+          walkTo(target.x, target.z);
+          approachingInteraction = kind;
         }
 
         function updatePointer(event: PointerEvent) {
@@ -846,11 +863,11 @@ export default function TempleWorld(props: WorldProps) {
           }
           if ((state.flowerPulse ?? 0) !== flowerPulse) {
             flowerPulse = state.flowerPulse ?? 0;
-            world.offerFlowers();
+            approachInteraction("flower");
           }
           if ((state.ritualPulse ?? 0) !== ritualPulse) {
             ritualPulse = state.ritualPulse ?? 0;
-            world.startRitual();
+            approachInteraction("ritual");
           }
 
           if (state.selfId && hydratedIdentity !== state.selfId) {
@@ -875,6 +892,7 @@ export default function TempleWorld(props: WorldProps) {
               cancelMartial();
               cancelFish();
               cancelSkyLantern();
+              cancelInteraction();
               sceneAction = null;
               approachingIncense = false;
               incensePrayerUntil = 0;
@@ -889,6 +907,7 @@ export default function TempleWorld(props: WorldProps) {
             cancelMartial();
             cancelFish();
             cancelSkyLantern();
+            cancelInteraction();
             const cushion = world.cushions[state.seat];
             position.set(cushion.x, 0.12, cushion.z);
             route = [];
@@ -910,6 +929,7 @@ export default function TempleWorld(props: WorldProps) {
               cancelMartial();
               cancelFish();
               cancelSkyLantern();
+              cancelInteraction();
               approachingIncense = false;
               incensePrayerUntil = 0;
               approachingLamp = false;
@@ -1001,6 +1021,31 @@ export default function TempleWorld(props: WorldProps) {
               state.onFishStage?.(kind === "release" ? "release" : "fish", "begin");
             }
           }
+          if (approachingInteraction && route.length === 0 && !dialogOpen && !state.auto && !state.meditating) {
+            const kind = approachingInteraction;
+            const target = TEMPLE_INTERACTIONS[kind];
+            if (Math.hypot(position.x - target.x, position.z - target.z) < .25) {
+              approachingInteraction = null;
+              actor.group.rotation.y = target.heading;
+              sceneAction = { kind, start: time, duration: target.duration, impactsHandled: 0 };
+              state.onInteractionStage?.(kind, "begin");
+            }
+          }
+          if (sceneAction && isTempleInteraction(sceneAction.kind)) {
+            const current = sceneAction;
+            const kind = sceneAction.kind;
+            const animation = TEMPLE_INTERACTIONS[kind];
+            const age = time - current.start;
+            let handled = current.impactsHandled ?? 0;
+            while (handled < animation.impacts.length && age >= animation.impacts[handled] * current.duration) {
+              if (kind === "flower") world.offerFlowers();
+              else if (kind === "ritual") world.startRitual();
+              else if (kind === "drum" || kind === "towerBell" || kind === "bell" || kind === "lamp" || kind === "pagoda") world.interact(kind);
+              if (age - animation.impacts[handled] * current.duration < .4) state.onInteractionStage?.(kind, "impact");
+              handled++;
+            }
+            current.impactsHandled = handled;
+          }
           if (sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release") {
             const kind = sceneAction.kind;
             if (!sceneAction.offered && time - sceneAction.start >= FISH_ACTIONS[kind].offerAt) {
@@ -1056,6 +1101,7 @@ export default function TempleWorld(props: WorldProps) {
               cancelMartial();
               cancelFish();
               cancelSkyLantern();
+              cancelInteraction();
               sceneAction = null;
               approachingIncense = false;
               incensePrayerUntil = 0;
@@ -1071,6 +1117,7 @@ export default function TempleWorld(props: WorldProps) {
             if (sceneAction.kind === "martial") state.onMartialStage?.("complete");
             if (sceneAction.kind === "fish" || sceneAction.kind === "pondFeed" || sceneAction.kind === "release") state.onFishStage?.(sceneAction.kind === "release" ? "release" : "fish", "complete");
             if (sceneAction.kind === "skyLantern") state.onSkyLanternStage?.("complete");
+            if (isTempleInteraction(sceneAction.kind)) state.onInteractionStage?.(sceneAction.kind, "complete");
             sceneAction = null;
           }
           const martialView = sceneAction?.kind === "martial";
@@ -1078,14 +1125,15 @@ export default function TempleWorld(props: WorldProps) {
           const skyLanternView = sceneAction?.kind === "skyLantern";
           const practiceView = seated && ["prayer", "beads", "bow", "meditate"].includes(state.action);
           const conversationView = Boolean(conversationResident);
+          const interactionView = Boolean(sceneAction && isTempleInteraction(sceneAction.kind));
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
-          if (martialView || fishView || practiceView || skyLanternView || conversationView) { firstPerson = false; mapMode = false; }
+          if (martialView || fishView || practiceView || skyLanternView || conversationView || interactionView) { firstPerson = false; mapMode = false; }
           if (conversationResident) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationResident.x - position.x, conversationResident.z - position.z)) * Math.min(1, dt * 7);
           const schedulePose = lessonActive && state.action === "idle" ? seated ? "chantSit" : "chant" : state.action;
-          const pose = walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
+          const pose = walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction && isTempleInteraction(sceneAction.kind) ? TEMPLE_INTERACTIONS[sceneAction.kind].pose : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
           const bowPhase = Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1);
           const incensePhase = incensePrayer ? incenseAge / 8.4 : sceneAction ? (time - sceneAction.start) / sceneAction.duration : 0;
-          actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "light" ? (time - lampPrayerStart) / 24 : ["strike", "martial", "feed", "releaseFish", "skyLantern"].includes(pose) ? incensePhase : pose === "bow" ? bowPhase : undefined);
+          actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "light" ? (time - lampPrayerStart) / 24 : sceneAction ? incensePhase : pose === "bow" ? bowPhase : undefined);
           selfRing.position.set(position.x, position.y + 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
           selfRing.visible = !seated && !firstPerson;
@@ -1106,7 +1154,7 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Boolean(activeRoom);
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
-          const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView ? "third" : state.cameraMode ?? "third";
+          const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView || interactionView ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode;
           const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 42, 85) : mapMode || martialView ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
@@ -1141,6 +1189,7 @@ export default function TempleWorld(props: WorldProps) {
             else if (martialView) cameraLook.set(28, 1.1, 12);
             else if (skyLanternView) cameraLook.set(0, 1.4, 28);
             else if (practiceView) cameraLook.set(position.x, floorHeight + 0.65, position.z);
+            else if (interactionView) cameraLook.set(position.x + Math.sin(actor.group.rotation.y) * .35, floorHeight + .9, position.z + Math.cos(actor.group.rotation.y) * .35);
             else if (fishView) cameraLook.set(position.x + (sceneAction?.kind === "fish" ? 0.5 : -0.5), floorHeight + 0.6, position.z);
             else if (lampPrayer) cameraLook.set(40, 3.8, 28);
             else cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
@@ -1152,6 +1201,10 @@ export default function TempleWorld(props: WorldProps) {
               const directionZ = conversationResident.z - position.z;
               const length = Math.max(0.1, Math.hypot(directionX, directionZ));
               cameraGoal.set(cameraLook.x - directionZ / length * distance, floorHeight + 2.4, cameraLook.z + directionX / length * distance);
+            } else if (interactionView) {
+              const heading = actor.group.rotation.y;
+              const distance = Math.max(4.5, 1.1 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, .85, 1.25);
+              cameraGoal.set(cameraLook.x + Math.sin(heading + Math.PI / 2) * distance * .9 - Math.sin(heading) * distance * .35, floorHeight + 2.5, cameraLook.z + Math.cos(heading + Math.PI / 2) * distance * .9 - Math.cos(heading) * distance * .35);
             } else if (martialView) {
               const martialZoom = clamp(zoomScale, 0.85, 1.25);
               const distance = Math.max(9.5, 4.2 / (Math.tan(Math.PI * 48 / 360) * camera.aspect)) * martialZoom;
@@ -1220,7 +1273,7 @@ export default function TempleWorld(props: WorldProps) {
             room.roofDetails?.forEach(details => { details.visible = !hidden; });
           });
           renderer.render(scene, camera);
-          const canEncounter = !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && !approachingIncense && !approachingLamp && !approachingFish && !approachingMartial && !approachingSkyLantern && !incensePrayer && !lampPrayer && (!dialogOpen || conversationView);
+          const canEncounter = !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && !approachingIncense && !approachingLamp && !approachingFish && !approachingMartial && !approachingSkyLantern && !approachingInteraction && !incensePrayer && !lampPrayer && (!dialogOpen || conversationView);
           const nextEncounter = conversationId ?? (canEncounter ? findNpcEncounter(world.residents, encounteredNpc, position, resident => {
             if (!clearLine(position.x, position.z, resident.x, resident.z)) return false;
             projected.set(resident.x, world.floorHeightAt(resident.x, resident.z) + 0.9, resident.z).project(camera);
@@ -1232,11 +1285,11 @@ export default function TempleWorld(props: WorldProps) {
           }
           interactivePoints.forEach(point => {
             const nearby = Math.hypot(position.x - point.x, position.z - point.z) <= 5;
-            positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView);
+            positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
           });
           const availableCushion = world.cushions[nearestCushionIndex];
-          positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView);
-          if (firstPerson || martialView || fishView || practiceView || skyLanternView) selfLabel.style.display = "none";
+          positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
+          if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
 

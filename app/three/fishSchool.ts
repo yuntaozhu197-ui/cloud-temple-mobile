@@ -107,8 +107,14 @@ export function createFishSchool(pond: FishPond) {
     sequence += 1;
     const angle = random() * Math.PI * 2;
     const lane = 0.2 + random() * 0.72;
-    const spawnX = pond.releaseX === undefined ? pond.x + pond.radiusX * (0.77 + random() * 0.08) : pond.releaseX + (random() - 0.5) * 0.06;
-    const spawnZ = pond.releaseZ === undefined ? pond.z + (random() - 0.5) * pond.radiusZ * 0.22 : pond.releaseZ + (random() - 0.5) * 0.12;
+    let spawnX = pond.releaseX === undefined ? pond.x + pond.radiusX * (0.77 + random() * 0.08) : pond.releaseX + (random() - 0.5) * 0.06;
+    let spawnZ = pond.releaseZ === undefined ? pond.z + (random() - 0.5) * pond.radiusZ * 0.22 : pond.releaseZ + (random() - 0.5) * 0.12;
+    // The whole turning tail needs the same bank clearance as a swimming fish.
+    const spawnRadius = Math.hypot((spawnX - pond.x) / pond.radiusX, (spawnZ - pond.z) / pond.radiusZ);
+    if (spawnRadius > 0.95) {
+      spawnX = pond.x + (spawnX - pond.x) * 0.95 / spawnRadius;
+      spawnZ = pond.z + (spawnZ - pond.z) * 0.95 / spawnRadius;
+    }
     const x = Number.isFinite(releasedAt) ? spawnX : pond.x + Math.cos(angle) * pond.radiusX * lane;
     const z = Number.isFinite(releasedAt) ? spawnZ : pond.z + Math.sin(angle) * pond.radiusZ * lane;
     fish[index] = {

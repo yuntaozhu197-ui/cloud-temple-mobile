@@ -258,7 +258,7 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
       setFlowerCooldown(5);
       setOpen(false);
       callbacks.current.onOffering("flower");
-      callbacks.current.onNotice("已献上一朵花，愿此刻自在。");
+      callbacks.current.onNotice("鲜花已备好，正前往大殿供花。");
     }
   }
 
@@ -284,6 +284,7 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
       ritualEnd.current = Date.now() + 30_000;
       setRitualCompleted(false);
       setRitualRemaining(30);
+      setOpen(false);
       callbacks.current.onOffering("ritual");
     }
   }

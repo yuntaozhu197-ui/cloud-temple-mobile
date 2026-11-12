@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-export function createIncenseOffering(scene: THREE.Scene, position = { x: 0, z: -14.8 }) {
+export function createIncenseOffering(scene: THREE.Scene, position: { x: number; z: number; smoke?: boolean } = { x: 0, z: -14.8 }) {
   const group = new THREE.Group();
   group.name = "大殿三足香炉";
   group.position.set(position.x, 0, position.z);
@@ -151,6 +151,7 @@ export function createIncenseOffering(scene: THREE.Scene, position = { x: 0, z: 
     geometries.add(geometry);
     const smoke = mesh(geometry, smokeMaterial, 0, 0, 0, sticks);
     smoke.name = `轻烟 ${strand + 1}`;
+    smoke.visible = position.smoke !== false;
     smoke.castShadow = false;
     smoke.receiveShadow = false;
     smoke.frustumCulled = false;

@@ -1,10 +1,10 @@
 import * as THREE from "three";
 
-/** Candle flames and faint smoke remain close to the two actual altar tables. */
+/** Candle flames and faint smoke remain close to the three prayer-hall altars. */
 export function createAltarAtmosphere() {
   const group = new THREE.Group();
-  group.name = "大殿与观音香案 · 烛火薄烟";
-  const positions = [[-2.2, -15.8], [2.2, -15.8], [-16.8, 28.5], [-13.2, 28.5]];
+  group.name = "三座殿堂香案 · 烛火薄烟";
+  const positions = [[-2.2, -15.8], [2.2, -15.8], [-16.8, 28.5], [-13.2, 28.5], [13.2, 28.5], [16.8, 28.5]];
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const instances: THREE.InstancedMesh[] = [];
@@ -27,7 +27,7 @@ export function createAltarAtmosphere() {
   const flameGeometry = new THREE.SphereGeometry(1, 8, 6);
   const flames = batch(flameGeometry, flameSurface);
   const hearts = batch(flameGeometry, heartSurface);
-  flames.name = "四处香案烛火";
+  flames.name = "三殿香案烛火";
   positions.forEach(([x, z], index) => {
     transform.position.set(x, .38, z);
     transform.scale.set(1, 1, 1);

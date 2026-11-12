@@ -5,6 +5,14 @@ html, body, #root {
   overflow: hidden;
   overscroll-behavior: none;
 }
+.sound-settings h2 { margin: 6px 30px 22px 0; font-size: 25px; font-weight: 800; text-align: left; }
+.sound-volume-row { padding: 16px 0; border-top: 1px solid #dce2ce; text-align: left; }
+.sound-volume-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 17px; font-weight: 800; }
+.sound-volume-row output { color: #71815c; font-size: 15px; }
+.sound-volume-row p { margin: 7px 0 11px; font-size: 13px; font-weight: 650; color: #7d856e; line-height: 1.6; overflow-wrap: anywhere; }
+.sound-slider-controls { display: flex; align-items: center; gap: 14px; }
+.sound-slider-controls button { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: #e8eedc; color: #526b40; }
+.sound-slider-controls input { flex: 1; min-width: 0; height: 44px; margin: 0; accent-color: #6c8354; }
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;

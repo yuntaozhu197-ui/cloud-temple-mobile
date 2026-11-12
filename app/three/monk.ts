@@ -207,6 +207,77 @@ export function createMonk(color = 0xcf895c): {
   const lanternFire = mesh(lampPetalGeometry, lampFlameMaterial, heldSkyLantern, 0, -0.1, 0);
   lanternFire.scale.set(0.025, 0.04, 0.025);
 
+  const flowerPink = material(0xe8b4a4);
+  const flowerCream = material(0xf2d9b0);
+  const flowerLeaf = material(0x82936b);
+  const offeringBouquet = new THREE.Group();
+  offeringBouquet.name = "ceremonial-flower-bouquet";
+  torso.add(offeringBouquet);
+  for (let index = 0; index < 3; index++) {
+    const x = (index - 1) * 0.095;
+    const y = index === 1 ? 0.16 : 0.1;
+    mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.26, 5), flowerLeaf, offeringBouquet, x, y - 0.12, 0);
+    for (let petal = 0; petal < 6; petal++) {
+      const angle = petal * Math.PI / 3;
+      const blossom = mesh(lampPetalGeometry, index === 1 ? flowerCream : flowerPink, offeringBouquet, x + Math.sin(angle) * 0.035, y, Math.cos(angle) * 0.035);
+      blossom.scale.set(0.035, 0.065, 0.03);
+      blossom.rotation.set(Math.cos(angle) * 0.65, angle, Math.sin(angle) * 0.65);
+    }
+    oval(offeringBouquet, lampGold, x, y + 0.01, 0, 0.026, 0.035, 0.026);
+  }
+  const bouquetTie = mesh(new THREE.BoxGeometry(0.21, 0.06, 0.05), sash, offeringBouquet, 0, -0.06, 0);
+  bouquetTie.rotation.z = -0.1;
+
+  const drumSticks: THREE.Group[] = [];
+  for (let index = 0; index < 2; index++) {
+    const stick = new THREE.Group();
+    stick.name = index === 0 ? "left-drum-stick" : "right-drum-stick";
+    stick.position.set(0, -0.25, 0.008);
+    torso.add(stick);
+    const shaft = mesh(new THREE.CylinderGeometry(0.016, 0.012, 0.53, 7), sandal, stick, 0, 0, 0.2);
+    shaft.rotation.x = Math.PI / 2;
+    oval(stick, woodLight, 0, 0, 0.47, 0.034, 0.034, 0.044);
+    drumSticks.push(stick);
+  }
+  const towerStriker = new THREE.Group();
+  towerStriker.name = "held-tower-bell-rope";
+  torso.add(towerStriker);
+  mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.44, 6), sandal, towerStriker, 0, 0.18, 0);
+  mesh(new THREE.TorusGeometry(0.062, 0.011, 5, 12), sandal, towerStriker, 0, -0.055, 0);
+  const smallBellStriker = new THREE.Group();
+  smallBellStriker.name = "held-small-bell-striker";
+  smallBellStriker.position.set(0, -0.25, 0.008);
+  torso.add(smallBellStriker);
+  const smallHandle = mesh(new THREE.CylinderGeometry(0.01, 0.012, 0.31, 6), sandal, smallBellStriker, 0, 0, 0.1);
+  smallHandle.rotation.x = Math.PI / 2;
+  oval(smallBellStriker, woodLight, 0, 0, 0.28, 0.045, 0.045, 0.05);
+
+  const readingBook = new THREE.Group();
+  readingBook.name = "open-sutra-book";
+  torso.add(readingBook);
+  const paper = material(0xf0e5c9);
+  const bookCover = material(0x6f897d);
+  for (const side of [-1, 1]) {
+    const leaf = new THREE.Group();
+    leaf.position.x = side * 0.09;
+    leaf.rotation.z = side * 0.12;
+    readingBook.add(leaf);
+    mesh(new THREE.BoxGeometry(0.18, 0.012, 0.23), bookCover, leaf, 0, 0, 0);
+    mesh(new THREE.BoxGeometry(0.166, 0.025, 0.214), paper, leaf, 0, 0.016, 0);
+    for (let row = 0; row < 5; row++) mesh(new THREE.BoxGeometry(0.115, 0.002, 0.004), ink, leaf, 0, 0.031, -0.07 + row * 0.033);
+  }
+  const turningPage = mesh(new THREE.BoxGeometry(0.16, 0.003, 0.21), paper, readingBook, 0.08, 0.035, 0);
+  turningPage.name = "sutra-turning-page";
+
+  function reachTo(index: number, x: number, y: number, z: number) {
+    const arm = arms[index];
+    releaseArmTarget.set(x, y, z).sub(arm.position);
+    const length = Math.max(0.01, releaseArmTarget.length());
+    arm.quaternion.setFromUnitVectors(armRestDirection, releaseArmTarget.divideScalar(length));
+    arm.scale.y = length / 0.25;
+    palms[index].scale.y = 0.073 / arm.scale.y;
+  }
+
   const standingLegs = new THREE.Group();
   standingLegs.name = "monk-standing-legs";
   motionRig.add(standingLegs);
@@ -257,8 +328,9 @@ export function createMonk(color = 0xcf895c): {
   oval(mallet, woodLight, 0.16, 0.105, 0, 0.043, 0.037, 0.04);
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
-    if (walking && ["light", "strike", "martial", "feed", "releaseFish", "chant", "skyLantern"].includes(action)) action = "walk";
-    const seated = !walking && !["idle", "walk", "incense", "salute", "martial", "light", "strike", "feed", "releaseFish", "chant", "skyLantern"].includes(action);
+    const scenePose = ["offerFlower", "drum", "towerBell", "bell", "ritual", "pagoda", "mural", "sutra", "breathe", "lotusLamp"].includes(action);
+    if (walking && (scenePose || ["light", "strike", "martial", "feed", "releaseFish", "chant", "skyLantern"].includes(action))) action = "walk";
+    const seated = !walking && !scenePose && !["idle", "walk", "incense", "salute", "martial", "light", "strike", "feed", "releaseFish", "chant", "skyLantern"].includes(action);
     const animationPhase = phase ?? 0;
     const sway = Math.sin(t * 9 + animationPhase);
     motionRig.position.set(0, 0, 0);
@@ -280,12 +352,13 @@ export function createMonk(color = 0xcf895c): {
       legPivots[index].position.set(side * 0.11, 0.3, 0);
       legPivots[index].scale.set(1, 1, 1);
       palms[index].visible = true;
+      palms[index].scale.set(0.061, 0.073, 0.055);
     }
-    prayerHands.visible = ["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern"].includes(action);
+    prayerHands.visible = ["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern", "ritual", "pagoda", "lotusLamp"].includes(action);
     prayerHands.position.set(0, 0.245, 0.265);
     prayerHands.scale.setScalar(1);
     heldIncense.visible = action === "incense" && (phase ?? 0) < 0.68;
-    heldLamp.visible = action === "light";
+    heldLamp.visible = action === "light" || action === "lotusLamp" && (phase ?? 0) < 0.72;
     heldSkyLantern.visible = action === "skyLantern" && (phase ?? 0) < 0.55;
     beadRing.visible = action === "beads";
     woodenFish.visible = action === "wood";
@@ -297,12 +370,17 @@ export function createMonk(color = 0xcf895c): {
     heldFish.position.set(0, 0, 0);
     heldFish.rotation.set(0, 0, 0);
     heldSkyLantern.rotation.set(0, 0, 0);
+    offeringBouquet.visible = action === "offerFlower" && (phase ?? 0) < 0.78;
+    drumSticks.forEach(stick => { stick.visible = action === "drum"; });
+    towerStriker.visible = action === "towerBell";
+    smallBellStriker.visible = action === "bell";
+    readingBook.visible = action === "sutra";
 
     if (seated) {
       arms[0].rotation.set(-0.62, 0, 0.62);
       arms[1].rotation.set(-0.62, 0, -0.62);
     }
-    if (["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern"].includes(action)) {
+    if (["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern", "ritual", "pagoda", "lotusLamp"].includes(action)) {
       arms[0].rotation.set(-0.90, -0.05, 0.79);
       arms[1].rotation.set(-0.90, 0.05, -0.79);
       palms[0].visible = false;
@@ -383,6 +461,129 @@ export function createMonk(color = 0xcf895c): {
       arms[0].rotation.set(-0.8 - strike * 0.6, -0.08, 0.25);
       arms[1].rotation.set(-1.1 - strike * 0.4, 0.08, -0.25);
       torso.rotation.x = strike * 0.1;
+    }
+    if (action === "offerFlower") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const raise = THREE.MathUtils.smoothstep(progress, 0.06, 0.25);
+      const placing = THREE.MathUtils.smoothstep(progress, 0.54, 0.78);
+      const settle = 1 - THREE.MathUtils.smoothstep(progress, 0.8, 1);
+      const bow = Math.sin(THREE.MathUtils.clamp((progress - 0.25) / 0.3, 0, 1) * Math.PI);
+      torso.rotation.x = bow * 0.33 + placing * settle * 0.2;
+      head.rotation.x = bow * 0.12;
+      offeringBouquet.position.set(0, 0.14 + raise * (1 - placing) * 0.28 + placing * 0.72, 0.38 + placing * 0.44);
+      offeringBouquet.rotation.set(placing * -0.16, 0, 0);
+      reachTo(0, -0.07, offeringBouquet.position.y - 0.04, offeringBouquet.position.z - 0.015);
+      reachTo(1, 0.07, offeringBouquet.position.y - 0.04, offeringBouquet.position.z - 0.015);
+    }
+    if (action === "drum") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      for (let index = 0; index < 2; index++) {
+        const side = index === 0 ? -1 : 1;
+        const firstHit = index === 0 ? 0.18 : 0.36;
+        const secondHit = index === 0 ? 0.54 : 0.72;
+        const strike = Math.max(Math.exp(-(((progress - firstHit) / 0.055) ** 2)), Math.exp(-(((progress - secondHit) / 0.055) ** 2)));
+        const raised = 1 - strike;
+        const stick = drumSticks[index];
+        stick.position.set(side * 0.17, 0.36 + raised * 0.14, 0.6 - raised * 0.12);
+        stick.rotation.set(-1.0 - raised * 0.45, 0, side * 0.04);
+        reachTo(index, stick.position.x, stick.position.y, stick.position.z);
+      }
+      torso.rotation.x = Math.sin(progress * Math.PI) * 0.045;
+      head.rotation.x = 0.12;
+      legPivots[0].rotation.z = -0.18;
+      legPivots[1].rotation.z = 0.18;
+    }
+    if (action === "towerBell") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const reach = THREE.MathUtils.smoothstep(progress, 0.02, 0.2);
+      const pull = THREE.MathUtils.smoothstep(progress, 0.2, 0.44);
+      const settle = THREE.MathUtils.smoothstep(progress, 0.62, 1);
+      towerStriker.position.set(0, 0.13 + reach * 0.31 - pull * 0.25 + settle * 0.12, 0.35 + reach * 0.24 - pull * 0.08);
+      towerStriker.rotation.set(pull * -0.15, 0, 0);
+      reachTo(0, -0.025, towerStriker.position.y, towerStriker.position.z);
+      reachTo(1, 0.025, towerStriker.position.y - 0.09, towerStriker.position.z);
+      torso.rotation.x = pull * (1 - settle) * -0.08;
+      head.rotation.x = -reach * 0.1 + pull * 0.14;
+      legPivots[0].rotation.x = pull * (1 - settle) * -0.14;
+      legPivots[1].rotation.x = pull * (1 - settle) * 0.1;
+    }
+    if (action === "bell") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const lift = THREE.MathUtils.smoothstep(progress, 0.02, 0.24);
+      const tap = THREE.MathUtils.smoothstep(progress, 0.24, 0.4);
+      const settle = THREE.MathUtils.smoothstep(progress, 0.65, 1);
+      smallBellStriker.position.set(0.18, 0.25 + lift * 0.57 - tap * 0.09 - settle * 0.34, 0.34 + tap * 0.23 - settle * 0.18);
+      smallBellStriker.rotation.set(-1.3 + tap * 0.62 - settle * 0.3, 0, 0);
+      reachTo(1, smallBellStriker.position.x, smallBellStriker.position.y, smallBellStriker.position.z);
+      arms[0].rotation.set(-0.8, 0, 0.5);
+      torso.rotation.x = tap * (1 - settle) * 0.09;
+      head.rotation.x = 0.08;
+    }
+    if (action === "ritual") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const raise = Math.sin(THREE.MathUtils.smoothstep(progress, 0, 0.3) * Math.PI / 2) * (1 - THREE.MathUtils.smoothstep(progress, 0.82, 1));
+      const bow = Math.sin(THREE.MathUtils.clamp((progress - 0.3) / 0.48, 0, 1) * Math.PI * 2) ** 2;
+      prayerHands.position.y += raise * 0.2;
+      torso.rotation.x = bow * 0.38;
+      head.rotation.x = bow * 0.14;
+      arms[0].rotation.x -= raise * 0.25;
+      arms[1].rotation.x -= raise * 0.25;
+    }
+    if (action === "pagoda") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const step = Math.sin(progress * Math.PI * 4) * Math.sin(progress * Math.PI);
+      const reverence = THREE.MathUtils.smoothstep(progress, 0.25, 0.46) * (1 - THREE.MathUtils.smoothstep(progress, 0.78, 1));
+      motionRig.position.x = step * 0.07;
+      motionRig.rotation.y = Math.sin(progress * Math.PI * 2) * 0.18;
+      prayerHands.position.y += reverence * 0.15;
+      torso.rotation.x = reverence * 0.24;
+      head.rotation.x = -Math.sin(progress * Math.PI) * 0.17 + reverence * 0.22;
+      legPivots[0].rotation.x = step * 0.2;
+      legPivots[1].rotation.x = -step * 0.2;
+    }
+    if (action === "mural") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const indicate = Math.sin(progress * Math.PI);
+      const scan = Math.sin(progress * Math.PI * 2);
+      head.rotation.set(-0.06 - indicate * 0.1, scan * 0.34, 0);
+      torso.rotation.y = scan * 0.12;
+      arms[1].rotation.set(-0.12 - indicate * 1.7, -0.1 - scan * 0.12, -0.12 - indicate * 0.25);
+      arms[0].rotation.set(-0.75, 0, 0.4);
+    }
+    if (action === "sutra") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const lift = Math.sin(progress * Math.PI) * 0.04;
+      readingBook.position.set(0, 0.13 + lift, 0.39);
+      readingBook.rotation.set(-0.32, 0, 0);
+      const pageTurn = THREE.MathUtils.smoothstep(progress, 0.42, 0.6);
+      turningPage.position.x = Math.cos(pageTurn * Math.PI) * 0.08;
+      turningPage.position.y = 0.035 + Math.sin(pageTurn * Math.PI) * 0.08;
+      turningPage.rotation.z = pageTurn * Math.PI;
+      reachTo(0, -0.17, 0.11 + lift, 0.42);
+      reachTo(1, 0.17, 0.11 + lift, 0.42);
+      head.rotation.set(0.24, Math.sin(progress * Math.PI * 4) * 0.06, 0);
+      torso.rotation.x = 0.04;
+    }
+    if (action === "breathe") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const inhale = Math.sin(progress * Math.PI * 2 - Math.PI / 2) * 0.5 + 0.5;
+      torso.position.y = 0.45 + inhale * 0.035;
+      arms[0].rotation.set(-0.16 - inhale * 0.2, 0, 0.12 + inhale * 1.2);
+      arms[1].rotation.set(-0.16 - inhale * 0.2, 0, -0.12 - inhale * 1.2);
+      head.rotation.x = -inhale * 0.08;
+    }
+    if (action === "lotusLamp") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const raise = THREE.MathUtils.smoothstep(progress, 0.04, 0.25);
+      const place = THREE.MathUtils.smoothstep(progress, 0.48, 0.72);
+      const release = THREE.MathUtils.smoothstep(progress, 0.76, 1);
+      prayerHands.position.y += raise * (1 - place) * 0.18;
+      prayerHands.position.z += place * (1 - release) * 0.27;
+      arms[0].rotation.x -= raise * (1 - release) * 0.3;
+      arms[1].rotation.x -= raise * (1 - release) * 0.3;
+      torso.rotation.x = place * (1 - release) * 0.22;
+      head.rotation.x = place * (1 - release) * 0.12;
+      lampFlame.scale.y = 0.055 * (1 + Math.sin(t * 4.1) * 0.09);
     }
     if (action === "incense") {
       const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);

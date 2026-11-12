@@ -17,10 +17,23 @@ import TempleAmbience from "./TempleAmbience";
 import TempleLanterns from "./TempleLanterns";
 import TempleResidents from "./TempleResidents";
 import type { NpcResidentId } from "./npcResidents";
+import TempleSoundSettings from "./TempleSoundSettings";
+import type { TempleInteractionKind } from "./templeInteractions";
+import { isTemplePrayerHall } from "./templeSchedule";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
 const seats = TEMPLE_SEATS;
+function savedVolume(key: string) {
+ try {
+  const saved = localStorage.getItem(key);
+  if (saved !== null && saved.trim() !== "") {
+   const volume = Number(saved);
+   if (Number.isFinite(volume) && volume >= 0 && volume <= 1) return volume;
+  }
+  return localStorage.getItem("cloud-temple-sound") === "false" ? 0 : 1;
+ } catch { return 1; }
+}
 const day = () => new Date().toLocaleDateString("en-CA");
 const freshStats = (): Stats => ({date:day(),bows:0,wood:0,beads:0,prayer:0,seconds:0});
 const clock = (n:number) => `${Math.floor(n/60).toString().padStart(2,"0")}:${Math.floor(n%60).toString().padStart(2,"0")}`;
@@ -50,7 +63,12 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [ambientPosition, setAmbientPosition] = useState({ x: 0, z: 9 });
  const ambientPositionRef = useRef(ambientPosition);
  const [room,setRoom]=useState<Room|null>(null),[connection,setConnection]=useState("connecting"),[seat,setSeat]=useState<number|null>(null),[action,setAction]=useState("idle"),[pulse,setPulse]=useState(0);
- const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[sound,setSound]=useState(true),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|"sutra"|"breathe"|null>(null);
+ const [stats,setStats]=useState<Stats>(freshStats),[loaded,setLoaded]=useState(false),[toast,setToast]=useState(""),[modal,setModal]=useState<"help"|"practice"|"meditate"|"mural"|"sutra"|"breathe"|null>(null);
+ const [gameVolume, setGameVolume] = useState(() => savedVolume("cloud-temple-game-volume"));
+ const [templeVolume, setTempleVolume] = useState(() => savedVolume("cloud-temple-temple-volume"));
+ const [soundSettingsOpen, setSoundSettingsOpen] = useState(false);
+ const volumes = useRef({ game: gameVolume, temple: templeVolume });
+ volumes.current = { game: gameVolume, temple: templeVolume };
  const [auto,setAuto]=useState(false),[bowCount,setBowCount]=useState(0),[meditating,setMeditating]=useState(false),[duration,setDuration]=useState(5),[remaining,setRemaining]=useState(0);
  const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef<{x:number;z:number;heading:number;floor:1|2|3}>({x:0,z:9,heading:0,floor:1}),positionSent=useRef(0);
  const [place,setPlace]=useState("静心庭院");
@@ -75,29 +93,36 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const notify=useCallback((text:string)=>{setToast(text);if(toastTimer.current)clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(""),3200)},[]);
  const add=useCallback((key:keyof Omit<Stats,"date">,amount=1)=>setStats(s=>{const base=s.date===day()?s:freshStats();return {...base,[key]:base[key]+amount}}),[]);
  const getAudio = useCallback(() => {
-  if (!audioRef.current) audioRef.current = createTempleAudio();
+  if (!audioRef.current) {
+   audioRef.current = createTempleAudio();
+   audioRef.current.setEnabled(true);
+  }
+  audioRef.current.setGameVolume(volumes.current.game);
+  audioRef.current.setTempleVolume(volumes.current.temple);
   return audioRef.current;
  }, []);
  const unlockAudio = useCallback(() => {
-  if (!sound) return;
+  if (volumes.current.game === 0 && volumes.current.temple === 0) return;
   const audio = getAudio();
-  audio.setEnabled(true);
   void audio.unlock().then(ok => { if (gameAlive.current) setAudioUnlocked(ok); });
- }, [getAudio, sound]);
+ }, [getAudio]);
  const tone = useCallback((kind: TempleSound = "wood") => {
+  getAudio().play(kind);
+ }, [getAudio]);
+ const changeVolume = (channel: "game" | "temple", volume: number) => {
   const audio = getAudio();
-  audio.setEnabled(sound);
-  if (sound) audio.play(kind);
- }, [getAudio, sound]);
- const toggleSound = () => {
-  const enabled = !sound;
-  const audio = getAudio();
-  audio.setEnabled(enabled);
-  if (enabled) void audio.unlock().then(ok => { if (gameAlive.current) setAudioUnlocked(ok); });
-  setSound(enabled);
-  notify(enabled ? "声音已开启，每个动作都有自己的轻响" : "声音已关闭");
+  if (channel === "game") { audio.setGameVolume(volume); setGameVolume(volume); }
+  else { audio.setTempleVolume(volume); setTempleVolume(volume); }
+  if (volume > 0) void audio.unlock().then(ok => { if (gameAlive.current) setAudioUnlocked(ok); });
  };
- useEffect(() => { audioRef.current?.setEnabled(sound); }, [sound]);
+ useEffect(() => {
+  audioRef.current?.setGameVolume(gameVolume);
+  audioRef.current?.setTempleVolume(templeVolume);
+  try {
+   localStorage.setItem("cloud-temple-game-volume", String(gameVolume));
+   localStorage.setItem("cloud-temple-temple-volume", String(templeVolume));
+  } catch { /* Volumes still work when browser storage is unavailable. */ }
+ }, [gameVolume, templeVolume]);
  useEffect(() => {
   let stopped = false;
   let pending = false;
@@ -179,8 +204,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   requestQueue.current=result;
   return result;
  },[notify,onSignedOut,account.id]);
- useEffect(()=>{gameAlive.current=true;try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats:"+account.id)||localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved);setSound(localStorage.getItem("cloud-temple-sound")!=="false")}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{gameAlive.current=false;clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
- useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats:"+account.id,JSON.stringify(stats));localStorage.removeItem("cloud-temple-stats");localStorage.setItem("cloud-temple-sound",String(sound))}catch{}}},[loaded,stats,sound]);
+ useEffect(()=>{gameAlive.current=true;try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats:"+account.id)||localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved)}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{gameAlive.current=false;clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
+ useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats:"+account.id,JSON.stringify(stats));localStorage.removeItem("cloud-temple-stats")}catch{}}},[loaded,stats]);
  useEffect(()=>{autoRef.current=auto;meditatingRef.current=meditating;seatRef.current=seat},[auto,meditating,seat]);
  useEffect(()=>{const visible=()=>{if(document.hidden){if(autoRef.current){autoRef.current=false;setAuto(false);setAction("idle");void sync({action:"idle"});notify("礼拜已暂停，回来后可继续")}}else void sync(meditatingRef.current?{meditating:true,action:"meditate"}:undefined)};document.addEventListener("visibilitychange",visible);return()=>document.removeEventListener("visibilitychange",visible)},[sync,notify]);
  const doAction = useCallback((kind: string) => {
@@ -232,7 +257,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const movePosition = useCallback((position: {x:number;z:number;heading:number;floor:1|2|3}) => {
   const floorChanged = position.floor !== positionRef.current.floor;
   positionRef.current = position;
-  if (Math.hypot(position.x - ambientPositionRef.current.x, position.z - ambientPositionRef.current.z) >= 0.5 || floorChanged) {
+  if (Math.hypot(position.x - ambientPositionRef.current.x, position.z - ambientPositionRef.current.z) >= 0.5 || floorChanged || isTemplePrayerHall(position) !== isTemplePrayerHall(ambientPositionRef.current)) {
    ambientPositionRef.current = { x: position.x, z: position.z };
    setAmbientPosition(ambientPositionRef.current);
   }
@@ -266,16 +291,22 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   if (kind === "skyLantern") setSkyLanternOpen(true);
   if (kind === "flower") setFlowerRequest(value => value + 1);
   if (kind === "ritual") setRitualRequest(value => value + 1);
-  if (kind === "bell") { tone("bell"); notify("钟声已响，让这一念慢慢安定。"); }
-  if (kind === "drum") { tone("drum"); notify("鼓声沉稳，余音慢慢散入山间。"); }
-  if (kind === "towerBell") { tone("towerBell"); notify("铜钟轻撞，愿这一声悠远陪你静心。"); }
   if (kind === "fish" || kind === "pondFeed") notify("走到池畔，轻轻撒下鱼食。");
-  if (kind === "lamp") { tone("incense"); notify("莲灯已点亮，愿这一盏温柔陪着你。"); }
   if (kind === "mural") setModal("mural");
   if (kind === "sutra" || kind === "breathe") setModal(kind);
   if (kind === "release") notify("走到放生池畔，把小鱼轻轻送入水中。");
   if (kind === "martial") notify("走到广场中央，准备练一套功夫。移动即可收招。");
-  if (kind === "pagoda") { tone("pagoda"); notify("塔前合掌，留一念清宁。"); }
+ };
+ const interactionStage = (kind: TempleInteractionKind, stage: "begin" | "impact" | "complete") => {
+  if (stage === "impact") {
+   const sounds: Record<TempleInteractionKind, TempleSound> = { flower: "flower", ritual: "ritual", drum: "drum", towerBell: "towerBell", bell: "bell", lamp: "incense", pagoda: "pagoda", mural: "prayer", sutra: "beads", breathe: "meditate" };
+   tone(sounds[kind]);
+  }
+  if (stage === "complete") {
+   if (kind === "mural" || kind === "sutra" || kind === "breathe") setModal(kind);
+   const messages: Partial<Record<TempleInteractionKind, string>> = { flower: "鲜花已敬放在香案前。", ritual: "合掌礼敬，一念安宁。", drum: "鼓声沉稳，余音慢慢散入山间。", towerBell: "铜钟已响，余韵悠长。", bell: "钟声已响，让这一念慢慢安定。", lamp: "莲灯已点亮。", pagoda: "礼塔圆满，留一念清宁。" };
+   if (messages[kind]) notify(messages[kind]!);
+  }
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
@@ -293,6 +324,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       skyLanternPulse={skyLanternPulse}
       talkingNpcId={talkingNpcId}
       onNpcEncounter={setResidentId}
+      onInteractionStage={interactionStage}
       action={action}
       actionPulse={pulse}
       auto={auto}
@@ -338,12 +370,15 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     <nav id="game-menu" className={`game-menu ${menuOpen ? "is-open" : ""}`} hidden={!menuOpen} aria-label="更多选项">
      <strong className="player-menu-name" title={selfName}>{selfName}</strong>
      <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
-     <button onClick={toggleSound}>{sound ? <Volume2 size={18} /> : <VolumeX size={18} />}声音{sound ? "已开启" : "已关闭"}</button>
+     <button onClick={() => { setMenuOpen(false); setSoundSettingsOpen(true); }}>{gameVolume > 0 || templeVolume > 0 ? <Volume2 size={18} /> : <VolumeX size={18} />}声音设置</button>
      <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
      <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
-      tone(kind === "flower" ? "incense" : kind === "ritual" ? "meditate" : "prayer");
+      setMenuOpen(false);
+      if (autoRef.current) stopAuto();
+      if (meditatingRef.current) finishMeditation();
+      if (kind === "sponsor") tone("prayer");
       if (kind === "flower") setFlowerPulse(value => value + 1);
       if (kind === "ritual") setRitualPulse(value => value + 1);
      }} onLeave={leaveTemple} />
@@ -381,7 +416,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    </main>
 
    <TempleResidents residentId={menuOpen ? null : residentId} onConversationChange={setTalkingNpcId} />
-   <TempleAmbience position={ambientPosition} sound={sound} unlocked={audioUnlocked} audio={audioRef.current} />
+   <TempleSoundSettings open={soundSettingsOpen} gameVolume={gameVolume} templeVolume={templeVolume} onGameVolume={volume => changeVolume("game", volume)} onTempleVolume={volume => changeVolume("temple", volume)} onClose={() => setSoundSettingsOpen(false)} />
+   <TempleAmbience position={ambientPosition} sound={templeVolume > 0} unlocked={audioUnlocked} audio={audioRef.current} />
    <TempleLanterns selfId={account.id} open={skyLanternOpen} onClose={() => setSkyLanternOpen(false)} onRelease={() => {
     if (autoRef.current) stopAuto();
     if (meditatingRef.current) finishMeditation();
@@ -428,12 +464,12 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        <li><b>殿堂</b><span>大雄宝殿向如来敬香，观音殿与文殊殿各有独立香炉。文殊殿可为学业、高考祈愿。藏经阁读经，观云阁调息。</span></li>
        <li><b>点灯</b><span>长明灯塔可写下私密心愿，每日手动点亮，漏点日期可免费补点。地图导航可前往灯塔，菜单可打开我的长明灯。</span></li>
        <li><b>放灯</b><span>去「孔明灯许愿台」写下心愿，小和尚会托灯放飞。心愿仅自己可见。</span></li>
-       <li><b>早晚课</b><span>北京时间6:00、21:00各有15分钟全寺心经念诵，屏幕会显示剩余时间。每到整点、半点敲四声钟。右上菜单可统一关闭声音。</span></li>
+       <li><b>早晚课</b><span>北京时间6:00、21:00各有5分钟全寺心经念诵，屏幕会显示剩余时间。每5分钟敲四声钟，整点、半点合并为同一轮。</span></li>
        <li><b>钟鼓</b><span>地图导航可前往鼓楼、钟楼，走近后敲鼓或撞钟。财神庙设有独立敬香入口。</span></li>
        <li><b>礼拜</b><span>第三人称长按小和尚，或点「108拜」自动礼拜，可暂停并继续。</span></li>
        <li><b>同修</b><span>走到大殿可敬香，花园可献花，祈愿台可参加线上仪式。右上菜单可结交寺友、写日记。</span></li>
        <li><b>景观</b><span>钟亭鸣钟，莲池喂锦鲤，放生池可放鱼、投喂，塔林合掌祈愿，习武广场练拳。大雄宝殿可敬香、点莲灯、赏壁画。</span></li>
-       <li><b>声音</b><span>右上菜单可开关声音。木鱼使用真实录音，其余动作各有轻响。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
+       <li><b>声音</b><span>右上菜单的声音设置可分别调整游戏音量与寺庙音量。木鱼使用真实录音，各个交互在动作发生时发声。<a href="https://freesound.org/people/jonopodmore/sounds/607215/" target="_blank" rel="noreferrer">木鱼录音由 jonopodmore 以 CC0 发布。</a></span></li>
       </ul>
       <button className="primary-button" onClick={() => setModal(null)}>回到庭院</button>
      </>}
