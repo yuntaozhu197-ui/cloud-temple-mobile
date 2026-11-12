@@ -2,16 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Flame, RotateCcw, Save, X } from "lucide-react";
 import "./lamps.css";
-
-type LampSnapshot = {
-  today: string;
-  timeZone: string;
-  wish: { text: string; updatedAt: number | null };
-  litToday: boolean;
-  total: number;
-  days: { day: string; makeup: boolean; litAt: number }[];
-  trial: { temporaryRecords: boolean };
-};
+import { lampRequest, type LampSnapshot } from "./lampArchive";
 
 type Props = {
   selfId?: string;
@@ -19,21 +10,8 @@ type Props = {
   onClose: () => void;
   onLight?: () => void;
   onViewCeremony?: () => void;
+  onStatus?: (lit: boolean) => void;
 };
-
-async function lampRequest(selfId: string, signal: AbortSignal, body?: Record<string, unknown>): Promise<LampSnapshot> {
-  const response = await fetch("/api/lamps", {
-    method: body ? "POST" : "GET",
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "X-Temple-User": selfId, ...(body ? { "Content-Type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal,
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.message || "长明灯暂时没有连接成功，请重试。");
-  return result;
-}
 
 function recentDays(today: string) {
   const date = new Date(`${today}T00:00:00Z`);
@@ -56,7 +34,7 @@ function shanghaiDay() {
   return `${calendar.year}-${calendar.month}-${calendar.day}`;
 }
 
-export default function TempleLamps({ selfId, open, onClose, onLight, onViewCeremony }: Props) {
+export default function TempleLamps({ selfId, open, onClose, onLight, onViewCeremony, onStatus }: Props) {
   const [snapshot, setSnapshot] = useState<LampSnapshot | null>(null);
   const [wish, setWish] = useState("");
   const [makeupDay, setMakeupDay] = useState("");
@@ -71,8 +49,9 @@ export default function TempleLamps({ selfId, open, onClose, onLight, onViewCere
   const operation = useRef<AbortController | null>(null);
   const version = useRef(0);
   const loadedClientDay = useRef("");
-  const callbacks = useRef({ onClose, onLight, onViewCeremony });
-  callbacks.current = { onClose, onLight, onViewCeremony };
+  const callbacks = useRef({ onClose, onLight, onViewCeremony, onStatus });
+  callbacks.current = { onClose, onLight, onViewCeremony, onStatus };
+  useEffect(() => { if (snapshot) callbacks.current.onStatus?.(snapshot.litToday); }, [snapshot]);
 
   useEffect(() => {
     const currentVersion = ++version.current;
@@ -258,7 +237,7 @@ export default function TempleLamps({ selfId, open, onClose, onLight, onViewCere
             <label htmlFor="lamp-makeup-day">忘记点灯，可以免费补点</label>
             <div><input id="lamp-makeup-day" type="date" value={makeupDay} max={maxMakeupDay} onChange={event => setMakeupDay(event.target.value)} required disabled={Boolean(busy)} /><button className="lamp-secondary" type="submit" disabled={Boolean(busy) || !makeupDay || makeupDay >= snapshot.today || litDays.has(makeupDay)}><RotateCcw size={16} />补点</button></div>
           </form>
-          <p className="lamp-footnote">每日记录按北京时间更新。{snapshot.trial.temporaryRecords ? "免费试用环境重启后，记录可能重置。" : "点灯记录会随你的入寺身份保存。"}</p>
+          <p className="lamp-footnote">每日记录按北京时间更新。{snapshot.offline ? "当前显示本机存档，联网后会恢复同步。" : snapshot.trial.temporaryRecords ? "已在本设备保存恢复存档。清除浏览器数据会失去这份恢复副本，免费云端服务重建仍可能重置记录。" : "点灯记录会随你的入寺身份保存。"}</p>
         </>}
         {message && <p className="lamp-message" role="status">{message}</p>}
         {error && <div className="lamp-error" role="alert"><p>{error}</p>{!snapshot && !loading && <button className="lamp-secondary" type="button" onClick={() => setLoadKey(value => value + 1)}>重新连接</button>}</div>}

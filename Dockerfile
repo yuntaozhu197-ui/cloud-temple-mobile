@@ -18,6 +18,7 @@ COPY --chown=node:node server.mjs ./server.mjs
 COPY --chown=node:node temple-life.mjs ./temple-life.mjs
 COPY --chown=node:node temple-auth.mjs ./temple-auth.mjs
 COPY --chown=node:node temple-lamps.mjs ./temple-lamps.mjs
+COPY --chown=node:node temple-lanterns.mjs ./temple-lanterns.mjs
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 3000

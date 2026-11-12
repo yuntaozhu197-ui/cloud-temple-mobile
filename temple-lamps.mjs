@@ -36,6 +36,7 @@ export function createTempleLamps(database, { trialMode = false } = {}) {
       ON CONFLICT(user_id) DO UPDATE SET wish = excluded.wish, updated_at = excluded.updated_at`),
     days: database.prepare(`SELECT lamp_day AS day, makeup, lit_at AS litAt FROM temple_lamp_days
       WHERE user_id = ? AND lamp_day >= ? ORDER BY lamp_day DESC`),
+    archive: database.prepare("SELECT lamp_day AS day, makeup, lit_at AS litAt FROM temple_lamp_days WHERE user_id = ? ORDER BY lamp_day DESC"),
     today: database.prepare("SELECT lamp_day AS day FROM temple_lamp_days WHERE user_id = ? AND lamp_day = ?"),
     count: database.prepare("SELECT COUNT(*) AS total FROM temple_lamp_days WHERE user_id = ?"),
     light: database.prepare(`INSERT INTO temple_lamp_days (user_id, lamp_day, makeup, lit_at)
@@ -53,11 +54,24 @@ export function createTempleLamps(database, { trialMode = false } = {}) {
       litToday: Boolean(query.today.get(identity.id, today)),
       total: query.count.get(identity.id).total,
       days: query.days.all(identity.id, recentStart.toISOString().slice(0, 10)).map(day => ({ ...day, makeup: Boolean(day.makeup) })),
+      archiveDays: query.archive.all(identity.id).map(day => ({ ...day, makeup: Boolean(day.makeup) })),
       trial: { temporaryRecords: trialMode },
     };
   }
 
   function act(identity, body, timestamp = Date.now()) {
+    if (body.action === "restore") {
+      const today = templeDay(timestamp);
+      if (!Array.isArray(body.days) || body.days.length > 100 || body.days.some(day => !validDay(day?.day) || day.day > today || typeof day.makeup !== "boolean" || !Number.isFinite(day.litAt) || day.litAt < 0 || day.litAt > timestamp)) return invalid("存档日期无效，请重新打开长明灯。");
+      if (Object.hasOwn(body, "wish") && (typeof body.wish !== "string" || Array.from(body.wish).length > 1000 || /\p{Cc}/u.test(body.wish.replace(/[\n\t]/g, "")))) return invalid("存档心愿格式无效。");
+      database.exec("BEGIN IMMEDIATE");
+      try {
+        for (const day of body.days) query.light.run(identity.id, day.day, day.makeup ? 1 : 0, day.litAt);
+        if (Object.hasOwn(body, "wish") && !query.wish.get(identity.id)) query.saveWish.run(identity.id, body.wish.trim(), timestamp);
+        database.exec("COMMIT");
+      } catch (error) { database.exec("ROLLBACK"); throw error; }
+      return null;
+    }
     if (body.action === "wish") {
       if (typeof body.wish !== "string" || Array.from(body.wish.trim()).length > 1000 || /\p{Cc}/u.test(body.wish.replace(/[\n\t]/g, ""))) {
         return invalid("心愿请填写1000字以内，避免控制字符。");

@@ -15,6 +15,6 @@ export const SHRINES = {
   },
   caishen: {
     name: "财神", hall: "财神庙", intention: "事业 · 勤勉 · 丰足",
-    description: "愿勤勉有所获，愿生活安稳丰足。", x: 0, z: -28, furnaceZ: -29,
+    description: "愿勤勉有所获，愿生活安稳丰足。", x: 43, z: 18, furnaceZ: 17,
   },
 } satisfies Record<ShrineId, { name: string; hall: string; intention: string; description: string; x: number; z: number; furnaceZ: number }>;

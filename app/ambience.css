@@ -1,0 +1,23 @@
+.temple-lesson-notice {
+  position: absolute;
+  z-index: 12;
+  top: calc(env(safe-area-inset-top) + 186px);
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: min(350px, calc(100% - 24px));
+  padding: 10px 13px;
+  border: 1px solid #b8c69c;
+  border-radius: 15px;
+  background: rgb(255 253 239 / 94%);
+  color: #405538;
+  box-shadow: 0 4px 16px #334d2321;
+  pointer-events: none;
+}
+.temple-lesson-notice > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.temple-lesson-notice strong { font-size: 14px; font-weight: 800; }
+.temple-lesson-notice span { flex-shrink: 0; font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.temple-lesson-notice small { display: block; margin-top: 4px; color: #7a8468; font-size: 11px; font-weight: 650; }
+.temple-lesson-notice button { margin: 5px 0 0; padding: 3px 0; border: 0; background: none; color: #6a714a; font: inherit; font-size: 12px; font-weight: 750; text-align: left; text-decoration: underline; pointer-events: auto; touch-action: manipulation; }
+.temple-lesson-notice button:focus-visible { outline: 2px solid #7d925b; outline-offset: 3px; border-radius: 3px; }
+@media (max-width: 350px) { .temple-lesson-notice { padding: 9px 11px; } .temple-lesson-notice strong { font-size: 13px; } .temple-lesson-notice span { font-size: 12px; } }

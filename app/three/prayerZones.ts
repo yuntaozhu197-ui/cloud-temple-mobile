@@ -317,6 +317,7 @@ export function createPrayerZones() {
   const smooth = (value: number, start: number, end: number) => THREE.MathUtils.smoothstep(value, start, end);
   let litAt = -Infinity;
   let litUntil = 0;
+  let restoredLit = false;
   let disposed = false;
   return {
     group,
@@ -338,13 +339,18 @@ export function createPrayerZones() {
       litUntil = litAt + 900_000;
       ceremony.visible = true;
     },
+    setLampLit(lit: boolean) {
+      if (disposed) return;
+      restoredLit = lit;
+      if (!lit) { litAt = -Infinity; litUntil = 0; ceremony.visible = false; }
+    },
     animate(time: number) {
       if (disposed) return;
       const now = performance.now();
       const age = (now - litAt) / 1000;
-      const lit = now < litUntil;
+      const lit = restoredLit || now < litUntil;
       towerLamps.forEach((lamp, story) => {
-        const progress = smooth(age, story * 1.6, story * 1.6 + 2.4);
+        const progress = age < 24 ? smooth(age, story * 1.6, story * 1.6 + 2.4) : 1;
         lamp.emissiveIntensity = lit ? 0.12 + progress * (1.18 + Math.sin(time * 2.1 + story * 0.6) * 0.09) : 0.12;
       });
       ceremony.visible = age >= 0 && age < 24;

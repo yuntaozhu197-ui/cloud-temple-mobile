@@ -5,7 +5,7 @@ import type { TempleRoom } from "./detachedHalls";
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 type TowerAction = "drum" | "towerBell";
 
-/** The rear garden has its own fortune shrine and a pair of open ceremonial towers. */
+/** Open forecourts keep the fortune shrine and bell tower visible from their approaches. */
 export function createFortuneTowers() {
   const group = new THREE.Group();
   group.name = "财神庙 · 鼓楼 · 钟楼";
@@ -169,14 +169,21 @@ export function createFortuneTowers() {
     rooms.push({ name, minX: x - width / 2 + 0.4, maxX: x + width / 2 - 0.4, minZ: back + 0.4, maxZ: front - 0.4, roofs: roofs.children as THREE.Mesh[], roofDetails: [details], elevation: 0 });
   }
 
-  pavilion("财神庙", 0, -31, 14, 10, 6.7, true);
-  pavilion("钟楼", -20, -32, 7.6, 7.2, 7.0, false);
+  pavilion("财神庙", 43, 15, 14, 10, 6.7, true);
+  pavilion("钟楼", 44, -33.3, 7.6, 7.2, 7.0, false);
   pavilion("鼓楼", 20, -32, 7.6, 7.2, 7.0, false);
   box(0, 0.018, -24.2, 45, 0.036, 1.7, stone);
-  for (const x of [-20, 0, 20]) box(x, 0.018, -26.5, 2.2, 0.036, 4.8, stone);
+  box(20, 0.018, -26.5, 2.2, 0.036, 4.8, stone);
   for (const x of [-16, 16]) box(x, 0.018, -18.5, 2.0, 0.036, 12, stone);
+  box(44, 0.018, -23.7, 7.6, 0.036, 11.4, stone);
+  box(44, 0.018, -10, 2.2, 0.036, 14, stone);
+  box(29, 0.018, 22, 30, 0.036, 1.8, stone);
+  box(43, 0.018, 22, 14, 0.036, 4, stone);
+  box(35, 0.018, 11.5, 1.2, 0.036, 22, stone);
 
   // A seated official-style figure carries a sycee, with crown, beard and layered robe.
+  const fortuneStatueStart = staticGroup.children.length;
+  const fortuneColliderStart = colliders.length;
   cylinder(0, 0.2, -33, 1.5, 1.65, 0.4, stone, undefined, 20);
   box(0, 1.2, -33.35, 2.5, 1.9, 0.7, darkWood);
   box(0, 2.0, -33.55, 2.75, 0.16, 0.6, gold);
@@ -209,6 +216,8 @@ export function createFortuneTowers() {
   }
   block(0, -33, 3.3, 3.4);
   block(0, -29, 0.95, 0.85);
+  staticGroup.children.slice(fortuneStatueStart).forEach(object => { object.position.x += 43; object.position.z += 46; });
+  colliders.slice(fortuneColliderStart).forEach(box => { box.minX += 43; box.maxX += 43; box.minZ += 46; box.maxZ += 46; });
 
   const bell = new THREE.Group();
   bell.name = "钟楼铜钟";
@@ -223,17 +232,17 @@ export function createFortuneTowers() {
     oval(Math.sin(angle) * 0.61, 0.1, Math.cos(angle) * 0.61, 0.045, 0.07, 0.045, gold, bell);
   }
   batch(bell);
-  bell.position.set(-20, 4.65, -32);
+  bell.position.set(44, 4.65, -33.3);
   group.add(bell);
-  cylinder(-20, 5.93, -32, 0.055, 0.055, 1.0, darkWood);
+  cylinder(44, 5.93, -33.3, 0.055, 0.055, 1.0, darkWood);
   const striker = new THREE.Group();
   striker.name = "钟楼撞木";
   cylinder(0, 0, 0, 0.14, 0.18, 1.75, darkWood, striker).rotation.x = Math.PI / 2;
   batch(striker);
-  striker.position.set(-20, 4.1, -30.65);
+  striker.position.set(44, 4.1, -31.95);
   group.add(striker);
-  for (const z of [-31.25, -30.15]) curve([[-20, 5.7, z], [-20, 4.1, z]], 0.018, gold);
-  block(-20, -32, 2.4, 2.8);
+  for (const z of [-32.55, -31.45]) curve([[44, 5.7, z], [44, 4.1, z]], 0.018, gold);
+  block(44, -33.3, 2.4, 2.8);
 
   const drum = new THREE.Group();
   drum.name = "鼓楼大鼓";
@@ -287,7 +296,7 @@ export function createFortuneTowers() {
     const drumAge = now - drumAt;
     const bellSwing = bellAge < 12 ? Math.sin(bellAge * 5.2) * Math.exp(-bellAge * 0.45) : 0;
     bell.rotation.z = bellSwing * 0.09;
-    striker.position.z = -30.65 - (bellAge < 1.1 ? Math.sin(Math.min(1, bellAge / 0.65) * Math.PI) * 0.39 : 0);
+    striker.position.z = -31.95 - (bellAge < 1.1 ? Math.sin(Math.min(1, bellAge / 0.65) * Math.PI) * 0.39 : 0);
     const drumHit = drumAge < 2.4 ? Math.sin(drumAge * 17) * Math.exp(-drumAge * 2.5) : 0;
     drum.scale.z = 1 + drumHit * 0.026;
     mallets.rotation.x = drumAge < 1.2 ? Math.sin(drumAge * 11) * Math.exp(-drumAge * 3) * 0.4 : 0;
@@ -298,7 +307,7 @@ export function createFortuneTowers() {
       waveMaterial.opacity = Math.max(0, 1 - age / 8) * 0.24;
       for (let index = 0; index < 6; index++) {
         const phase = (age * 0.65 + index / 3) % 2;
-        transform.position.set(recentBell ? -20 : 20, recentBell ? 4.25 : 3.7, -31.2);
+        transform.position.set(recentBell ? 44 : 20, recentBell ? 4.25 : 3.7, recentBell ? -32.5 : -31.2);
         transform.rotation.set(0, 0, 0);
         transform.scale.setScalar(1 + phase * 0.7);
         transform.updateMatrix();
@@ -315,13 +324,13 @@ export function createFortuneTowers() {
     colliders,
     rooms,
     landmarks: [
-      { name: "财神庙", x: 0, z: -28 },
-      { name: "钟楼", x: -20, z: -28.5 },
+      { name: "财神庙", x: 43, z: 18 },
+      { name: "钟楼", x: 44, z: -29.8 },
       { name: "鼓楼", x: 20, z: -28.5 },
     ],
     interactions: [
-      { kind: "incenseCaishen" as const, label: "♧ 财神敬香", x: 0, y: 1.2, z: -28 },
-      { kind: "towerBell" as const, label: "♩ 钟楼鸣钟", x: -20, y: 1.4, z: -28.5 },
+      { kind: "incenseCaishen" as const, label: "♧ 财神敬香", x: 43, y: 1.2, z: 18 },
+      { kind: "towerBell" as const, label: "♩ 钟楼鸣钟", x: 44, y: 1.4, z: -29.8 },
       { kind: "drum" as const, label: "♬ 鼓楼击鼓", x: 20, y: 1.4, z: -28.5 },
     ],
     interact(kind: TowerAction) {

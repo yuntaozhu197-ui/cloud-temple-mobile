@@ -25,6 +25,8 @@ type Swimmer = {
   releasedAt: number;
   spawnX: number;
   spawnZ: number;
+  feedOriginX: number;
+  feedOriginZ: number;
 };
 
 /** Individually animated fish share five draw calls, including fins, markings and eyes. */
@@ -105,18 +107,22 @@ export function createFishSchool(pond: FishPond) {
     const lane = 0.2 + random() * 0.72;
     const spawnX = pond.x + pond.radiusX * (0.77 + random() * 0.08);
     const spawnZ = pond.z + (random() - 0.5) * pond.radiusZ * 0.22;
+    const x = Number.isFinite(releasedAt) ? spawnX : pond.x + Math.cos(angle) * pond.radiusX * lane;
+    const z = Number.isFinite(releasedAt) ? spawnZ : pond.z + Math.sin(angle) * pond.radiusZ * lane;
     fish[index] = {
       size: 0.66 + random() * 0.67,
       phase: angle,
       speed: 0.12 + random() * 0.22,
       lane,
       reverse: random() < 0.4 ? -1 : 1,
-      x: Number.isFinite(releasedAt) ? spawnX : pond.x + Math.cos(angle) * pond.radiusX * lane,
-      z: Number.isFinite(releasedAt) ? spawnZ : pond.z + Math.sin(angle) * pond.radiusZ * lane,
+      x,
+      z,
       heading: angle,
       releasedAt,
       spawnX,
       spawnZ,
+      feedOriginX: x,
+      feedOriginZ: z,
     };
     setColors(index);
     bodies.count = tails.count = markings.count = fish.length;
@@ -151,13 +157,18 @@ export function createFishSchool(pond: FishPond) {
       const radius = swimmer.lane * (0.82 + Math.sin(time * 0.19 + swimmer.phase) * 0.13);
       let targetX = pond.x + pond.radiusX * (Math.cos(angle) * radius + Math.sin(angle * 2.1 + swimmer.phase) * 0.05);
       let targetZ = pond.z + pond.radiusZ * (Math.sin(angle) * radius + Math.cos(angle * 1.7 + swimmer.phase) * 0.05);
-      const feedAge = now - feedingAt - swimmer.phase * 0.3;
-      const feeding = feedAge < 0 ? 0 : feedAge < 3 ? feedAge / 3 : feedAge < 10 ? 1 : Math.max(0, 1 - (feedAge - 10) / 5);
-      if (feeding > 0) {
+      const feedAge = now - feedingAt - swimmer.phase * 0.22;
+      if (Number.isFinite(feedingAt) && feedAge < 26) {
         const feedingAngle = time * (0.6 + swimmer.speed) * swimmer.reverse + swimmer.phase;
         const spread = 0.22 + swimmer.lane * 0.42;
-        targetX = THREE.MathUtils.lerp(targetX, (pond.feedX ?? pond.x) + Math.cos(feedingAngle) * spread, feeding);
-        targetZ = THREE.MathUtils.lerp(targetZ, (pond.feedZ ?? pond.z) + Math.sin(feedingAngle) * spread, feeding);
+        const foodX = (pond.feedX ?? pond.x) + Math.cos(feedingAngle) * spread;
+        const foodZ = (pond.feedZ ?? pond.z) + Math.sin(feedingAngle) * spread;
+        const gather = THREE.MathUtils.smoothstep(feedAge, 0, 3.5);
+        const disperse = THREE.MathUtils.smoothstep(feedAge, 11, 26);
+        const gatheredX = THREE.MathUtils.lerp(swimmer.feedOriginX, foodX, gather);
+        const gatheredZ = THREE.MathUtils.lerp(swimmer.feedOriginZ, foodZ, gather);
+        targetX = THREE.MathUtils.lerp(gatheredX, targetX, disperse);
+        targetZ = THREE.MathUtils.lerp(gatheredZ, targetZ, disperse);
       }
       const normalizedRadius = Math.hypot((targetX - pond.x) / pond.radiusX, (targetZ - pond.z) / pond.radiusZ);
       if (normalizedRadius > 0.95) {
@@ -198,7 +209,14 @@ export function createFishSchool(pond: FishPond) {
     group,
     get count() { return fish.length; },
     get totalReleased() { return totalReleased; },
-    feed() { feedingAt = performance.now() / 1000; },
+    feed() {
+      if (disposed) return;
+      feedingAt = performance.now() / 1000;
+      for (const swimmer of fish) {
+        swimmer.feedOriginX = swimmer.x;
+        swimmer.feedOriginZ = swimmer.z;
+      }
+    },
     release(amount = 7) {
       if (disposed) return 0;
       const now = performance.now() / 1000;

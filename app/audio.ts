@@ -1,15 +1,23 @@
+import { MARTIAL_BEATS, MARTIAL_DURATION } from "./three/martial";
+
 export type TempleSound = "wood" | "prayer" | "bow" | "beads" | "meditate" | "incense" | "bell" | "water" | "release" | "martial" | "pagoda" | "drum" | "towerBell" | "lamp";
+export type TempleAmbienceRequest = { kind: "hall" } | { kind: "lesson"; start: number };
 
 export type TempleAudio = {
   unlock: () => Promise<boolean>;
   play: (sound: TempleSound) => void;
+  stop: (sound: TempleSound) => void;
+  setAmbience: (request: TempleAmbienceRequest | null) => Promise<boolean>;
+  ringTimeBell: () => boolean;
   setEnabled: (enabled: boolean) => void;
   dispose: () => void;
 };
 
 type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode; sound: TempleSound };
+type AmbienceVoice = { source: AudioBufferSourceNode; gain: GainNode; endAt?: number };
 type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
+const MASTER_GAIN = 1.1;
 
 const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number; fadeOut?: number }> = {
   prayer: { duration: 2.8, peak: 0.29, cutoff: 3200, room: 0.7 },
@@ -19,7 +27,7 @@ const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff
   incense: { duration: 2.5, peak: 0.27, cutoff: 3100, room: 0.6 },
   bell: { duration: 4.2, peak: 0.36, cutoff: 3300, room: 1.0 },
   water: { duration: 1.1, peak: 0.23, cutoff: 3800, room: 0.15 },
-  martial: { duration: 1.2, peak: 0.29, cutoff: 2500, room: 0.3 },
+  martial: { duration: MARTIAL_DURATION, peak: 0.32, cutoff: 2700, room: 0.38, fadeOut: 0.6 },
   drum: { duration: 3.6, peak: 0.38, cutoff: 2100, room: 0.75, fadeOut: 0.22 },
   towerBell: { duration: 11.2, peak: 0.36, cutoff: 2800, room: 1.2, fadeOut: 0.65 },
   lamp: { duration: 12, peak: 0.25, cutoff: 2700, room: 1.0, fadeOut: 0.8 },
@@ -229,13 +237,26 @@ function createSamples(sound: SynthSound, sampleRate: number) {
       addBrush(samples, sampleRate, 0.035, 0.42, 0.16, 127);
       break;
     case "martial":
-      [0, 0.28, 0.57].forEach((offset, index) => {
-        addBrush(samples, sampleRate, offset, 0.20, 0.42, 193 + index * 13);
-        addResonance(samples, sampleRate, offset + 0.12, [
-          { frequency: 108 + index * 7, amplitude: 0.21, decay: 0.065 },
-          { frequency: 177 + index * 9, amplitude: 0.06, decay: 0.04 },
-        ], 0.0025);
+      addBrush(samples, sampleRate, 0.12, 0.62, 0.055, 179);
+      MARTIAL_BEATS.forEach((beat, index) => {
+        const kick = index === 3 || index === 4;
+        const landing = index >= 5;
+        const sweepDuration = kick ? 0.62 : landing ? 0.44 : 0.28;
+        // Cloth and air lead each contact, while the low body pulse lands on its beat.
+        addBrush(samples, sampleRate, beat - sweepDuration * 0.72, sweepDuration, kick ? 0.56 : 0.36, 193 + index * 37);
+        const frequency = [108, 117, 101, 86, 94, 57, 73][index];
+        const decay = landing ? 0.19 : kick ? 0.11 : 0.075;
+        const strength = landing ? 0.48 : kick ? 0.3 : 0.21;
+        // Short impact windows keep the first mobile synthesis proportional to the hits.
+        const impactEnd = Math.min(samples.length, Math.ceil((beat + decay * 8) * sampleRate));
+        addResonance(samples.subarray(0, impactEnd), sampleRate, beat, [
+          { frequency, amplitude: strength, decay },
+          { frequency: frequency * 1.71, amplitude: strength * 0.27, decay: decay * 0.6 },
+          { frequency: frequency * 2.44, amplitude: strength * 0.075, decay: decay * 0.37 },
+        ], 0.0045);
+        addBrush(samples, sampleRate, beat + 0.01, landing ? 0.26 : 0.11, landing ? 0.12 : 0.055, 457 + index * 29);
       });
+      addBrush(samples, sampleRate, 8.9, 0.68, 0.055, 809);
       break;
   }
   softenSamples(samples, sampleRate, profile.cutoff, profile.room, 0.003, profile.fadeOut ?? 0.075);
@@ -246,6 +267,8 @@ function createSamples(sound: SynthSound, sampleRate: number) {
 export function createTempleAudio(): TempleAudio {
   let context: AudioContext | null = null;
   let master: GainNode | null = null;
+  let limiter: DynamicsCompressorNode | null = null;
+  let gestureUnlocked = false;
   let enabled = false;
   let disposed = false;
   let playbackGeneration = 0;
@@ -254,6 +277,14 @@ export function createTempleAudio(): TempleAudio {
   let woodAbort: AbortController | null = null;
   const buffers = new Map<TempleSound, AudioBuffer>();
   const voices = new Set<Voice>();
+  const ambienceBuffers = new Map<TempleAmbienceRequest["kind"], AudioBuffer>();
+  const ambienceLoads = new Map<TempleAmbienceRequest["kind"], Promise<AudioBuffer | null>>();
+  const ambienceAborts = new Set<AbortController>();
+  const ambienceVoices = new Set<AmbienceVoice>();
+  let ambienceVoice: AmbienceVoice | null = null;
+  let ambienceRequest: TempleAmbienceRequest | null = null;
+  let ambienceGeneration = 0;
+  let ambiencePending: Promise<boolean> | null = null;
 
   function ensureContext() {
     if (disposed || !enabled) return null;
@@ -262,8 +293,17 @@ export function createTempleAudio(): TempleAudio {
     if (!AudioContextClass) return null;
     context = new AudioContextClass();
     master = context.createGain();
-    master.gain.value = 0.62;
-    master.connect(context.destination);
+    master.gain.value = MASTER_GAIN;
+    if (typeof context.createDynamicsCompressor === "function") {
+      limiter = context.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 2;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.16;
+      master.connect(limiter);
+      limiter.connect(context.destination);
+    } else master.connect(context.destination);
     return context;
   }
 
@@ -280,11 +320,11 @@ export function createTempleAudio(): TempleAudio {
     voice.gain.disconnect();
   }
 
-  function startVoice(sound: TempleSound, buffer: AudioBuffer, audioContext: AudioContext) {
+  function startVoice(sound: TempleSound, buffer: AudioBuffer, audioContext: AudioContext, when = audioContext.currentTime, level = 1) {
     if (!enabled || disposed || !master || context !== audioContext) return;
-    // Repeated makeup lights renew one ceremony instead of stacking its whole melody.
-    if (sound === "lamp") {
-      for (const voice of voices) if (voice.sound === "lamp") stopVoice(voice, audioContext);
+    // A renewed long ceremony replaces its previous soundtrack with a short fade.
+    if (sound === "lamp" || sound === "martial") {
+      for (const voice of voices) if (voice.sound === sound) stopVoice(voice, audioContext);
     }
     // Bound overlapping voices even if someone taps rapidly for a long time.
     if (voices.size >= 10) {
@@ -295,13 +335,118 @@ export function createTempleAudio(): TempleAudio {
     const gain = audioContext.createGain();
     source.buffer = buffer;
     source.playbackRate.value = sound === "beads" ? 0.99 + Math.random() * 0.02 : 1;
-    gain.gain.value = sound === "wood" ? 1 : 0.94 + Math.random() * 0.06;
+    gain.gain.value = (sound === "wood" ? 1 : 0.94 + Math.random() * 0.06) * level;
     source.connect(gain);
     gain.connect(master);
     const voice = { source, gain, sound };
     voices.add(voice);
     source.onended = () => releaseVoice(voice);
-    source.start();
+    source.start(when);
+  }
+
+  function synthBuffer(sound: SynthSound, audioContext: AudioContext) {
+    let buffer = buffers.get(sound);
+    if (!buffer) {
+      const samples = createSamples(sound, audioContext.sampleRate);
+      buffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
+      buffer.getChannelData(0).set(samples);
+      buffers.set(sound, buffer);
+    }
+    return buffer;
+  }
+
+  function ringTimeBell() {
+    if (!enabled || disposed || !gestureUnlocked || context?.state !== "running") return false;
+    try {
+      const buffer = synthBuffer("towerBell", context);
+      const start = context.currentTime;
+      for (let strike = 0; strike < 4; strike++) startVoice("towerBell", buffer, context, start + strike * 1.8, 0.52);
+      return true;
+    } catch { return false; }
+  }
+
+  function stopAmbienceVoice() {
+    const voice = ambienceVoice;
+    ambienceVoice = null;
+    if (!voice || !context) return;
+    voice.gain.gain.cancelScheduledValues(context.currentTime);
+    voice.gain.gain.setTargetAtTime(0, context.currentTime, 0.03);
+    voice.source.stop(Math.min(voice.endAt ?? Infinity, context.currentTime + 0.18));
+  }
+
+  function loadAmbience(kind: TempleAmbienceRequest["kind"], audioContext: AudioContext) {
+    const cached = ambienceBuffers.get(kind);
+    if (cached) return Promise.resolve(cached);
+    const pending = ambienceLoads.get(kind);
+    if (pending) return pending;
+    const controller = new AbortController();
+    ambienceAborts.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+    const path = kind === "lesson" ? "/audio/heart-sutra.mp3" : "/audio/hall-meditation.mp3";
+    const loading = (async () => {
+      const response = await fetch(path, { signal: controller.signal });
+      if (!response.ok) return null;
+      const buffer = await audioContext.decodeAudioData(await response.arrayBuffer());
+      if (disposed || context !== audioContext) return null;
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
+      normalizeChannels(channels, kind === "lesson" ? 0.76 : 0.62);
+      ambienceBuffers.set(kind, buffer);
+      return buffer;
+    })().catch(() => null).finally(() => {
+      clearTimeout(timeout);
+      ambienceLoads.delete(kind);
+      ambienceAborts.delete(controller);
+    });
+    ambienceLoads.set(kind, loading);
+    return loading;
+  }
+
+  function setAmbience(request: TempleAmbienceRequest | null): Promise<boolean> {
+    const sameRequest = request?.kind === ambienceRequest?.kind &&
+      (request?.kind !== "lesson" || (ambienceRequest?.kind === "lesson" && request.start === ambienceRequest.start));
+    if (sameRequest && ambienceVoice && enabled && context?.state === "running") return Promise.resolve(true);
+    if (sameRequest && ambiencePending) return ambiencePending;
+    const generation = ++ambienceGeneration;
+    ambienceRequest = request;
+    stopAmbienceVoice();
+    if (!request) return Promise.resolve(true);
+    if (!enabled || disposed || !gestureUnlocked || !context || !master) return Promise.resolve(false);
+    const audioContext = context;
+    const pending = (async () => {
+      if (audioContext.state !== "running") {
+        try { await audioContext.resume(); } catch { return false; }
+      }
+      if (audioContext.state !== "running") return false;
+      const buffer = await loadAmbience(request.kind, audioContext);
+      if (!buffer || !enabled || disposed || generation !== ambienceGeneration || context !== audioContext || !master) return false;
+      const elapsed = request.kind === "lesson" ? Math.max(0, Date.now() - request.start) / 1000 : 0;
+      const remaining = request.kind === "lesson" ? 15 * 60 - elapsed : Infinity;
+      if (remaining <= 0) return false;
+      const source = audioContext.createBufferSource();
+      const gain = audioContext.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0;
+      gain.gain.setTargetAtTime(request.kind === "lesson" ? 0.8 : 0.24, audioContext.currentTime, 0.22);
+      source.connect(gain);
+      gain.connect(master);
+      const voice: AmbienceVoice = { source, gain, endAt: request.kind === "lesson" ? audioContext.currentTime + remaining : undefined };
+      ambienceVoice = voice;
+      ambienceVoices.add(voice);
+      source.onended = () => {
+        ambienceVoices.delete(voice);
+        if (ambienceVoice === voice) ambienceVoice = null;
+        source.disconnect();
+        gain.disconnect();
+      };
+      source.start(audioContext.currentTime + 0.2, (elapsed + 0.2) % buffer.duration);
+      if (voice.endAt !== undefined) source.stop(voice.endAt);
+      return true;
+    })().catch(() => false).finally(() => {
+      if (ambiencePending === pending) ambiencePending = null;
+    });
+    ambiencePending = pending;
+    return pending;
   }
 
   function loadWood(audioContext: AudioContext) {
@@ -354,7 +499,10 @@ export function createTempleAudio(): TempleAudio {
       silent.connect(audioContext.destination);
       silent.onended = () => silent.disconnect();
       silent.start();
-      return resumed.then(() => audioContext.state === "running").catch(() => false);
+      return resumed.then(() => {
+        gestureUnlocked = audioContext.state === "running";
+        return gestureUnlocked;
+      }).catch(() => false);
     } catch {
       return Promise.resolve(false);
     }
@@ -375,16 +523,20 @@ export function createTempleAudio(): TempleAudio {
         void loadWood(audioContext);
         return;
       }
-      if (!buffer) {
-        const samples = createSamples(sound as SynthSound, audioContext.sampleRate);
-        buffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
-        buffer.getChannelData(0).set(samples);
-        buffers.set(sound, buffer);
-      }
+      if (!buffer) buffer = synthBuffer(sound as SynthSound, audioContext);
       startVoice(sound, buffer, audioContext);
     } catch {
       // A denied audio session must leave the temple's controls usable.
     }
+  }
+
+  function stop(requestedSound: TempleSound) {
+    if (requestedSound === "wood") pendingWood = null;
+    if (!context) return;
+    let sound = requestedSound;
+    if (sound === "release") sound = "water";
+    if (sound === "pagoda") sound = "bell";
+    for (const voice of voices) if (voice.sound === sound) stopVoice(voice, context);
   }
 
   function setEnabled(nextEnabled: boolean) {
@@ -392,10 +544,14 @@ export function createTempleAudio(): TempleAudio {
     if (!enabled) {
       playbackGeneration += 1;
       pendingWood = null;
+      ambienceGeneration += 1;
+      ambienceRequest = null;
+      ambiencePending = null;
+      stopAmbienceVoice();
     }
     if (!context || !master) return;
     master.gain.cancelScheduledValues(context.currentTime);
-    master.gain.setTargetAtTime(enabled ? 0.62 : 0, context.currentTime, 0.012);
+    master.gain.setTargetAtTime(enabled ? MASTER_GAIN : 0, context.currentTime, 0.012);
     if (!enabled) [...voices].forEach(voice => stopVoice(voice, context!));
   }
 
@@ -404,6 +560,17 @@ export function createTempleAudio(): TempleAudio {
     enabled = false;
     playbackGeneration += 1;
     pendingWood = null;
+    ambienceGeneration += 1;
+    ambienceAborts.forEach(controller => controller.abort());
+    ambienceVoices.forEach(voice => {
+      voice.source.onended = null;
+      voice.source.stop();
+      voice.source.disconnect();
+      voice.gain.disconnect();
+    });
+    ambienceVoices.clear();
+    ambienceBuffers.clear();
+    ambienceVoice = null;
     woodAbort?.abort();
     voices.forEach(voice => {
       voice.source.onended = null;
@@ -412,10 +579,11 @@ export function createTempleAudio(): TempleAudio {
     });
     buffers.clear();
     master?.disconnect();
+    limiter?.disconnect();
     if (context) void context.close().catch(() => {});
     context = null;
     master = null;
   }
 
-  return { unlock, play, setEnabled, dispose };
+  return { unlock, play, stop, setAmbience, ringTimeBell, setEnabled, dispose };
 }

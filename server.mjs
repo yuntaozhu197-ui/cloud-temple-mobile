@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createTempleLife } from "./temple-life.mjs";
 import { createTempleAuth } from "./temple-auth.mjs";
 import { createTempleLamps } from "./temple-lamps.mjs";
+import { createTempleLanterns } from "./temple-lanterns.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
@@ -133,7 +134,7 @@ function validateUpdate(body) {
     }
   }
   if (Object.hasOwn(body, "seat") && body.seat !== null &&
-      (!Number.isInteger(body.seat) || body.seat < 0 || body.seat > 7)) {
+      (!Number.isInteger(body.seat) || body.seat < 0 || body.seat >= 20)) {
     return { error: "invalid_seat", message: "请选择庭院里的蒲团。" };
   }
   if (Object.hasOwn(body, "action") && !ACTIONS.has(body.action)) {
@@ -333,6 +334,7 @@ export function createTempleServer({
   const database = openCommunityDatabase(dataDir);
   const life = createTempleLife(database, { trialMode });
   const lamps = createTempleLamps(database, { trialMode });
+  const lanterns = createTempleLanterns(database);
   const auth = createTempleAuth(database, { now });
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
@@ -649,7 +651,7 @@ export function createTempleServer({
         sendJson(response, result.body, result.status, { cookie: result.cookies });
         return;
       }
-      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps"].includes(pathname);
+      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns"].includes(pathname);
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
@@ -665,8 +667,8 @@ export function createTempleServer({
         await handleRoom(request, response, identity);
         return;
       }
-      if (pathname === "/api/life" || pathname === "/api/lamps") {
-        const feature = pathname === "/api/lamps" ? lamps : life;
+      if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns") {
+        const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : life;
         if (!["GET", "POST"].includes(request.method)) {
           response.setHeader("Allow", "GET, POST");
           sendJson(response, { error: "method_not_allowed" }, 405, identity);

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { MARTIAL_DURATION, sampleMartial } from "./martial";
 
 /** A self-contained mesh character. Forward is +Z and the feet rest at y=0. */
 export function createMonk(color = 0xcf895c): {
@@ -8,6 +9,9 @@ export function createMonk(color = 0xcf895c): {
 } {
   const group = new THREE.Group();
   group.name = "little-monk";
+  const motionRig = new THREE.Group();
+  motionRig.name = "monk-motion-rig";
+  group.add(motionRig);
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const sphere = new THREE.SphereGeometry(1, 20, 14);
@@ -62,8 +66,9 @@ export function createMonk(color = 0xcf895c): {
   }
 
   const torso = new THREE.Group();
+  torso.name = "monk-torso";
   torso.position.y = 0.45;
-  group.add(torso);
+  motionRig.add(torso);
 
   // The rounded hem and overlapping robe make a soft, small clay-figure silhouette.
   oval(torso, robe, 0, 0.12, 0, 0.28, 0.29, 0.205);
@@ -77,6 +82,7 @@ export function createMonk(color = 0xcf895c): {
   oval(torso, skin, 0, 0.435, 0.015, 0.095, 0.09, 0.085);
 
   const head = new THREE.Group();
+  head.name = "monk-head";
   head.position.set(0, 0.645, 0.015);
   torso.add(head);
   oval(head, skin, -0.283, -0.008, 0, 0.067, 0.084, 0.052);
@@ -103,6 +109,7 @@ export function createMonk(color = 0xcf895c): {
   const palms: THREE.Mesh[] = [];
   for (const side of [-1, 1]) {
     const arm = new THREE.Group();
+    arm.name = side < 0 ? "monk-left-arm" : "monk-right-arm";
     arm.position.set(side * 0.235, 0.34, 0.005);
     torso.add(arm);
     oval(arm, robe, 0, -0.095, 0, 0.107, 0.17, 0.108);
@@ -152,11 +159,58 @@ export function createMonk(color = 0xcf895c): {
   const lampFlame = mesh(lampPetalGeometry, lampFlameMaterial, heldLamp, 0, 0.065, 0);
   lampFlame.scale.set(0.022, 0.055, 0.022);
 
+  const feedBowl = new THREE.Group();
+  feedBowl.name = "fish-food-bowl";
+  feedBowl.position.set(-0.15, 0.19, 0.27);
+  torso.add(feedBowl);
+  mesh(new THREE.SphereGeometry(0.095, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), woodLight, feedBowl);
+  mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.012, 12), lampGold, feedBowl, 0, -0.008, 0);
+  const thrownFood = new THREE.InstancedMesh(lampPetalGeometry, lampGold, 10);
+  thrownFood.name = "hand-thrown-fish-food";
+  thrownFood.frustumCulled = false;
+  thrownFood.castShadow = false;
+  torso.add(thrownFood);
+  const foodTransform = new THREE.Object3D();
+  const releaseHands = new THREE.Group();
+  releaseHands.name = "cupped-fish-release-hands";
+  torso.add(releaseHands);
+  for (const side of [-1, 1]) oval(releaseHands, skin, side * 0.043, 0, 0, 0.06, 0.035, 0.1);
+  const heldFish = new THREE.Group();
+  heldFish.name = "gently-held-small-fish";
+  releaseHands.add(heldFish);
+  oval(heldFish, woodLight, 0, 0.037, 0, 0.035, 0.024, 0.09);
+  const fishTail = mesh(new THREE.ConeGeometry(0.036, 0.06, 3), lampGold, heldFish, 0, 0.037, -0.095);
+  fishTail.rotation.x = -Math.PI / 2;
+  for (const side of [-1, 1]) oval(heldFish, ink, side * 0.019, 0.049, 0.061, 0.005, 0.005, 0.005);
+
+  const heldSkyLantern = new THREE.Group();
+  heldSkyLantern.name = "held-paper-sky-lantern";
+  heldSkyLantern.position.set(0, 0.14, 0.09);
+  prayerHands.add(heldSkyLantern);
+  const lanternPaper = material(0xf6d8a0, 0.95);
+  lanternPaper.emissive.setHex(0xb18442);
+  lanternPaper.emissiveIntensity = 0.2;
+  mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.25, 8, 1, true), lanternPaper, heldSkyLantern);
+  const lanternTop = mesh(new THREE.CircleGeometry(0.1, 8), lanternPaper, heldSkyLantern, 0, 0.125, 0);
+  lanternTop.rotation.x = -Math.PI / 2;
+  const lanternRim = mesh(new THREE.TorusGeometry(0.13, 0.006, 4, 16), lampGold, heldSkyLantern, 0, -0.125, 0);
+  lanternRim.rotation.x = Math.PI / 2;
+  for (let index = 0; index < 8; index++) {
+    const angle = index * Math.PI / 4;
+    const rib = mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.25, 4), lampGold, heldSkyLantern, Math.sin(angle) * 0.115, 0, Math.cos(angle) * 0.115);
+    rib.rotation.z = Math.sin(angle) * 0.12;
+    rib.rotation.x = -Math.cos(angle) * 0.12;
+  }
+  const lanternFire = mesh(lampPetalGeometry, lampFlameMaterial, heldSkyLantern, 0, -0.1, 0);
+  lanternFire.scale.set(0.025, 0.04, 0.025);
+
   const standingLegs = new THREE.Group();
-  group.add(standingLegs);
+  standingLegs.name = "monk-standing-legs";
+  motionRig.add(standingLegs);
   const legPivots: THREE.Group[] = [];
   for (const side of [-1, 1]) {
     const leg = new THREE.Group();
+    leg.name = side < 0 ? "monk-left-leg" : "monk-right-leg";
     leg.position.set(side * 0.11, 0.30, 0);
     standingLegs.add(leg);
     oval(leg, robe, 0, -0.095, 0, 0.084, 0.17, 0.082);
@@ -166,7 +220,8 @@ export function createMonk(color = 0xcf895c): {
   }
 
   const sittingLegs = new THREE.Group();
-  group.add(sittingLegs);
+  sittingLegs.name = "monk-sitting-legs";
+  motionRig.add(sittingLegs);
   for (const side of [-1, 1]) {
     const folded = oval(sittingLegs, robe, side * 0.128, 0.12, 0.14, 0.22, 0.11, 0.135);
     folded.rotation.y = side * 0.30;
@@ -174,6 +229,7 @@ export function createMonk(color = 0xcf895c): {
   }
 
   const beadRing = new THREE.Group();
+  beadRing.name = "monk-prayer-beads";
   beadRing.position.set(0.25, 0.14, 0.34);
   torso.add(beadRing);
   mesh(new THREE.TorusGeometry(0.088, 0.004, 4, 20), sandal, beadRing);
@@ -185,7 +241,7 @@ export function createMonk(color = 0xcf895c): {
 
   const woodenFish = new THREE.Group();
   woodenFish.position.set(0.42, 0.10, 0.24);
-  group.add(woodenFish);
+  motionRig.add(woodenFish);
   oval(woodenFish, woodMaterial, 0, 0.015, 0, 0.17, 0.105, 0.13);
   oval(woodenFish, woodLight, 0.125, 0.013, 0.038, 0.059, 0.058, 0.069);
   line(woodenFish, [[-0.08, 0.075, 0.06], [-0.015, 0.105, 0.025], [0.045, 0.085, 0.067], [0.01, 0.045, 0.116]], 0.013, slitMaterial);
@@ -198,37 +254,110 @@ export function createMonk(color = 0xcf895c): {
   oval(mallet, woodLight, 0.16, 0.105, 0, 0.043, 0.037, 0.04);
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
-    if (walking && (action === "light" || action === "strike")) action = "walk";
-    const seated = !walking && !["idle", "walk", "incense", "salute", "martial", "light", "strike"].includes(action);
+    if (walking && ["light", "strike", "martial", "feed", "releaseFish", "chant", "skyLantern"].includes(action)) action = "walk";
+    const seated = !walking && !["idle", "walk", "incense", "salute", "martial", "light", "strike", "feed", "releaseFish", "chant", "skyLantern"].includes(action);
     const animationPhase = phase ?? 0;
     const sway = Math.sin(t * 9 + animationPhase);
+    motionRig.position.set(0, 0, 0);
+    motionRig.rotation.set(0, 0, 0);
     standingLegs.visible = !seated;
     sittingLegs.visible = seated;
     torso.position.y = seated ? 0.205 : 0.45 + (walking ? Math.abs(sway) * 0.018 : Math.sin(t * 1.7 + animationPhase) * 0.006);
     torso.rotation.set(0, 0, 0);
+    skirt.rotation.set(0, 0, 0);
+    skirt.scale.set(1, 1, 0.76);
+    crossingSash.rotation.set(-0.1, 0, 0.6);
     head.rotation.set(0, 0, walking ? sway * 0.025 : Math.sin(t * 1.1 + animationPhase) * 0.018);
     for (let index = 0; index < 2; index += 1) {
       const side = index === 0 ? -1 : 1;
       arms[index].rotation.set(walking ? sway * side * 0.48 : -0.12, 0, side * 0.12);
+      arms[index].position.set(side * 0.235, 0.34, 0.005);
+      arms[index].scale.set(1, 1, 1);
       legPivots[index].rotation.set(walking ? -sway * side * 0.43 : 0, 0, 0);
+      legPivots[index].position.set(side * 0.11, 0.3, 0);
+      legPivots[index].scale.set(1, 1, 1);
       palms[index].visible = true;
     }
-    prayerHands.visible = action === "prayer" || action === "incense" || action === "salute" || action === "light";
+    prayerHands.visible = ["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern"].includes(action);
     prayerHands.position.set(0, 0.245, 0.265);
+    prayerHands.scale.setScalar(1);
     heldIncense.visible = action === "incense" && (phase ?? 0) < 0.68;
     heldLamp.visible = action === "light";
+    heldSkyLantern.visible = action === "skyLantern" && (phase ?? 0) < 0.55;
     beadRing.visible = action === "beads";
     woodenFish.visible = action === "wood";
+    feedBowl.visible = action === "feed";
+    thrownFood.visible = action === "feed";
+    releaseHands.visible = action === "releaseFish";
+    heldFish.visible = action === "releaseFish" && (phase ?? 0) < 0.56;
+    releaseHands.position.set(0, 0.18, 0.32);
+    heldFish.position.set(0, 0, 0);
+    heldFish.rotation.set(0, 0, 0);
+    heldSkyLantern.rotation.set(0, 0, 0);
 
     if (seated) {
       arms[0].rotation.set(-0.62, 0, 0.62);
       arms[1].rotation.set(-0.62, 0, -0.62);
     }
-    if (action === "prayer" || action === "incense" || action === "salute" || action === "light") {
+    if (["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern"].includes(action)) {
       arms[0].rotation.set(-0.90, -0.05, 0.79);
       arms[1].rotation.set(-0.90, 0.05, -0.79);
       palms[0].visible = false;
       palms[1].visible = false;
+    }
+    if (action === "prayer" || action === "chant" || action === "chantSit") {
+      prayerHands.position.z = 0.34;
+      prayerHands.scale.setScalar(1.18);
+      head.rotation.x = Math.sin(t * 2.1) * 0.035;
+    }
+    if (action === "skyLantern") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const raise = THREE.MathUtils.smoothstep(progress, 0.05, 0.4);
+      const release = THREE.MathUtils.smoothstep(progress, 0.4, 0.55);
+      const lower = 1 - THREE.MathUtils.smoothstep(progress, 0.55, 0.85);
+      prayerHands.position.y += raise * lower * 0.3;
+      prayerHands.position.z += release * lower * 0.15;
+      arms[0].rotation.x -= raise * lower * 0.3;
+      arms[1].rotation.x -= raise * lower * 0.3;
+      heldSkyLantern.rotation.y = Math.sin(t * 1.8) * 0.05;
+      head.rotation.x = -raise * 0.15;
+    }
+    if (action === "feed") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const cast = Math.sin(THREE.MathUtils.smoothstep(progress, 0.28, 0.7) * Math.PI);
+      torso.rotation.x = cast * 0.14;
+      arms[0].rotation.set(-1.07, -0.12, 0.32);
+      arms[1].rotation.set(-0.65 - cast * 1.05, -0.15, -0.18 - cast * 0.3);
+      head.rotation.x = 0.13 + cast * 0.09;
+      for (let index = 0; index < 10; index++) {
+        const flight = (progress * 4.2 - 1.4 - index * 0.055) / 0.85;
+        const distance = THREE.MathUtils.clamp(flight, 0, 1);
+        const sourceHeight = 0.18 + index * 0.016;
+        foodTransform.position.set(0.19 + Math.sin(index * 2.4) * distance * 0.11, sourceHeight + Math.sin(distance * Math.PI) * 0.2 - distance * (sourceHeight + 0.37), 0.25 + distance * 1.02);
+        foodTransform.scale.setScalar(flight >= 0 && flight <= 1 ? 0.012 : 0);
+        foodTransform.updateMatrix();
+        thrownFood.setMatrixAt(index, foodTransform.matrix);
+      }
+      thrownFood.instanceMatrix.needsUpdate = true;
+    }
+    if (action === "releaseFish") {
+      const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
+      const lean = THREE.MathUtils.smoothstep(progress, 0.1, 0.48) * (1 - THREE.MathUtils.smoothstep(progress, 0.7, 1));
+      torso.position.y = 0.45 - lean * 0.15;
+      torso.rotation.x = lean * 0.85;
+      head.rotation.x = lean * 0.18;
+      releaseHands.position.set(0, 0.23 - lean * 0.01, 0.25 + lean * 0.08);
+      heldFish.position.set(0, -THREE.MathUtils.smoothstep(progress, 0.48, 0.56) * 0.15, 0.04 + lean * 0.06);
+      heldFish.rotation.y = Math.sin(t * 8) * 0.12;
+      arms[0].rotation.set(-0.95 - lean * 0.2, -0.1, 0.65);
+      arms[1].rotation.set(-0.95 - lean * 0.2, 0.1, -0.65);
+      arms[0].position.z += lean * 0.06;
+      arms[1].position.z += lean * 0.06;
+      arms[0].scale.y = 1 + lean * 0.35;
+      arms[1].scale.y = 1 + lean * 0.35;
+      palms[0].visible = false;
+      palms[1].visible = false;
+      for (let index = 0; index < 2; index++) legPivots[index].rotation.z = (index === 0 ? -1 : 1) * lean * 0.2;
     }
     if (action === "light") {
       const progress = THREE.MathUtils.clamp(phase ?? 0, 0, 1);
@@ -262,13 +391,40 @@ export function createMonk(color = 0xcf895c): {
       heldIncense.rotation.x = -extend * 0.12;
     }
     if (action === "martial") {
-      const punch = Math.sin(t * 8);
-      torso.rotation.y = punch * 0.18;
-      torso.position.y = 0.42 + Math.abs(punch) * 0.025;
-      arms[0].rotation.set(-1.25 - punch * 0.65, -0.12, 0.22);
-      arms[1].rotation.set(-1.25 + punch * 0.65, 0.12, -0.22);
-      legPivots[0].rotation.z = 0.22;
-      legPivots[1].rotation.set(Math.max(0, Math.sin(t * 4)) * -0.5, 0, -0.22);
+      const pose = sampleMartial(phase === undefined ? t % MARTIAL_DURATION : phase * MARTIAL_DURATION);
+      const punches = pose.leftPunch + pose.rightPunch;
+      const guard = pose.activity * (1 - pose.salute);
+      const kickWeightShift = Math.sin(pose.sideKick * Math.PI) * 0.04;
+      motionRig.position.set(pose.travelX, pose.jump * 1.35 + pose.stance * 0.065 + pose.landing * 0.02 + kickWeightShift, pose.travelZ);
+      motionRig.rotation.set(-pose.jump * 0.24, pose.spin, Math.sin(pose.spin) * pose.jump * 0.34);
+      torso.position.y = 0.45 - pose.stance * 0.075 - pose.landing * 0.08 - pose.palm * 0.06;
+      torso.rotation.set(punches * 0.16 + pose.landing * 0.26 + pose.palm * 0.32, (pose.rightPunch - pose.leftPunch) * 0.72 + pose.sideKick * 0.55, -pose.sideKick * 0.25);
+      head.rotation.set(-pose.jump * 0.15 + pose.palm * 0.12, -torso.rotation.y * 0.65, pose.sideKick * 0.16);
+      skirt.rotation.set(-pose.flutter * 0.3, pose.flutter * 0.2, Math.sin(t * 18) * pose.flutter * 0.16);
+      skirt.scale.set(1 + pose.flutter * 0.25, 1 - pose.flutter * 0.1, 0.76 + pose.flutter * 0.14);
+      crossingSash.rotation.z += Math.sin(t * 17) * pose.flutter * 0.12;
+      for (let index = 0; index < 2; index++) {
+        const side = index === 0 ? -1 : 1;
+        const punch = index === 0 ? pose.leftPunch : pose.rightPunch;
+        const shoulderLift = -0.12 - guard * 0.96 - punch * 0.55 - pose.airKick * 0.8 - pose.palm * 1.45;
+        const shoulderTurn = -side * (guard * 0.4 - punch * 0.36);
+        const shoulderSpread = side * (0.12 + guard * 0.55 - punch * 0.62 + pose.jump * 0.5);
+        arms[index].rotation.set(shoulderLift, shoulderTurn, shoulderSpread);
+        arms[index].position.z += punch * 0.2 + pose.palm * 0.08;
+        arms[index].scale.y = 1 + punch * 0.72 + pose.palm * 0.35;
+        legPivots[index].position.x = side * (0.11 + pose.stance * 0.15);
+        legPivots[index].position.y = 0.3 - pose.stance * 0.015;
+        legPivots[index].rotation.set(punches * side * 0.18 - pose.jump * (index === 0 ? 0.95 : 0.35), side * pose.jump * 0.35, side * (pose.stance * 0.48 + pose.landing * 0.18));
+      }
+      legPivots[1].rotation.set(-pose.sideKick * 2.45 - pose.airKick * 2.35 - pose.jump * 0.2, -pose.sideKick * 0.1 - pose.airKick * 0.65, -pose.stance * 0.24 + pose.sideKick * 0.4 + pose.airKick * 0.5);
+      legPivots[1].scale.y = 1 + pose.sideKick * 1.4 + pose.airKick * 1.2;
+      if (pose.salute > 0) {
+        prayerHands.visible = true;
+        arms[0].rotation.set(-0.12 - pose.salute * 0.78, -0.05, 0.12 + pose.salute * 0.67);
+        arms[1].rotation.set(-0.12 - pose.salute * 0.78, 0.05, -0.12 - pose.salute * 0.67);
+        palms[0].visible = false;
+        palms[1].visible = false;
+      }
     }
     if (action === "bow") {
       const bowPhase = phase === undefined ? t % 1 : THREE.MathUtils.clamp(phase, 0, 1);
@@ -279,7 +435,10 @@ export function createMonk(color = 0xcf895c): {
       head.rotation.z = 0;
     }
     if (action === "beads") {
-      arms[1].rotation.set(-0.98, 0, -0.18);
+      arms[1].rotation.set(-1.08, 0, -0.12);
+      arms[1].position.z = 0.12;
+      beadRing.position.set(0.23, 0.18 + Math.sin(t * 3) * 0.012, 0.36);
+      beadRing.scale.setScalar(1.15);
       beadRing.rotation.z = -t * 0.7;
       beadRing.rotation.y = Math.sin(t * 0.8) * 0.18;
     }
@@ -295,6 +454,7 @@ export function createMonk(color = 0xcf895c): {
     group,
     update,
     dispose() {
+      thrownFood.dispose();
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((surface) => surface.dispose());
       group.clear();

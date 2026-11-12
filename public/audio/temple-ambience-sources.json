@@ -1,0 +1,19 @@
+{
+  "chant": {
+    "file": "heart-sutra.mp3",
+    "bytes": 556800,
+    "seconds": 111.28285714285714,
+    "sha256": "1ddf5dd5e17c60eea96e90e3d649078cdcabd7abd4eb229381ab8fb20871a66c",
+    "voice": "Microsoft Kangkang - Chinese (Simplified, PRC)",
+    "generatedBy": "Local Windows SAPI OneCore text-to-speech, rate -3",
+    "text": "玄奘译《般若波罗蜜多心经》，古文公有领域；罣字以通行简体挂字朗读。",
+    "recording": "本项目由本机语音合成生成，非寺庙或第三方表演录音。"
+  },
+  "music": {
+    "file": "hall-meditation.mp3",
+    "bytes": 192313,
+    "seconds": 32,
+    "sha256": "00252d8acb46ec8cb1c81b8ba2d88062d33b57660c7d80be8a3f64fd45bd7861",
+    "composition": "本项目原创五声音阶钟钵器乐，由数学波形离线生成。"
+  }
+}
