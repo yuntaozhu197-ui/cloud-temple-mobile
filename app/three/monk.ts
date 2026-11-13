@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import { MARTIAL_DURATION, sampleMartial } from "./martial";
+import { createHeldPondCreature } from "./pondCreatures";
+import type { PondSpecies } from "../pondGame";
 
 /** A self-contained mesh character. Forward is +Z and the feet rest at y=0. */
 export function createMonk(color = 0xcf895c): {
   group: THREE.Group;
   update: (action: string, t: number, walking: boolean, phase?: number) => void;
+  setReleaseSpecies: (species: PondSpecies) => void;
   dispose: () => void;
 } {
   const group = new THREE.Group();
@@ -165,13 +168,56 @@ export function createMonk(color = 0xcf895c): {
   }
 
   const prayerHands = new THREE.Group();
+  prayerHands.name = "joined-prayer-hands";
   prayerHands.position.set(0, 0.245, 0.265);
   torso.add(prayerHands);
+  const joinedPalms: THREE.Mesh[] = [];
   for (const side of [-1, 1]) {
-    const hand = oval(prayerHands, skin, side * 0.032, 0, 0, 0.032, 0.103, 0.059);
-    hand.rotation.z = side * 0.08;
+    const roundedPalm = new THREE.SphereGeometry(1, 12, 8);
+    const palmGeometry = new THREE.BufferGeometry().copy(roundedPalm);
+    roundedPalm.dispose();
+    const positions = palmGeometry.getAttribute("position");
+    for (let index = 0; index < positions.count; index++) {
+      positions.setX(index, side * Math.max(0, side * positions.getX(index)));
+    }
+    palmGeometry.computeVertexNormals();
+    const hand = mesh(palmGeometry, skin, prayerHands);
+    hand.name = side < 0 ? "prayer-left-palm" : "prayer-right-palm";
+    hand.scale.set(.052, .096, .045);
+    joinedPalms.push(hand);
   }
-  line(prayerHands, [[0, -0.06, 0.059], [0, 0.025, 0.059], [0, 0.08, 0.04]], 0.0026, earInside);
+  const joinedPalmCrease = line(prayerHands, [[0, -.065, .038], [0, .025, .044], [0, .078, .025]], .002, earInside);
+
+  // Two articulated cloth sleeves meet the wrists without crossing the palms.
+  const devotionalArms = new THREE.Group();
+  devotionalArms.name = "connected-prayer-arms";
+  torso.add(devotionalArms);
+  const prayerArmParts = [-1, 1].map(side => {
+    const upper = oval(devotionalArms, robe, 0, 0, 0, .087, .1, .087);
+    const forearm = oval(devotionalArms, robe, 0, 0, 0, .069, .1, .069);
+    const cuff = oval(devotionalArms, sash, 0, 0, 0, .065, .027, .065);
+    upper.name = side < 0 ? "prayer-left-upper-arm" : "prayer-right-upper-arm";
+    forearm.name = side < 0 ? "prayer-left-forearm" : "prayer-right-forearm";
+    cuff.name = side < 0 ? "prayer-left-cuff" : "prayer-right-cuff";
+    const elbow = new THREE.Object3D();
+    const wrist = new THREE.Object3D();
+    elbow.name = side < 0 ? "prayer-left-elbow" : "prayer-right-elbow";
+    wrist.name = side < 0 ? "prayer-left-wrist" : "prayer-right-wrist";
+    devotionalArms.add(elbow, wrist);
+    return { upper, forearm, cuff, elbow, wrist };
+  });
+  const sleeveAxis = new THREE.Vector3(0, 1, 0);
+  const sleeveDirection = new THREE.Vector3();
+  const shoulderPoint = new THREE.Vector3();
+  const elbowPoint = new THREE.Vector3();
+  const wristPoint = new THREE.Vector3();
+  const palmCenter = new THREE.Vector3();
+  function sleeveBetween(part: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, radius: number) {
+    sleeveDirection.copy(to).sub(from);
+    part.position.copy(from).add(to).multiplyScalar(.5);
+    part.scale.set(radius, sleeveDirection.length() * .5 + .014, radius);
+    part.quaternion.setFromUnitVectors(sleeveAxis, sleeveDirection.normalize());
+  }
 
   const heldIncense = new THREE.Group();
   heldIncense.name = "ritual-incense-bundle";
@@ -224,13 +270,10 @@ export function createMonk(color = 0xcf895c): {
   const armRestDirection = new THREE.Vector3(0, -1, 0);
   const bendAxis = new THREE.Vector3(1, 0, 0);
   for (const side of [-1, 1]) oval(releaseHands, skin, side * 0.043, 0, 0, 0.06, 0.035, 0.1);
-  const heldFish = new THREE.Group();
+  const heldCreature = createHeldPondCreature();
+  const heldFish = heldCreature.group;
   heldFish.name = "gently-held-small-fish";
   releaseHands.add(heldFish);
-  oval(heldFish, woodLight, 0, 0.037, 0, 0.035, 0.024, 0.09);
-  const fishTail = mesh(new THREE.ConeGeometry(0.036, 0.06, 3), lampGold, heldFish, 0, 0.037, -0.095);
-  fishTail.rotation.x = -Math.PI / 2;
-  for (const side of [-1, 1]) oval(heldFish, ink, side * 0.019, 0.049, 0.061, 0.005, 0.005, 0.005);
 
   const heldSkyLantern = new THREE.Group();
   heldSkyLantern.name = "held-paper-sky-lantern";
@@ -349,6 +392,21 @@ export function createMonk(color = 0xcf895c): {
     oval(sittingLegs, skin, side * 0.11, 0.125, 0.255, 0.07, 0.045, 0.062);
   }
 
+  const kneelingLegs = new THREE.Group();
+  kneelingLegs.name = "monk-kneeling-legs";
+  motionRig.add(kneelingLegs);
+  const kneelingThighs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    const thigh = oval(kneelingLegs, robe, side * .125, .18, .02, .09, .14, .1);
+    thigh.name = side < 0 ? "kneeling-left-thigh" : "kneeling-right-thigh";
+    kneelingThighs.push(thigh);
+    const knee = oval(kneelingLegs, robe, side * .125, .108, .14, .091, .105, .096);
+    knee.name = side < 0 ? "kneeling-left-knee" : "kneeling-right-knee";
+    oval(kneelingLegs, robe, side * .125, .078, -.055, .083, .075, .215);
+    const foot = oval(kneelingLegs, skin, side * .125, .052, -.275, .067, .045, .105);
+    foot.name = side < 0 ? "kneeling-left-foot" : "kneeling-right-foot";
+  }
+
   const beadRing = new THREE.Group();
   beadRing.name = "monk-prayer-beads";
   beadRing.position.set(0.25, 0.14, 0.34);
@@ -378,13 +436,16 @@ export function createMonk(color = 0xcf895c): {
     const scenePose = ["offerFlower", "drum", "towerBell", "bell", "ritual", "pagoda", "mural", "sutra", "breathe", "lotusLamp"].includes(action);
     if (walking && (scenePose || ["light", "strike", "martial", "feed", "releaseFish", "chant", "skyLantern"].includes(action))) action = "walk";
     const seated = !walking && !scenePose && !["idle", "walk", "incense", "salute", "martial", "light", "strike", "feed", "releaseFish", "chant", "skyLantern"].includes(action);
+    const kneeling = !walking && (action === "prayer" || action === "bow");
     const animationPhase = phase ?? 0;
+    let devotionalHandsDown = 0;
     const sway = Math.sin(t * 9 + animationPhase);
     motionRig.position.set(0, 0, 0);
     motionRig.rotation.set(0, 0, 0);
     standingLegs.visible = !seated;
-    sittingLegs.visible = seated;
-    torso.position.y = seated ? 0.205 : 0.45 + (walking ? Math.abs(sway) * 0.018 : Math.sin(t * 1.7 + animationPhase) * 0.006);
+    sittingLegs.visible = seated && !kneeling;
+    kneelingLegs.visible = kneeling;
+    torso.position.set(0, kneeling ? .29 : seated ? 0.205 : 0.45 + (walking ? Math.abs(sway) * 0.018 : Math.sin(t * 1.7 + animationPhase) * 0.006), kneeling ? -.09 : 0);
     torso.rotation.set(0, 0, 0);
     skirt.rotation.set(0, 0, 0);
     skirt.scale.set(1, 1, 0.76);
@@ -393,6 +454,7 @@ export function createMonk(color = 0xcf895c): {
     for (let index = 0; index < 2; index += 1) {
       const side = index === 0 ? -1 : 1;
       arms[index].rotation.set(walking ? sway * side * 0.48 : -0.12, 0, side * 0.12);
+      arms[index].visible = true;
       arms[index].position.set(side * 0.235, 0.34, 0.005);
       arms[index].scale.set(1, 1, 1);
       legPivots[index].rotation.set(walking ? -sway * side * 0.43 : 0, 0, 0);
@@ -403,7 +465,11 @@ export function createMonk(color = 0xcf895c): {
     }
     prayerHands.visible = ["prayer", "incense", "salute", "light", "chant", "chantSit", "skyLantern", "ritual", "pagoda", "lotusLamp"].includes(action);
     prayerHands.position.set(0, 0.245, 0.265);
+    prayerHands.rotation.set(0, 0, 0);
     prayerHands.scale.setScalar(1);
+    joinedPalms.forEach(hand => { hand.position.set(0, 0, 0); });
+    joinedPalmCrease.visible = true;
+    devotionalArms.visible = false;
     heldIncense.visible = action === "incense" && (phase ?? 0) < 0.68;
     heldLamp.visible = action === "light" || action === "lotusLamp" && (phase ?? 0) < 0.72;
     heldSkyLantern.visible = action === "skyLantern" && (phase ?? 0) < 0.55;
@@ -413,6 +479,7 @@ export function createMonk(color = 0xcf895c): {
     thrownFood.visible = action === "feed";
     releaseHands.visible = action === "releaseFish";
     heldFish.visible = action === "releaseFish" && (phase ?? 0) < 0.56;
+    if (heldFish.visible) heldCreature.animate(t);
     releaseHands.position.set(0, 0.68, 0.25);
     heldFish.position.set(0, 0, 0);
     heldFish.rotation.set(0, 0, 0);
@@ -434,8 +501,7 @@ export function createMonk(color = 0xcf895c): {
       palms[1].visible = false;
     }
     if (action === "prayer" || action === "chant" || action === "chantSit") {
-      prayerHands.position.z = 0.34;
-      prayerHands.scale.setScalar(1.18);
+      prayerHands.position.set(0, .275, .315);
       head.rotation.x = Math.sin(t * 2.1) * 0.035;
     }
     if (action === "skyLantern") {
@@ -685,11 +751,19 @@ export function createMonk(color = 0xcf895c): {
     }
     if (action === "bow") {
       const bowPhase = phase === undefined ? t % 1 : THREE.MathUtils.clamp(phase, 0, 1);
-      const bow = (1 - Math.cos(bowPhase * Math.PI * 2)) * 0.5;
-      torso.rotation.x = 0.12 + bow * 1.27;
-      arms[0].rotation.set(-0.40, 0, -0.10);
-      arms[1].rotation.set(-0.40, 0, 0.10);
-      head.rotation.z = 0;
+      const bow = THREE.MathUtils.smoothstep(bowPhase, .28, .52) * (1 - THREE.MathUtils.smoothstep(bowPhase, .62, .86));
+      const handsDown = THREE.MathUtils.smoothstep(bowPhase, .18, .42) * (1 - THREE.MathUtils.smoothstep(bowPhase, .72, .92));
+      devotionalHandsDown = handsDown;
+      torso.position.set(0, .29 - bow * .045, -.09 + bow * .16);
+      torso.rotation.x = bow * 1.5;
+      skirt.scale.z = .76 - bow * .12;
+      head.rotation.set(bow * .4, 0, 0);
+      prayerHands.visible = true;
+      palmCenter.set(0, THREE.MathUtils.lerp(.565, .048, handsDown), THREE.MathUtils.lerp(.225, .7, handsDown));
+      prayerHands.position.copy(palmCenter).sub(torso.position).applyAxisAngle(bendAxis, -torso.rotation.x);
+      prayerHands.rotation.x = handsDown * Math.PI / 2 - torso.rotation.x;
+      joinedPalms.forEach((hand, index) => { hand.position.x = (index === 0 ? -1 : 1) * handsDown * .205; });
+      joinedPalmCrease.visible = handsDown < .01;
     }
     if (action === "beads") {
       arms[1].rotation.set(-1.08, 0, -0.12);
@@ -704,13 +778,40 @@ export function createMonk(color = 0xcf895c): {
       arms[1].rotation.set(-0.75 + strike * 0.20, 0, -0.29);
       mallet.rotation.z = -0.40 - strike * 0.38;
     }
+    if (["prayer", "salute", "chant", "chantSit", "bow"].includes(action) && !walking) {
+      devotionalArms.visible = true;
+      const handsDown = devotionalHandsDown;
+      if (action === "salute") prayerHands.position.set(0, .275, .315);
+      prayerArmParts.forEach((parts, index) => {
+        const side = index === 0 ? -1 : 1;
+        arms[index].visible = false;
+        shoulderPoint.set(side * .235, .34, .005);
+        elbowPoint.set(side * THREE.MathUtils.lerp(.205, .25, handsDown), THREE.MathUtils.lerp(torso.position.y + .15, .16, handsDown), THREE.MathUtils.lerp(torso.position.z + .16, .52, handsDown));
+        elbowPoint.sub(torso.position).applyAxisAngle(bendAxis, -torso.rotation.x);
+        wristPoint.set(joinedPalms[index].position.x + side * .021, -.073, -.002).applyEuler(prayerHands.rotation).add(prayerHands.position);
+        parts.elbow.position.copy(elbowPoint);
+        parts.wrist.position.copy(wristPoint);
+        sleeveBetween(parts.upper, shoulderPoint, elbowPoint, .087);
+        sleeveBetween(parts.forearm, elbowPoint, wristPoint, .066);
+        parts.cuff.position.copy(wristPoint);
+        parts.cuff.quaternion.copy(parts.forearm.quaternion);
+      });
+    }
+    if (kneeling) kneelingThighs.forEach((thigh, index) => {
+      const side = index === 0 ? -1 : 1;
+      shoulderPoint.set(side * .125, torso.position.y - .045, torso.position.z);
+      elbowPoint.set(side * .125, .108, .14);
+      sleeveBetween(thigh, shoulderPoint, elbowPoint, .09);
+    });
   }
 
   update("idle", 0, false);
   return {
     group,
     update,
+    setReleaseSpecies(species) { heldCreature.setSpecies(species); },
     dispose() {
+      heldCreature.dispose();
       thrownFood.dispose();
       geometries.forEach((geometry) => geometry.dispose());
       materials.forEach((surface) => surface.dispose());

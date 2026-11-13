@@ -16,6 +16,8 @@ import { lampRequest } from "./lampArchive";
 import TempleAmbience from "./TempleAmbience";
 import TempleLanterns from "./TempleLanterns";
 import TempleResidents from "./TempleResidents";
+import TemplePond from "./TemplePond";
+import { getPondSpecies, type PondSpecies } from "./pondGame";
 import type { NpcResidentId } from "./npcResidents";
 import TempleSoundSettings from "./TempleSoundSettings";
 import type { TempleInteractionKind } from "./templeInteractions";
@@ -57,6 +59,9 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [lampLit, setLampLit] = useState(false);
  const [skyLanternOpen, setSkyLanternOpen] = useState(false);
  const [skyLanternPulse, setSkyLanternPulse] = useState(0);
+ const [pondOpen, setPondOpen] = useState(false);
+ const [pondRelease, setPondRelease] = useState<{ requestId: string; species: PondSpecies } | null>(null);
+ const [pondResult, setPondResult] = useState<{ requestId: string; species: PondSpecies; stage: "released" | "cancelled" } | null>(null);
  const [residentId, setResidentId] = useState<NpcResidentId | null>(null);
  const [talkingNpcId, setTalkingNpcId] = useState<NpcResidentId | null>(null);
  const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -294,7 +299,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   if (kind === "fish" || kind === "pondFeed") notify("走到池畔，轻轻撒下鱼食。");
   if (kind === "mural") setModal("mural");
   if (kind === "sutra" || kind === "breathe") setModal(kind);
-  if (kind === "release") notify("走到放生池畔，把小鱼轻轻送入水中。");
+  if (kind === "release") setPondOpen(true);
   if (kind === "martial") notify("走到广场中央，准备练一套功夫。移动即可收招。");
  };
  const interactionStage = (kind: TempleInteractionKind, stage: "begin" | "impact" | "complete") => {
@@ -322,6 +327,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       lampPulse={lampPulse}
       lampLit={lampLit}
       skyLanternPulse={skyLanternPulse}
+      pondRelease={pondRelease}
+      onPondReleaseResult={setPondResult}
       talkingNpcId={talkingNpcId}
       onNpcEncounter={setResidentId}
       onInteractionStage={interactionStage}
@@ -353,7 +360,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
        if (stage === "cancel") audioRef.current?.stop("martial");
        if (stage === "complete") notify("一套功夫练完，抱拳收势。");
       }}
-      onFishStage={(kind, stage) => { if (stage === "offer") { tone(kind === "release" ? "release" : "water"); notify(kind === "release" ? "小鱼游入池中，慢慢加入鱼群。" : "鱼群正游来，吃饱后会缓缓散开。"); } }}
+      onFishStage={(kind, stage) => { if (stage === "offer") {
+       tone(kind === "release" ? "release" : "water");
+       notify(kind === "release" ? pondRelease?.species === "butterfly" ? "彩蝶振翅飞向池边花丛。" : `${getPondSpecies(pondRelease?.species ?? "fish")?.name}已轻轻送入池中。` : "鱼群正游来，吃饱后会缓缓散开。");
+      } }}
       onSkyLanternStage={stage => { if (stage === "release") { tone("incense"); notify("愿这一盏灯，载着你的心愿慢慢升起。"); } }}
       onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
      />
@@ -416,6 +426,13 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    </main>
 
    <TempleResidents residentId={menuOpen ? null : residentId} onConversationChange={setTalkingNpcId} />
+   <TemplePond selfId={account.id} open={pondOpen} onClose={() => setPondOpen(false)} result={pondResult} onNotice={notify} onRelease={(species, requestId) => {
+    unlockAudio();
+    if (autoRef.current) stopAuto();
+    if (meditatingRef.current) finishMeditation();
+    setPondResult(null);
+    setPondRelease({ species, requestId });
+   }} />
    <TempleSoundSettings open={soundSettingsOpen} gameVolume={gameVolume} templeVolume={templeVolume} onGameVolume={volume => changeVolume("game", volume)} onTempleVolume={volume => changeVolume("temple", volume)} onClose={() => setSoundSettingsOpen(false)} />
    <TempleAmbience position={ambientPosition} sound={templeVolume > 0} unlocked={audioUnlocked} audio={audioRef.current} />
    <TempleLanterns selfId={account.id} open={skyLanternOpen} onClose={() => setSkyLanternOpen(false)} onRelease={() => {

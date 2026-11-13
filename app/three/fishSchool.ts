@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import type { PondSpecies } from "../pondGame";
+
+type FishSpecies = Extract<PondSpecies, "fish" | "koi" | "goldfish">;
 
 type FishPond = {
   name: string;
@@ -16,6 +19,7 @@ type FishPond = {
 };
 
 type Swimmer = {
+  species: FishSpecies;
   size: number;
   phase: number;
   speed: number;
@@ -93,8 +97,8 @@ export function createFishSchool(pond: FishPond) {
     seed ^= seed << 5;
     return (seed >>> 0) / 0x100000000;
   }
-  function setColors(index: number) {
-    const palette = palettes[Math.floor(random() * palettes.length)];
+  function setColors(index: number, species: FishSpecies) {
+    const palette = species === "fish" ? ["#8da99b", "#d2ddbf"] : species === "goldfish" ? ["#e6a04e", "#f0ca80"] : palettes[Math.floor(random() * palettes.length)];
     color.set(palette[0]).multiplyScalar(0.9 + random() * 0.17);
     bodies.setColorAt(index, color);
     tails.setColorAt(index, color);
@@ -102,7 +106,7 @@ export function createFishSchool(pond: FishPond) {
     fins.setColorAt(index * 2 + 1, color);
     markings.setColorAt(index, color.set(palette[1]));
   }
-  function addFish(releasedAt = -Infinity) {
+  function addFish(releasedAt = -Infinity, species: FishSpecies = "koi") {
     const index = sequence % capacity;
     sequence += 1;
     const angle = random() * Math.PI * 2;
@@ -118,6 +122,7 @@ export function createFishSchool(pond: FishPond) {
     const x = Number.isFinite(releasedAt) ? spawnX : pond.x + Math.cos(angle) * pond.radiusX * lane;
     const z = Number.isFinite(releasedAt) ? spawnZ : pond.z + Math.sin(angle) * pond.radiusZ * lane;
     fish[index] = {
+      species,
       size: 0.66 + random() * 0.67,
       phase: angle,
       speed: 0.12 + random() * 0.22,
@@ -132,7 +137,7 @@ export function createFishSchool(pond: FishPond) {
       feedOriginX: x,
       feedOriginZ: z,
     };
-    setColors(index);
+    setColors(index, species);
     bodies.count = tails.count = markings.count = fish.length;
     fins.count = eyes.count = fish.length * 2;
     group.userData.fishCount = fish.length;
@@ -200,14 +205,17 @@ export function createFishSchool(pond: FishPond) {
         swimmer.heading += difference * Math.min(1, dt * 5);
       }
       const tailSwing = Math.sin(time * (5 + swimmer.speed * 12) + swimmer.phase) * 0.42;
-      const bob = Math.sin(time * 2.3 + swimmer.phase) * 0.008;
-      place(bodies, index, swimmer, 0, bob, 0, 0.1, 0.045, 0.235);
-      place(tails, index, swimmer, Math.sin(tailSwing) * 0.04, bob, -0.28, 0.115, 0.19, 0.055, tailSwing, -Math.PI / 2);
-      place(markings, index, swimmer, 0.005, 0.032 + bob, -0.045, 0.077, 0.019, 0.105);
+      const small = swimmer.species === "fish";
+      const goldfish = swimmer.species === "goldfish";
+      const bob = Math.sin(time * 2.3 + swimmer.phase) * .008 + (goldfish ? .035 : 0);
+      const length = small ? .68 : 1;
+      place(bodies, index, swimmer, 0, bob, 0, goldfish ? .125 : .1 * length, goldfish ? .075 : .045 * length, goldfish ? .17 : .235 * length);
+      place(tails, index, swimmer, Math.sin(tailSwing) * .04 * length, bob, goldfish ? -.23 : -.28 * length, goldfish ? .18 : .115 * length, goldfish ? .22 : .19 * length, .055 * length, tailSwing, -Math.PI / 2);
+      place(markings, index, swimmer, .005, (goldfish ? .056 : .032 * length) + bob, -.045 * length, .077 * length, .019 * length, .105 * length);
       for (const side of [-1, 1]) {
         const pairIndex = index * 2 + (side + 1) / 2;
-        place(fins, pairIndex, swimmer, side * 0.105, bob, 0.005, 0.07, 0.11, 0.018, side * (0.9 + tailSwing * 0.2), Math.PI / 2);
-        place(eyes, pairIndex, swimmer, side * 0.053, 0.032 + bob, 0.16, 0.015, 0.016, 0.018);
+        place(fins, pairIndex, swimmer, side * (goldfish ? .13 : .105 * length), bob, .005, .07 * length, .11 * length, .018, side * (.9 + tailSwing * .2), Math.PI / 2);
+        place(eyes, pairIndex, swimmer, side * (goldfish ? .075 : .053 * length), (goldfish ? .052 : .032 * length) + bob, goldfish ? .115 : .16 * length, .015 * length, .016 * length, .018 * length);
       }
     }
     batches.forEach(object => { object.instanceMatrix.needsUpdate = true; });
@@ -225,13 +233,14 @@ export function createFishSchool(pond: FishPond) {
         swimmer.feedOriginZ = swimmer.z;
       }
     },
-    release(amount = 7) {
+    release(amount = 7, species: FishSpecies = "koi") {
       if (disposed) return 0;
       const now = performance.now() / 1000;
       const count = THREE.MathUtils.clamp(Math.floor(amount), 1, capacity);
-      for (let index = 0; index < count; index++) addFish(now + index * 0.06);
+      for (let index = 0; index < count; index++) addFish(now + index * 0.06, species);
       totalReleased += count;
       group.userData.totalReleased = totalReleased;
+      group.userData.lastReleasedSpecies = species;
       animate(lastTime ?? 0);
       return count;
     },

@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { createFishSchool } from "./fishSchool";
+import { createPondCreatures } from "./pondCreatures";
+import type { PondSpecies } from "../pondGame";
 import { MARTIAL_BEATS, MARTIAL_DURATION, sampleMartial } from "./martial";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -164,6 +166,8 @@ export function createScenicAreas() {
   releaseX: -24.3, releaseZ: 8,
  });
  group.add(fishSchool.group);
+ const pondCreatures = createPondCreatures();
+ group.add(pondCreatures.group);
  const releaseRipple = mesh(new THREE.RingGeometry(.28, .34, 32), glow, -24.3, .13, 8, group);
  releaseRipple.rotation.x = -Math.PI / 2;
  releaseRipple.castShadow = false;
@@ -230,6 +234,7 @@ export function createScenicAreas() {
  let martialAt = -Infinity;
  let prayerAt = -Infinity;
  let disposed = false;
+ let releaseSpecies: PondSpecies = "fish";
  return {
   group,
   colliders,
@@ -239,15 +244,22 @@ export function createScenicAreas() {
    { name: "习武广场", x: 28, z: 12 },
   ],
   interactions: [
-   { kind: "release" as const, label: "◌ 放生小鱼", x: -22.5, y: 1.1, z: 8 },
+   { kind: "release" as const, label: "◌ 放生池", x: -22.5, y: 1.1, z: 8 },
    { kind: "pondFeed" as const, label: "◌ 投喂池鱼", x: -22.5, y: 1.1, z: 10.5 },
    { kind: "pagoda" as const, label: "♧ 塔前合掌", x: -43, y: 1.2, z: 21 },
    { kind: "martial" as const, label: "✧ 习武练拳", x: 28, y: 1.1, z: 12 },
   ],
+  setReleaseSpecies(species: PondSpecies) { releaseSpecies = species; },
   interact(kind: ScenicAction) {
    if (disposed) return;
    const now = performance.now() / 1000;
-   if (kind === "release") { releasedAt = now; fishSchool.release(7); }
+   if (kind === "release") {
+    releasedAt = now;
+    if (releaseSpecies === "fish" || releaseSpecies === "koi" || releaseSpecies === "goldfish") fishSchool.release(1, releaseSpecies);
+    else pondCreatures.release(releaseSpecies);
+    group.userData.lastReleasedSpecies = releaseSpecies;
+    group.userData.totalReleased = fishSchool.totalReleased + pondCreatures.totalReleased;
+   }
    if (kind === "pondFeed") fishSchool.feed();
    if (kind === "martial") martialAt = now;
    if (kind === "pagoda") prayerAt = now;
@@ -265,6 +277,7 @@ export function createScenicAreas() {
    const now = performance.now() / 1000;
    const releaseAge = now - releasedAt;
    fishSchool.animate(time);
+   pondCreatures.animate(time);
    releaseRipple.visible = releaseAge < 5;
    if (releaseRipple.visible) releaseRipple.scale.setScalar(1 + (releaseAge % 1.4) * 1.7);
    const martialAge = now - martialAt;
@@ -356,6 +369,7 @@ export function createScenicAreas() {
    windArcs.dispose();
    impactRings.dispose();
    fishSchool.dispose();
+   pondCreatures.dispose();
    geometries.forEach(geometry => geometry.dispose());
    materials.forEach(material => material.dispose());
    group.clear();

@@ -38,7 +38,7 @@ export default function TempleSoundSettings(props: Props) {
       <h2 id="sound-settings-title">声音设置</h2>
       {[
         { id: "game-volume", label: "游戏音量", detail: "水声、喂鱼、放生、习武", value: props.gameVolume, change: props.onGameVolume },
-        { id: "temple-volume", label: "寺庙音量", detail: "钟鼓、木鱼、念经、殿内音乐及礼敬", value: props.templeVolume, change: props.onTempleVolume },
+        { id: "temple-volume", label: "寺庙音量", detail: "钟鼓、木鱼、殿内《心经》配乐、念经及礼敬", value: props.templeVolume, change: props.onTempleVolume },
       ].map(item => <div className="sound-volume-row" key={item.id}>
         <div><label htmlFor={item.id}>{item.label}</label><output htmlFor={item.id}>{Math.round(item.value * 100)}%</output></div>
         <p>{item.detail}</p>

@@ -13,6 +13,7 @@ import { createAltarAtmosphere } from './altarAtmosphere';
 import { TEMPLE_SEATS } from '../templeSeats';
 import type { NpcResidentId } from '../npcResidents';
 import { TEMPLE_LAYOUT } from '../templeLayout';
+import type { PondSpecies } from '../pondGame';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -32,6 +33,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   restoreLongLamp: (lit: boolean) => void;
   releaseSkyLantern: () => void;
   stopMartial: () => void;
+  setReleaseSpecies: (species: PondSpecies) => void;
   interact: (kind: 'bell' | 'fish' | 'pondFeed' | 'lamp' | 'release' | 'martial' | 'pagoda' | 'drum' | 'towerBell') => void;
   animate: (t: number) => void;
   dispose: () => void;
@@ -860,6 +862,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     restoreLongLamp(lit) { prayerZones.setLampLit(lit); },
     releaseSkyLantern() { skyLanterns.release(); },
     stopMartial() { scenicAreas.stopMartial(); },
+    setReleaseSpecies(species) { scenicAreas.setReleaseSpecies(species); },
     interact(kind) {
       if (kind === 'drum' || kind === 'towerBell') { fortuneTowers.interact(kind); return; }
       if (kind === 'release' || kind === 'martial' || kind === 'pagoda' || kind === 'pondFeed') { scenicAreas.interact(kind); return; }

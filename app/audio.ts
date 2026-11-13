@@ -415,7 +415,7 @@ export function createTempleAudio(): TempleAudio {
     const controller = new AbortController();
     ambienceAborts.add(controller);
     const timeout = setTimeout(() => controller.abort(), 20_000);
-    const path = kind === "lesson" ? "/audio/heart-sutra.mp3" : "/audio/hall-meditation.mp3";
+    const path = kind === "lesson" ? "/audio/heart-sutra.mp3" : "/audio/hall-heart-sutra.mp3";
     const loading = (async () => {
       const response = await fetch(path, { signal: controller.signal });
       if (!response.ok) return null;

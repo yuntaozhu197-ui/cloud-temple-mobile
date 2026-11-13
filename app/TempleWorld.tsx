@@ -8,6 +8,7 @@ import { getTempleSchedule } from "./templeSchedule";
 import type { NpcResidentId } from "./npcResidents";
 import { findNpcEncounter } from "./npcEncounters";
 import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
+import type { PondSpecies } from "./pondGame";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -57,6 +58,8 @@ type WorldProps = {
   onLampStage?: (stage: "begin" | "complete") => void;
   onMartialStage?: (stage: "begin" | "complete" | "cancel") => void;
   onFishStage?: (kind: "fish" | "release", stage: "begin" | "offer" | "complete") => void;
+  pondRelease?: { requestId: string; species: PondSpecies } | null;
+  onPondReleaseResult?: (result: { requestId: string; species: PondSpecies; stage: "released" | "cancelled" }) => void;
   onSkyLanternStage?: (stage: "begin" | "release" | "complete") => void;
   talkingNpcId?: NpcResidentId | null;
   onNpcEncounter?: (id: NpcResidentId | null) => void;
@@ -66,6 +69,7 @@ type WorldProps = {
 type MonkInstance = {
   group: THREE.Group;
   update: (action: string, time: number, walking: boolean, phase?: number) => void;
+  setReleaseSpecies: (species: PondSpecies) => void;
   dispose: () => void;
 };
 
@@ -227,6 +231,7 @@ export default function TempleWorld(props: WorldProps) {
             if ((point.kind === "fish" || point.kind === "pondFeed" || point.kind === "release") && (approachingFish || sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release")) return;
             if (performance.now() < nextActivation) return;
             nextActivation = performance.now() + (point.kind === "fish" ? 4000 : point.kind === "towerBell" ? 3500 : 1200);
+            if (point.kind === "release") { state.onContextAction?.("release"); return; }
             if (isTempleInteraction(point.kind)) {
               if (approachingInteraction === point.kind || sceneAction?.kind === point.kind) return;
               if (point.kind === "flower" || point.kind === "ritual") state.onContextAction?.(point.kind);
@@ -244,7 +249,7 @@ export default function TempleWorld(props: WorldProps) {
               walkTo(28, 12);
               approachingMartial = true;
             }
-            if (point.kind === "fish" || point.kind === "pondFeed" || point.kind === "release") {
+            if (point.kind === "fish" || point.kind === "pondFeed") {
               approachingIncense = false;
               incensePrayerUntil = 0;
               approachingLamp = false;
@@ -363,12 +368,15 @@ export default function TempleWorld(props: WorldProps) {
         let lampPrayerStart = 0;
         let approachingMartial = false;
         let approachingFish: "fish" | "pondFeed" | "release" | null = null;
+        let pondRequestId = latest.current.pondRelease?.requestId ?? "";
+        let activePondRelease: { requestId: string; species: PondSpecies } | null = null;
         let skyLanternPulse = latest.current.skyLanternPulse ?? 0;
         let approachingSkyLantern = false;
         let approachingInteraction: TempleInteractionKind | null = null;
         let zoomScale = 1;
         let mapFollowing = false;
         let sceneAction: { kind: "martial" | "fish" | "pondFeed" | "release" | "skyLantern" | TempleInteractionKind; start: number; duration: number; offered?: boolean; impactsHandled?: number } | null = null;
+        cleanupListeners.push(cancelFish);
         let lastScheduleCheck = -Infinity;
         let lessonActive = false;
         const touchPoints = new Map<number, { x: number; y: number }>();
@@ -539,6 +547,10 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function cancelFish() {
+          if (activePondRelease) {
+            latest.current.onPondReleaseResult?.({ ...activePondRelease, stage: "cancelled" });
+            activePondRelease = null;
+          }
           approachingFish = null;
           if (sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release") sceneAction = null;
         }
@@ -812,6 +824,21 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          if (state.pondRelease && state.pondRelease.requestId !== pondRequestId) {
+            pondRequestId = state.pondRelease.requestId;
+            if (state.auto || state.meditating) state.onPondReleaseResult?.({ ...state.pondRelease, stage: "cancelled" });
+            else {
+              approachingIncense = false; incensePrayerUntil = 0;
+              approachingLamp = false; lampPrayerUntil = 0;
+              const shore = FISH_ACTIONS.release;
+              walkTo(shore.x, shore.z);
+              activePondRelease = { ...state.pondRelease };
+              actor.setReleaseSpecies(activePondRelease.species);
+              world.setReleaseSpecies(activePondRelease.species);
+              approachingFish = "release";
+              if (!route.length && Math.hypot(position.x - shore.x, position.z - shore.z) >= .25) cancelFish();
+            }
+          }
           const conversationResident = lessonActive ? undefined : world.residents.find(resident => resident.id === state.talkingNpcId);
           const conversationId = conversationResident?.id ?? null;
           if (conversationId !== talkingNpc) {
@@ -1020,7 +1047,7 @@ export default function TempleWorld(props: WorldProps) {
               actor.group.rotation.y = shore.heading;
               sceneAction = { kind, start: time, duration: shore.duration, offered: false };
               state.onFishStage?.(kind === "release" ? "release" : "fish", "begin");
-            }
+            } else if (approachingFish === "release") cancelFish();
           }
           if (approachingInteraction && route.length === 0 && !dialogOpen && !state.auto && !state.meditating) {
             const kind = approachingInteraction;
@@ -1052,6 +1079,10 @@ export default function TempleWorld(props: WorldProps) {
             if (!sceneAction.offered && time - sceneAction.start >= FISH_ACTIONS[kind].offerAt) {
               sceneAction.offered = true;
               world.interact(kind);
+              if (kind === "release" && activePondRelease) {
+                state.onPondReleaseResult?.({ ...activePondRelease, stage: "released" });
+                activePondRelease = null;
+              }
               state.onFishStage?.(kind === "release" ? "release" : "fish", "offer");
             }
           }

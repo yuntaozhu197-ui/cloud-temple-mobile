@@ -8,3 +8,9 @@ The source describes a small Wooden Fish / Mokugyo temple block from Kohya-san,
 Japan, played with its original cloth-covered beater and recorded with an
 AKG 414 microphone. The MP3 file is distributed unmodified. In-browser playback
 may trim leading silence and adjust level while preserving the recorded timbre.
+
+Hall Heart Sutra background
+Text from Xuanzang's public-domain translation of the Heart Sutra.
+Speech synthesized locally with Microsoft Kangkang, accompanied by the project's
+original pentatonic bowl instrumental. Source details and hashes are recorded in
+temple-ambience-sources.json.

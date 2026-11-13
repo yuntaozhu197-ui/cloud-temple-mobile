@@ -15,5 +15,15 @@
     "seconds": 32,
     "sha256": "00252d8acb46ec8cb1c81b8ba2d88062d33b57660c7d80be8a3f64fd45bd7861",
     "composition": "本项目原创五声音阶钟钵器乐，由数学波形离线生成。"
+  },
+  "hallHeartSutra": {
+    "file": "hall-heart-sutra.mp3",
+    "bytes": 890880,
+    "seconds": 111.28285714285714,
+    "sha256": "ba875e4bf06d04ff5bff4377ab40c665cc1199bb2e9b3b63ffc9592a45c012eb",
+    "text": "玄奘译《般若波罗蜜多心经》，古文公有领域；罣字以通行简体挂字朗读。",
+    "recording": "本项目合成的《心经》诵读配以原创五声音阶钟钵器乐。",
+    "voice": "Microsoft Kangkang - Chinese (Simplified, PRC)",
+    "generatedBy": "Local Windows SAPI OneCore text-to-speech, rate -3"
   }
 }
