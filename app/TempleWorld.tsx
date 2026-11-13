@@ -119,10 +119,10 @@ export default function TempleWorld(props: WorldProps) {
         if (!alive || !host || !labels || !hotspots) return;
 
         const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.7));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
         renderer.outputColorSpace = T.SRGBColorSpace;
         renderer.toneMapping = T.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.12;
+        renderer.toneMappingExposure = 1.04;
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = T.PCFSoftShadowMap;
         renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
@@ -131,8 +131,8 @@ export default function TempleWorld(props: WorldProps) {
         host.insertBefore(renderer.domElement, host.firstChild);
 
         const scene = new T.Scene();
-        scene.background = new T.Color(0xd9e9eb);
-        scene.fog = new T.Fog(0xd9e9eb, 120, 360);
+        scene.background = new T.Color(0xe5ece4);
+        scene.fog = new T.Fog(0xe5ece4, 120, 360);
         const camera = new T.PerspectiveCamera(42, 1, 0.1, 430);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
@@ -148,9 +148,9 @@ export default function TempleWorld(props: WorldProps) {
         camera.position.set(Math.sin(yaw) * cameraRadius, cameraHeight, 9 + Math.cos(yaw) * cameraRadius);
         camera.lookAt(cameraTarget);
 
-        const skyLight = new T.HemisphereLight(0xfff8e6, 0x879a77, 2.35);
-        const sunlight = new T.DirectionalLight(0xffeed7, 2.7);
-        sunlight.position.set(-8, 17, 8);
+        const skyLight = new T.HemisphereLight(0xfff7e9, 0x89997e, 2.1);
+        const sunlight = new T.DirectionalLight(0xffefd6, 3.05);
+        sunlight.position.set(-18, 24, 14);
         sunlight.target.position.set(0, 0, -2);
         sunlight.castShadow = true;
         sunlight.shadow.mapSize.set(mobile ? 1024 : 1536, mobile ? 1024 : 1536);

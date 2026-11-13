@@ -23,14 +23,14 @@ export function createMonk(color = 0xcf895c): {
     return result;
   }
 
-  const skin = material(0xf2c995);
-  const earInside = material(0xe2ad85);
-  const blush = material(0xe9a08a);
-  const robe = material(color);
-  const sash = material(0xe7b97c);
-  const ink = material(0x654b3b);
-  const sandal = material(0x98704e);
-  const beadMaterial = material(0x7f5438, 0.65);
+  const skin = material(0xf2cba8, .72);
+  const earInside = material(0xdfad91, .78);
+  const blush = material(0xe4af9e, .9);
+  const robe = material(color, .94);
+  const sash = material(0xdfc49a, .92);
+  const ink = material(0x594737);
+  const sandal = material(0x89694f, .9);
+  const beadMaterial = material(0x785136, .48);
   const woodMaterial = material(0xae7749);
   const woodLight = material(0xc6925c);
   const slitMaterial = material(0x624731);
@@ -72,13 +72,58 @@ export function createMonk(color = 0xcf895c): {
 
   // The rounded hem and overlapping robe make a soft, small clay-figure silhouette.
   oval(torso, robe, 0, 0.12, 0, 0.28, 0.29, 0.205);
-  const skirt = mesh(new THREE.CylinderGeometry(0.22, 0.285, 0.23, 24), robe, torso, 0, -0.015, 0);
+  const hemProfile = [[0, -.135], [.24, -.135], [.275, -.115], [.288, -.07], [.28, .015], [.25, .12], [.22, .17], [0, .17]];
+  const skirt = mesh(new THREE.LatheGeometry(hemProfile.map(([radius, height]) => new THREE.Vector2(radius, height)), 24), robe, torso);
+  skirt.name = "rounded-cloth-hem";
   skirt.scale.z = 0.76;
   oval(torso, sash, 0, 0.38, 0.045, 0.16, 0.075, 0.12);
-  const crossingSash = mesh(new THREE.BoxGeometry(0.115, 0.47, 0.027), sash, torso, 0.005, 0.16, 0.197);
+  const sashRows = 16, sashColumns = 4;
+  const sashPositions: number[] = [], sashIndices: number[] = [];
+  const sashLayerSize = (sashRows + 1) * (sashColumns + 1);
+  // A cloth grid follows the chest, with a rounded cross-section and a thin back face.
+  for (let layer = 0; layer < 2; layer++) for (let row = 0; row <= sashRows; row++) for (let column = 0; column <= sashColumns; column++) {
+    const across = column / sashColumns;
+    const y = .235 - row / sashRows * .47;
+    const x = (across * 2 - 1) * (.052 + Math.sin(row / sashRows * Math.PI) * .006);
+    const diagonalY = x * Math.sin(.6) + y * Math.cos(.6);
+    const bodyX = .005 + x * Math.cos(.6) - y * Math.sin(.6);
+    const bodyY = .16 + diagonalY * Math.cos(.1);
+    const bodyFront = .205 * Math.sqrt(Math.max(0, 1 - (bodyX / .28) ** 2 - ((bodyY - .12) / .29) ** 2));
+    const hemRadius = .285 - .3 * Math.max(0, bodyY + .02);
+    const hemFront = bodyY < .17 ? .76 * Math.sqrt(Math.max(0, hemRadius ** 2 - bodyX ** 2)) : 0;
+    const surface = (Math.max(bodyFront, hemFront) + .024 - .197 - diagonalY * Math.sin(-.1)) / Math.cos(.1);
+    const thickness = layer === 0 ? .009 + Math.sin(across * Math.PI) * .003 : -.009;
+    sashPositions.push(x, y, surface + thickness);
+  }
+  for (let row = 0; row < sashRows; row++) for (let column = 0; column < sashColumns; column++) {
+    const a = row * (sashColumns + 1) + column, b = a + sashColumns + 1;
+    sashIndices.push(a, b, a + 1, a + 1, b, b + 1);
+    sashIndices.push(a + sashLayerSize, a + 1 + sashLayerSize, b + sashLayerSize, a + 1 + sashLayerSize, b + 1 + sashLayerSize, b + sashLayerSize);
+  }
+  for (let row = 0; row < sashRows; row++) {
+    const left = row * (sashColumns + 1), right = left + sashColumns;
+    const nextLeft = left + sashColumns + 1, nextRight = right + sashColumns + 1;
+    sashIndices.push(left, left + sashLayerSize, nextLeft, nextLeft, left + sashLayerSize, nextLeft + sashLayerSize);
+    sashIndices.push(right, nextRight, right + sashLayerSize, nextRight, nextRight + sashLayerSize, right + sashLayerSize);
+  }
+  for (let column = 0; column < sashColumns; column++) {
+    const top = column, bottom = sashRows * (sashColumns + 1) + column;
+    sashIndices.push(top, top + 1, top + sashLayerSize, top + 1, top + 1 + sashLayerSize, top + sashLayerSize);
+    sashIndices.push(bottom, bottom + sashLayerSize, bottom + 1, bottom + 1, bottom + sashLayerSize, bottom + 1 + sashLayerSize);
+  }
+  const sashGeometry = new THREE.BufferGeometry();
+  sashGeometry.setAttribute("position", new THREE.Float32BufferAttribute(sashPositions, 3));
+  sashGeometry.setIndex(sashIndices);
+  sashGeometry.computeVertexNormals();
+  const crossingSash = mesh(sashGeometry, sash, torso, 0.005, 0.16, 0.197);
+  crossingSash.name = "curved-linen-sash";
   crossingSash.rotation.z = 0.60;
   crossingSash.rotation.x = -0.10;
-  line(torso, [[-0.19, -0.03, 0.16], [-0.04, -0.08, 0.205], [0.15, -0.08, 0.17]], 0.009, sash);
+  line(torso, [[-0.19, -0.03, 0.173], [-0.04, -0.08, 0.224], [0.15, -0.08, 0.194]], 0.009, sash);
+  for (const side of [-1, 1]) {
+    line(torso, [[side * .19, .26, .11], [side * .235, .1, .13], [side * .205, -.08, .15]], .007, robe);
+    line(torso, [[side * .11, -.04, .19], [side * .14, -.09, .2], [side * .16, -.123, .185]], .006, robe);
+  }
   oval(torso, skin, 0, 0.435, 0.015, 0.095, 0.09, 0.085);
 
   const head = new THREE.Group();
@@ -96,6 +141,7 @@ export function createMonk(color = 0xcf895c): {
   for (const side of [-1, 1]) {
     const eyeX = side * 0.094;
     line(head, [[eyeX - 0.034, 0.004, 0.251], [eyeX, -0.009, 0.265], [eyeX + 0.034, 0.004, 0.251]], 0.008, ink);
+    line(head, [[eyeX - .031, .049, .246], [eyeX, .058, .258], [eyeX + .03, .051, .246]], .0045, ink);
     oval(head, blush, side * 0.16, -0.064, 0.207, 0.045, 0.024, 0.013);
   }
   line(head, [[-0.032, -0.083, 0.247], [0, -0.099, 0.253], [0.032, -0.083, 0.247]], 0.006, ink);
@@ -290,6 +336,7 @@ export function createMonk(color = 0xcf895c): {
     oval(leg, robe, 0, -0.095, 0, 0.084, 0.17, 0.082);
     oval(leg, skin, 0, -0.22, 0.043, 0.073, 0.062, 0.12);
     oval(leg, sandal, 0, -0.255, 0.047, 0.079, 0.018, 0.125);
+    line(leg, [[-.047, -.235, .065], [0, -.208, .092], [.047, -.235, .065]], .008, sandal);
     legPivots.push(leg);
   }
 

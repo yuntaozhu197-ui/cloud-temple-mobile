@@ -19,17 +19,19 @@ export function createScenicAreas() {
   materials.add(material);
   return material;
  };
- const stone = surface("#b9b5a2");
- const paleStone = surface("#ded8bd");
- const brick = surface("#a39078");
- const shadowBrick = surface("#786958");
- const roof = surface("#777a6b");
- const wood = surface("#9b6f49");
- const darkWood = surface("#63513e");
- const red = surface("#b56f53");
- const gold = surface("#d0af65", { metalness: .3, roughness: .55 });
- const water = surface("#6caeaa", { roughness: .2, metalness: .2 });
- const leaf = surface("#728f69");
+ const stone = surface("#b8b39e");
+ const paleStone = surface("#d6cbb3");
+ const brick = surface("#bbab91");
+ const shadowBrick = surface("#796b57");
+ const roof = surface("#61796e");
+ const wood = surface("#956b49");
+ const darkWood = surface("#534536");
+ const red = surface("#aa7257");
+ const gold = surface("#b99b60", { metalness: .2, roughness: .65 });
+ const water = surface("#78a99b", { roughness: .28, metalness: .08 });
+ const leaf = surface("#6f8b68");
+ const lotusPetal = surface("#d8a99b", { roughness: .8 });
+ const lotusHeart = surface("#d2b06b", { roughness: .78 });
  const glow = surface("#e8cc88", { emissive: "#c7a15e", emissiveIntensity: .7, transparent: true, opacity: .5, depthWrite: false });
  function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Group = staticGroup) {
   geometries.add(geometry);
@@ -49,16 +51,40 @@ export function createScenicAreas() {
  // A raised stone rim keeps walkers on the shore while the fish remain in the water.
  cylinder(-28, .035, 8, 4.9, 4.9, .07, paleStone, 48);
  cylinder(-28, .085, 8, 4.25, 4.25, .025, water, 48);
- const pondRim = mesh(new THREE.TorusGeometry(4.4, .15, 6, 48), stone, -28, .16, 8);
- pondRim.rotation.x = Math.PI / 2;
+ // Individual eased stone copings give the pond a rounded, jointed edge.
+ for (let index = 0; index < 28; index++) {
+  const start = index * Math.PI * 2 / 28 + .008;
+  const end = (index + 1) * Math.PI * 2 / 28 - .008;
+  const outline = new THREE.Shape();
+  outline.absarc(0, 0, 4.55, start, end, false);
+  outline.lineTo(Math.cos(end) * 4.25, Math.sin(end) * 4.25);
+  outline.absarc(0, 0, 4.25, end, start, true);
+  outline.closePath();
+  const coping = mesh(new THREE.ExtrudeGeometry(outline, { depth: .16, bevelEnabled: true, bevelSize: .018, bevelThickness: .018, bevelSegments: 1, curveSegments: 3, steps: 1 }), index % 4 === 0 ? paleStone : stone, -28, .09, 8);
+  coping.rotation.x = -Math.PI / 2;
+ }
  block(-28, 8, 8.9, 8.9);
  for (let index = 0; index < 10; index++) {
-  const angle = index * Math.PI * 2 / 10;
-  const pad = cylinder(-28 + Math.cos(angle) * 3.2, .11, 8 + Math.sin(angle) * 2.9, .24, .24, .02, leaf, 10);
-  pad.scale.z = .8;
+  const angle = Math.PI * (.6 + index * .8 / 9);
+  const x = -28 + Math.cos(angle) * 3.2;
+  const z = 8 + Math.sin(angle) * 2.9;
+  const pad = mesh(new THREE.SphereGeometry(1, 14, 5, .15, Math.PI * 1.85, 0, Math.PI / 2), leaf, x, .11, z);
+  pad.scale.set(.29, .025, .23);
+  pad.rotation.y = angle;
+  if (index > 0 && index % 2 === 0) {
+   for (let petal = 0; petal < 7; petal++) {
+    const turn = petal * Math.PI * 2 / 7;
+    const blossom = mesh(new THREE.SphereGeometry(1, 8, 5), lotusPetal, x + Math.sin(turn) * .055, .2, z + Math.cos(turn) * .055);
+    blossom.scale.set(.045, .07, .095);
+    blossom.rotation.set(-.5, turn, 0);
+   }
+   cylinder(x, .215, z, .042, .055, .04, lotusHeart, 10);
+  }
  }
  for (const z of [5.8, 10.2]) {
   cylinder(-22.7, .55, z, .13, .17, 1.1, stone);
+  cylinder(-22.7, .12, z, .19, .22, .16, paleStone);
+  cylinder(-22.7, 1.01, z, .18, .14, .08, paleStone);
   box(-22.7, 1.1, z, .48, .14, .48, paleStone);
  }
  // The middle of the rail stays open, and decking ends before the fish enters water.
@@ -82,8 +108,13 @@ export function createScenicAreas() {
    const radius = (1.05 - story * .065) * scale;
    const y = .3 + story * .7 * scale;
    cylinder(x, y + .25 * scale, z, radius * .92, radius, .52 * scale, brick, 8);
-   cylinder(x, y + .55 * scale, z, radius * 1.15, radius * 1.28, .18 * scale, roof, 8);
+   const eaveProfile = [[0, -.09], [radius * 1.2, -.09], [radius * 1.28, -.05], [radius * 1.27, .005], [radius * 1.13, .05], [radius, .09], [0, .09]];
+   mesh(new THREE.LatheGeometry(eaveProfile.map(([r, h]) => new THREE.Vector2(r, h * scale)), 8), roof, x, y + .55 * scale, z);
+   const belt = mesh(new THREE.TorusGeometry(radius * .965, .022 * scale, 3, 8), paleStone, x, y + .47 * scale, z);
+   belt.rotation.x = Math.PI / 2;
    box(x, y + .28 * scale, z + radius * .94, .22 * scale, .28 * scale, .04, shadowBrick);
+   for (const side of [-1, 1]) box(x + side * .14 * scale, y + .28 * scale, z + radius * .965, .035 * scale, .33 * scale, .045 * scale, paleStone);
+   box(x, y + .45 * scale, z + radius * .965, .31 * scale, .04 * scale, .045 * scale, paleStone);
    for (const side of [-1, 1]) box(x + side * radius * .65, y + .06 * scale, z + radius * .7, .13 * scale, .03, .05, paleStone);
   }
   const top = .3 + stories * .7 * scale;

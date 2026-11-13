@@ -13,13 +13,13 @@ export function createTempleMountain() {
     return material;
   };
   const mountainMaterial = surface("#ffffff", { vertexColors: true });
-  const ridgeMaterial = surface("#7e9487");
-  const exposedRock = surface("#a5a78d");
-  const bark = surface("#7c7460");
-  const pineMaterials = [surface("#6c8a74"), surface("#849a77"), surface("#96a982")];
-  const stone = surface("#c3c4aa");
-  const pathMaterial = surface("#dedcc2");
-  const distantMaterials = [surface("#afc4bf"), surface("#c4d6d1")];
+  const ridgeMaterial = surface("#7d9182", { flatShading: false });
+  const exposedRock = surface("#a7a58e");
+  const bark = surface("#796b53");
+  const pineMaterials = [surface("#557462"), surface("#73896b"), surface("#8ea17d")];
+  const stone = surface("#c7c0a9");
+  const pathMaterial = surface("#ded3bb");
+  const distantMaterials = [surface("#a9bdb3", { flatShading: false }), surface("#c2d1c8", { flatShading: false })];
   const cloudMaterials = [0.36, 0.24].map(opacity => {
     const material = new THREE.MeshBasicMaterial({ color: "#edf2e7", transparent: true, opacity, depthWrite: false });
     materials.add(material);
@@ -52,9 +52,9 @@ export function createTempleMountain() {
   const vertices: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const grassColor = new THREE.Color("#a9bd8d");
-  const rockColor = new THREE.Color("#a7a68c");
-  const mossColor = new THREE.Color("#779480");
+  const grassColor = new THREE.Color("#a9b68a");
+  const rockColor = new THREE.Color("#aca58d");
+  const mossColor = new THREE.Color("#798d72");
   for (const [levelIndex, level] of levels.entries()) {
     const ring: THREE.Vector3[] = [];
     for (let index = 0; index < segments; index++) {
@@ -155,12 +155,17 @@ export function createTempleMountain() {
     const y = terrainHeight(x, z);
     const scale = 0.75 + index % 4 * 0.15;
     add(new THREE.CylinderGeometry(0.12 * scale, 0.23 * scale, 3.7 * scale, 6), bark, x, y + 1.85 * scale, z);
+    for (const side of [-1, 1]) {
+      const branch = add(new THREE.CylinderGeometry(.045 * scale, .085 * scale, 1.4 * scale, 5), bark, x + side * .43 * scale, y + 2.5 * scale, z);
+      branch.rotation.z = -side * .7;
+    }
     for (let crown = 0; crown < 3; crown++) {
       const leaves = add(new THREE.IcosahedronGeometry((1.35 - crown * 0.16) * scale, 1), pineMaterials[(index + crown) % pineMaterials.length], x + Math.sin(crown * 3 + angle) * 0.6 * scale, y + (2.8 + crown * 0.68) * scale, z + Math.cos(crown * 3 + angle) * 0.5 * scale);
-      leaves.scale.set(1.35, 0.6, 1.1);
+      leaves.scale.set(1.35 - crown * .08, .58 + crown * .035, 1.1);
+      leaves.rotation.y = angle + crown * .6;
     }
     if (index % 3 === 0) {
-      const rock = add(new THREE.IcosahedronGeometry(2.8, 0), exposedRock, x + 3, y + 0.45, z - 1);
+      const rock = add(new THREE.IcosahedronGeometry(2.8, 1), exposedRock, x + 3, y + 0.45, z - 1);
       rock.scale.set(1.4, 0.65, 0.9);
       rock.rotation.y = angle;
     }

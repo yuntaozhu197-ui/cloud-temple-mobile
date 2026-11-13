@@ -65,7 +65,7 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
     if (!geometry && original instanceof THREE.SphereGeometry) {
       const p = original.parameters;
       const head = p.radius < 1 && p.widthSegments > 20;
-      geometry = new THREE.SphereGeometry(p.radius, Math.min(p.widthSegments, head ? 14 : 10), Math.min(p.heightSegments, head ? 10 : 7), p.phiStart, p.phiLength, p.thetaStart, p.thetaLength);
+      geometry = new THREE.SphereGeometry(p.radius, Math.min(p.widthSegments, head ? 18 : 12), Math.min(p.heightSegments, head ? 12 : 8), p.phiStart, p.phiLength, p.thetaStart, p.thetaLength);
     }
     if (!geometry && original instanceof THREE.TubeGeometry) {
       const p = original.parameters;
@@ -90,7 +90,7 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
   for (const mesh of originals) {
     const surface = mesh.material as THREE.MeshStandardMaterial;
     const color = surface.color?.getHex();
-    const tint = color === 0xcf895c ? "robe" : color === 0xe7b97c ? "sash" : color === 0xf2c995 ? "skin" : null;
+    const tint = color === 0xcf895c ? "robe" : color === 0xdfc49a ? "sash" : color === 0xf2cba8 ? "skin" : null;
     const key = `${mesh.geometry.uuid}:${surface.uuid}`;
     const entry = sourceGroups.get(key);
     if (entry) entry.parts.push(mesh);
@@ -118,7 +118,7 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
   // Accessories share five low-poly geometries. Each part has one instance, even
   // though its transform follows the same animated head or torso prototype.
   const accessoryGeometry = {
-    oval: new THREE.SphereGeometry(1, 10, 7),
+    oval: new THREE.SphereGeometry(1, 12, 8),
     box: new THREE.BoxGeometry(1, 1, 1),
     cylinder: new THREE.CylinderGeometry(1, 1, 1, 8),
     cone: new THREE.ConeGeometry(1, 1, 12),

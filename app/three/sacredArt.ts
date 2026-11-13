@@ -26,19 +26,19 @@ export function createSacredArt(): {
   }
 
   const palette = {
-    gold: surface("#d1a555", { metalness: 0.43, roughness: 0.46 }),
-    goldLight: surface("#f0d390", { metalness: 0.28, roughness: 0.50 }),
-    bronze: surface("#a67a3f", { metalness: 0.38, roughness: 0.60 }),
-    jade: surface("#f4f1dc", { roughness: 0.62 }),
-    jadeShade: surface("#bfd1b8", { roughness: 0.73 }),
-    ochre: surface("#b97c43", { roughness: 0.84 }),
-    ink: surface("#46544c", { roughness: 0.80 }),
-    stone: surface("#cbbd95", { roughness: 0.91 }),
-    leaf: surface("#78956b", { roughness: 0.88 }),
+    gold: surface("#b59050", { metalness: 0.28, roughness: 0.58 }),
+    goldLight: surface("#d8bb7a", { metalness: 0.25, roughness: 0.54 }),
+    bronze: surface("#886b43", { metalness: 0.26, roughness: 0.66 }),
+    jade: surface("#ebe0ca", { roughness: 0.70 }),
+    jadeShade: surface("#c0cbbb", { roughness: 0.78 }),
+    ochre: surface("#a77742", { roughness: 0.86 }),
+    ink: surface("#55594d", { roughness: 0.84 }),
+    stone: surface("#cfc5af", { roughness: 0.91 }),
+    leaf: surface("#748971", { roughness: 0.88 }),
     mural: surface("#648d7b", { roughness: 0.95 }),
   };
-  const rounded = new THREE.SphereGeometry(1, 12, 8);
-  const faceShape = new THREE.SphereGeometry(1, 20, 14);
+  const rounded = new THREE.SphereGeometry(1, 16, 10);
+  const faceShape = new THREE.SphereGeometry(1, 24, 16);
   const petalShape = new THREE.SphereGeometry(1, 8, 4);
   geometries.add(rounded);
   geometries.add(faceShape);
@@ -78,7 +78,7 @@ export function createSacredArt(): {
   }
 
   function lotusBase(parent: THREE.Object3D, radius: number, top: number, petalCount: number) {
-    cylinder(parent, palette.bronze, [0, 0.56, 0], radius * 1.02, radius * 1.08, 0.20, 24);
+    lathe(parent, palette.bronze, [0, 0.46, 0], [[0, 0], [radius * 1.03, 0], [radius * 1.08, 0.04], [radius * 1.08, 0.12], [radius * 1.02, 0.20], [0, 0.20]], 28);
     cylinder(parent, palette.gold, [0, 0.75, 0], radius * 0.94, radius * 1.02, 0.18, 24);
     for (let tier = 0; tier < 2; tier += 1) {
       for (let index = 0; index < petalCount; index += 1) {
@@ -89,9 +89,14 @@ export function createSacredArt(): {
           [radius * 0.26, 0.19, radius * 0.40], petalShape);
         petal.rotation.y = angle;
         petal.rotation.x = tier === 0 ? 0.22 : -0.30;
+        const midrib = curve(parent, palette.goldLight, [[0, 0.04, -radius * 0.24], [0, 0.19, 0], [0, 0.05, radius * 0.25]], 0.009, 6);
+        midrib.position.copy(petal.position);
+        midrib.rotation.copy(petal.rotation);
       }
     }
     cylinder(parent, palette.goldLight, [0, top - 0.06, 0], radius * 0.72, radius * 0.84, 0.12, 24);
+    const rim = mesh(new THREE.TorusGeometry(radius * 0.86, 0.026, 5, 40), palette.bronze, parent, 0, top - 0.14, 0);
+    rim.rotation.x = Math.PI / 2;
   }
 
   function halo(parent: THREE.Object3D, centerY: number, radius: number, depth: number) {
@@ -107,7 +112,8 @@ export function createSacredArt(): {
     const [sx, sy, sz] = size;
     oval(parent, material, center, size, faceShape);
     for (const side of [-1, 1]) {
-      oval(parent, material, [cx + side * sx * 1.02, cy - sy * 0.04, cz - 0.04], [sx * 0.16, sy * 0.28, sz * 0.19]);
+      oval(parent, material, [cx + side * sx * 1.02, cy - sy * 0.10, cz - 0.04], [sx * 0.15, sy * 0.37, sz * 0.18]);
+      oval(parent, palette.bronze, [cx + side * sx * 1.04, cy - sy * 0.06, cz + sz * 0.10], [sx * 0.05, sy * 0.21, sz * 0.025]);
     }
     function onFace(x: number, y: number, lift = 0.012): Point {
       const depth = Math.sqrt(Math.max(0.05, 1 - (x / sx) ** 2 - (y / sy) ** 2)) * sz;
@@ -115,11 +121,14 @@ export function createSacredArt(): {
     }
     for (const side of [-1, 1]) {
       const x = side * sx * 0.34;
-      curve(parent, palette.ink, [onFace(x - sx * 0.15, sy * 0.025), onFace(x, -sy * 0.018), onFace(x + sx * 0.15, sy * 0.025)], 0.013, 8);
-      curve(parent, palette.bronze, [onFace(x - sx * 0.17, sy * 0.19), onFace(x, sy * 0.23), onFace(x + sx * 0.17, sy * 0.20)], 0.015, 8);
+      curve(parent, palette.ink, [onFace(x - sx * 0.15, sy * 0.025), onFace(x, -sy * 0.018), onFace(x + sx * 0.15, sy * 0.025)], 0.009, 10);
+      curve(parent, palette.bronze, [onFace(x - sx * 0.17, sy * 0.19), onFace(x, sy * 0.23), onFace(x + sx * 0.17, sy * 0.20)], 0.011, 10);
+      oval(parent, material, onFace(side * sx * .52, -sy * .14, .006), [sx * .19, sy * .17, sz * .055]);
     }
+    oval(parent, material, onFace(0, sy * .025, .012), [sx * .065, sy * .19, sz * .075]);
     oval(parent, material, onFace(0, -sy * 0.11, 0.018), [sx * 0.095, sy * 0.10, sz * 0.13]);
-    curve(parent, palette.bronze, [onFace(-sx * 0.15, -sy * 0.30), onFace(0, -sy * 0.34), onFace(sx * 0.15, -sy * 0.30)], 0.011, 8);
+    oval(parent, material, onFace(0, -sy * .35, .016), [sx * .15, sy * .035, sz * .04]);
+    curve(parent, palette.bronze, [onFace(-sx * 0.14, -sy * 0.30), onFace(0, -sy * 0.325), onFace(sx * 0.14, -sy * 0.30)], 0.007, 10);
     oval(parent, palette.goldLight, onFace(0, sy * 0.36, 0.02), [0.037, 0.043, 0.027], petalShape);
   }
 
@@ -170,6 +179,10 @@ export function createSacredArt(): {
   }
   curve(buddha, palette.gold, [[-0.88, 3.12, 0.01], [-1.13, 2.61, 0.28], [-0.71, 2.18, 0.77]], 0.22, 14);
   oval(buddha, palette.goldLight, [-0.37, 2.10, 0.94], [0.39, 0.115, 0.23]);
+  for (let finger = 0; finger < 4; finger++) {
+    const x = -.65 + finger * .13;
+    curve(buddha, palette.bronze, [[x, 2.15, 1.11], [x + .02, 2.16, 1.15], [x + .06, 2.12, 1.16]], .009, 6);
+  }
   curve(buddha, palette.gold, [[0.87, 3.12, 0.01], [1.16, 2.72, 0.28], [1.23, 3.12, 0.75]], 0.215, 14);
   oval(buddha, palette.goldLight, [1.23, 3.29, 0.83], [0.20, 0.29, 0.12]);
   for (let index = 0; index < 4; index += 1) {
@@ -177,6 +190,7 @@ export function createSacredArt(): {
   }
   const thumb = oval(buddha, palette.goldLight, [1.03, 3.24, 0.87], [0.085, 0.16, 0.075], petalShape);
   thumb.rotation.z = -0.55;
+  curve(buddha, palette.bronze, [[1.12, 3.21, .946], [1.22, 3.19, .955], [1.34, 3.27, .94]], .009, 8);
 
   const guanyin = new THREE.Group();
   guanyin.name = "观世音菩萨 · 白玉净瓶";
@@ -189,6 +203,7 @@ export function createSacredArt(): {
   face(guanyin, [0, 4.00, 0.20], [0.46, 0.60, 0.40], palette.jade);
   for (const side of [-1, 1]) {
     curve(guanyin, palette.jade, [[side * 0.49, 4.40, 0.21], [side * 0.59, 3.92, 0.14], [side * 0.64, 3.43, 0.04], [side * 0.78, 2.82, 0.16]], 0.12, 16);
+    curve(guanyin, palette.goldLight, [[side * .31, 4.53, .36], [side * .49, 4.24, .39], [side * .58, 3.65, .23], [side * .72, 2.85, .20]], .018, 16);
     curve(guanyin, palette.jade, [[side * 0.32, 3.45, 0.35], [side * 0.28, 2.69, 0.65], [side * 0.53, 1.44, 0.59]], 0.055, 16);
   }
   cylinder(guanyin, palette.gold, [0, 4.52, 0.10], 0.37, 0.45, 0.11, 16);
@@ -204,6 +219,10 @@ export function createSacredArt(): {
   cylinder(guanyin, palette.goldLight, [-0.28, 3.38, 0.73], 0.12, 0.12, 0.045, 12);
   curve(guanyin, palette.jade, [[0.49, 3.46, 0.0], [0.71, 3.08, 0.19], [0.54, 3.47, 0.47]], 0.17, 14);
   oval(guanyin, palette.jade, [0.54, 3.51, 0.47], [0.11, 0.18, 0.12]);
+  for (let finger = 0; finger < 3; finger++) {
+    const y = 3.43 + finger * .075;
+    curve(guanyin, palette.goldLight, [[.48, y, .56], [.55, y + .02, .59], [.61, y + .055, .53]], .012, 7);
+  }
   curve(guanyin, palette.leaf, [[0.54, 3.47, 0.50], [0.77, 3.88, 0.46], [0.96, 4.22, 0.44], [0.88, 4.50, 0.45]], 0.024, 14);
   for (let index = 0; index < 6; index += 1) {
     const leaf = oval(guanyin, palette.leaf, [0.69 + index * 0.044, 3.82 + index * 0.10, 0.46], [0.045, 0.18, 0.025], petalShape);
@@ -240,6 +259,10 @@ export function createSacredArt(): {
   mesh(new THREE.IcosahedronGeometry(0.23, 1), palette.jadeShade, ksitigarbha, -0.35, 3.15, 0.74);
   curve(ksitigarbha, palette.ochre, [[0.52, 3.44, 0.0], [0.73, 3.03, 0.18], [1.03, 3.11, 0.40]], 0.18, 14);
   oval(ksitigarbha, palette.goldLight, [1.04, 3.12, 0.43], [0.13, 0.17, 0.14]);
+  for (let finger = 0; finger < 3; finger++) {
+    const y = 3.02 + finger * .075;
+    curve(ksitigarbha, palette.bronze, [[.96, y, .53], [1.05, y + .025, .57], [1.14, y + .045, .51]], .011, 7);
+  }
   cylinder(ksitigarbha, palette.bronze, [1.07, 2.65, 0.44], 0.045, 0.055, 3.10, 10);
   mesh(new THREE.TorusGeometry(0.27, 0.042, 5, 24), palette.gold, ksitigarbha, 1.07, 4.36, 0.44);
   for (const side of [-1, 0, 1]) {

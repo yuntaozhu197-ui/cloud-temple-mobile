@@ -21,14 +21,16 @@ export function createPrayerZones() {
     materials.add(material);
     return material;
   };
-  const stone = surface("#d1ccb3");
-  const plaster = surface("#daca9d");
-  const timber = surface("#9a5944");
-  const darkWood = surface("#65513f");
-  const tile = surface("#648777", { side: THREE.DoubleSide });
-  const gold = surface("#d8b468", { metalness: 0.32, roughness: 0.48 });
-  const white = surface("#f0e6cd");
-  const ink = surface("#5b5748");
+  const stone = surface("#cfc5af");
+  const plaster = surface("#d9c8a6");
+  const timber = surface("#815441");
+  const darkWood = surface("#534536");
+  const tile = surface("#526f68", { side: THREE.DoubleSide });
+  const gold = surface("#b59050", { metalness: 0.28, roughness: 0.58 });
+  const goldLight = surface("#d8bb7a", { metalness: .24, roughness: .54 });
+  const bronze = surface("#886b43", { metalness: .23, roughness: .68 });
+  const white = surface("#ebe0ca");
+  const ink = surface("#55594d");
   const lampSurface = surface("#ffc977", { emissive: "#da8d37", emissiveIntensity: 0.18, metalness: 0.15 });
   const towerLamps = Array.from({ length: 4 }, () => surface("#ffd990", { emissive: "#e6a348", emissiveIntensity: 0.12, metalness: 0.1 }));
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = staticGroup) => {
@@ -125,32 +127,62 @@ export function createPrayerZones() {
   }
   function statue(x: number, guanyin: boolean) {
     const z = 26.5;
-    cylinder(x, 0.16, z, 1.35, 1.5, 0.32, stone, 24);
+    add(new THREE.LatheGeometry([[0, 0], [1.43, 0], [1.5, .055], [1.5, .13], [1.44, .22], [1.35, .32], [0, .32]].map(([r, y]) => new THREE.Vector2(r, y)), 28), stone, x, 0, z);
     cylinder(x, 0.45, z, 1.2, 1.3, 0.28, gold, 24);
     for (let petal = 0; petal < 14; petal++) {
       const angle = petal * Math.PI * 2 / 14;
       const leaf = oval(x + Math.sin(angle) * 0.97, 0.64, z + Math.cos(angle) * 0.97, 0.3, 0.37, 0.18, white);
       leaf.rotation.y = angle;
       leaf.rotation.x = 0.22;
+      const inner = oval(x + Math.sin(angle + Math.PI / 14) * .78, .87, z + Math.cos(angle + Math.PI / 14) * .78, .23, .20, .32, goldLight);
+      inner.rotation.y = angle + Math.PI / 14;
+      inner.rotation.x = -.25;
     }
+    const lotusRim = add(new THREE.TorusGeometry(1.11, .025, 5, 36), bronze, x, .78, z);
+    lotusRim.rotation.x = Math.PI / 2;
     const robe = guanyin ? white : gold;
     for (const side of [-1, 1]) oval(x + side * 0.5, 1.1, z + 0.26, 0.7, 0.27, 0.55, robe).rotation.z = side * 0.12;
-    const profile = [[0, 0], [0.78, 0.05], [0.79, 0.5], [0.55, 1.15], [0.65, 1.48], [0.38, 1.8], [0, 1.84]];
-    add(new THREE.LatheGeometry(profile.map(([radius, y]) => new THREE.Vector2(radius, y)), 18), robe, x, 0.98, z);
+    const profile = [[0, 0], [.74, .025], [.8, .12], [.81, .32], [.73, .58], [.6, .98], [.55, 1.17], [.65, 1.45], [.59, 1.59], [.38, 1.8], [0, 1.84]];
+    add(new THREE.LatheGeometry(profile.map(([radius, y]) => new THREE.Vector2(radius, y)), 24), robe, x, 0.98, z);
     const halo = add(new THREE.TorusGeometry(1.05, 0.045, 5, 40), gold, x, 3.05, z - 0.48);
     halo.castShadow = false;
-    oval(x, 3.18, z + 0.01, 0.39, 0.51, 0.32, gold);
+    const innerHalo = add(new THREE.TorusGeometry(.96, .018, 4, 36), bronze, x, 3.05, z - .5);
+    innerHalo.castShadow = false;
+    const faceSurface = guanyin ? white : goldLight;
+    const face = add(new THREE.SphereGeometry(1, 24, 16), faceSurface, x, 3.18, z + .01);
+    face.scale.set(.39, .51, .32);
+    const facePoint = (dx: number, dy: number): [number, number, number] => [x + dx, 3.18 + dy, z + .022 + Math.sqrt(Math.max(.03, 1 - (dx / .39) ** 2 - (dy / .51) ** 2)) * .32];
+    const nose = facePoint(0, -.055);
+    oval(x, 3.2, z + .34, .026, .085, .027, faceSurface);
+    oval(nose[0], nose[1], nose[2], .038, .043, .05, faceSurface);
+    const lowerLip = facePoint(0, -.205);
+    oval(lowerLip[0], lowerLip[1] - .012, lowerLip[2], .071, .015, .018, faceSurface);
+    curve([facePoint(-.066, -.18), facePoint(0, -.195), facePoint(.066, -.18)], .007, bronze);
+    const urna = facePoint(0, .22);
+    oval(urna[0], urna[1], urna[2], .024, .029, .01, goldLight);
     for (const side of [-1, 1]) {
+      oval(x + side * .395, 3.10, z, .063, .19, .065, faceSurface);
+      oval(x + side * .407, 3.12, z + .056, .019, .11, .009, bronze);
+      const eyeX = side * .14;
+      curve([facePoint(eyeX - .055, .025), facePoint(eyeX, -.012), facePoint(eyeX + .055, .025)], .009, ink);
+      curve([facePoint(eyeX - .06, .13), facePoint(eyeX, .158), facePoint(eyeX + .06, .132)], .011, bronze);
+      const cheek = facePoint(side * .22, -.08);
+      oval(cheek[0], cheek[1], cheek[2], .065, .06, .014, faceSurface);
       curve([[x + side * 0.45, 2.45, z], [x + side * 0.8, 2.03, z + 0.15], [x + side * 0.6, 1.73, z + 0.65]], 0.16, robe);
-      oval(x + side * 0.57, 1.75, z + 0.67, 0.17, 0.12, 0.17, gold);
-      curve([[x + side * 0.24, 3.23, z + 0.28], [x + side * 0.17, 3.20, z + 0.32], [x + side * 0.08, 3.22, z + 0.33]], 0.014, ink);
+      oval(x + side * 0.57, 1.75, z + 0.67, 0.17, 0.12, 0.17, faceSurface);
+      for (let finger = 0; finger < 3; finger++) {
+        const fx = x + side * .57 + (finger - 1) * .06;
+        curve([[fx - .025, 1.79, z + .81], [fx, 1.82, z + .825], [fx + .025, 1.81, z + .80]], .009, bronze);
+      }
       curve([[x + side * 0.55, 2.34, z + 0.1], [x + side * 0.33, 1.82, z + 0.58], [x + side * 0.68, 1.18, z + 0.56]], 0.022, gold);
     }
-    curve([[x - 0.1, 2.99, z + 0.29], [x, 2.96, z + 0.34], [x + 0.1, 2.99, z + 0.29]], 0.012, ink);
+    curve([[x - .31, 2.64, z + .47], [x, 2.33, z + .64], [x + .31, 2.64, z + .47]], .026, goldLight);
+    for (const offset of [-.3, 0, .3]) curve([[x + offset * .6, 2.37, z + .56], [x + offset * .82, 1.82, z + .68], [x + offset, 1.12, z + .72]], .018, guanyin ? white : goldLight);
     if (guanyin) {
       const veil = add(new THREE.SphereGeometry(1, 16, 10, Math.PI, Math.PI, 0, Math.PI * 0.65), white, x, 3.23, z - 0.07);
       veil.scale.set(0.53, 0.67, 0.46);
       for (const side of [-1, 1]) oval(x + side * 0.45, 2.86, z - 0.05, 0.12, 0.61, 0.36, white);
+      for (const side of [-1, 1]) curve([[x + side * .22, 3.75, z + .22], [x + side * .43, 3.42, z + .3], [x + side * .48, 2.91, z + .24], [x + side * .49, 2.38, z + .16]], .016, goldLight);
       cylinder(x, 3.79, z, 0.13, 0.24, 0.32, gold);
       oval(x, 4.02, z, 0.08, 0.14, 0.08, gold);
       add(new THREE.LatheGeometry([[0.1, 0], [0.17, 0.1], [0.14, 0.28], [0.07, 0.36], [0.07, 0.49], [0.1, 0.5]].map(([r, y]) => new THREE.Vector2(r, y)), 12), white, x - 0.6, 1.76, z + 0.63);

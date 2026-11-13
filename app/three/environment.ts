@@ -41,6 +41,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   scene.add(world);
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
   const colliders: Collider[] = [];
   const instances: THREE.InstancedMesh[] = [];
   const cushions = TEMPLE_SEATS.map(position => ({ ...position }));
@@ -53,17 +54,17 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   const palette = {
     grass: material('#a8bc8a'),
     grassDark: material('#8caa78'),
-    stone: material('#c2c6aa'),
-    stoneLight: material('#dedcc2'),
-    path: material('#e9e5cb'),
-    plaster: material('#e4d9b6'),
-    wood: material('#9b7250'),
-    woodDark: material('#6c5740'),
-    roof: material('#bd795a'),
-    roofRib: material('#d79a77'),
-    roofShadow: material('#955c47'),
-    gold: material('#c7aa69', { metalness: 0.25, roughness: 0.56 }),
-    goldLight: material('#e1c786', { metalness: 0.18, roughness: 0.48 }),
+    stone: material('#c3bba6'),
+    stoneLight: material('#d6cbb3'),
+    path: material('#e5dcc5'),
+    plaster: material('#d9c8a6'),
+    wood: material('#815441'),
+    woodDark: material('#534536'),
+    roof: material('#526f68'),
+    roofRib: material('#789187'),
+    roofShadow: material('#3f5954'),
+    gold: material('#a68a55', { metalness: 0.22, roughness: 0.58 }),
+    goldLight: material('#d8bb7a', { metalness: 0.18, roughness: 0.52 }),
     leaf: material('#8caa78'),
     leafLight: material('#adc390'),
     leafDark: material('#6d8d66'),
@@ -76,9 +77,10 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     pink: material('#e7b5a3'),
     koi: material('#dca474'),
   };
-  const hallPlaster = material('#d5b777');
-  const hallWood = material('#895640');
-  const tealTimber = material('#557b70');
+  const hallPlaster = material('#d9c8a6');
+  const hallWood = material('#815441');
+  const tealTimber = material('#526f68');
+  const windowPaper = material('#e9dfc5');
 
   function mesh(
     geometry: THREE.BufferGeometry,
@@ -99,6 +101,39 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   function box(x: number, y: number, z: number, w: number, h: number, d: number, surface: THREE.Material, parent: THREE.Object3D = world) {
     return mesh(new THREE.BoxGeometry(w, h, d), surface, x, y, z, parent);
+  }
+
+  function carvedStone(x: number, y: number, z: number, width: number, height: number, depth: number, surface: THREE.Material) {
+    const bevel = Math.min(.055, height * .2, width * .1, depth * .1);
+    const shape = new THREE.Shape();
+    shape.moveTo(-width / 2 + bevel, -height / 2 + bevel);
+    shape.lineTo(width / 2 - bevel, -height / 2 + bevel);
+    shape.lineTo(width / 2 - bevel, height / 2 - bevel);
+    shape.lineTo(-width / 2 + bevel, height / 2 - bevel);
+    shape.closePath();
+    const geometry = new THREE.ExtrudeGeometry(shape, { depth: depth - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1, steps: 1, curveSegments: 1 });
+    geometry.translate(0, 0, -depth / 2 + bevel);
+    return mesh(geometry, surface, x, y, z);
+  }
+
+  function inscription(title: string, x: number, y: number, z: number, parent: THREE.Group) {
+    if (typeof document === 'undefined') return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 112;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.fillStyle = '#d8bb7a';
+    context.font = 'bold 76px "STKaiti", "KaiTi", serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(title, 256, 59);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    textures.add(texture);
+    const lettering = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+    materials.add(lettering);
+    mesh(new THREE.PlaneGeometry(3.4, .6), lettering, x, y, z, parent);
   }
 
   function cylinder(x: number, y: number, z: number, top: number, bottom: number, height: number, surface: THREE.Material, parent: THREE.Object3D = world, segments = 12) {
@@ -130,7 +165,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
         batch = { pieces: [], objects: [] };
         batches.set(child.material, batch);
       }
-      batch.pieces.push(child.geometry.clone().applyMatrix4(child.matrix));
+      const geometry = child.geometry.index ? child.geometry.toNonIndexed() : child.geometry.clone();
+      batch.pieces.push(geometry.applyMatrix4(child.matrix));
       batch.objects.push(child);
     }
     for (const [surface, batch] of batches) {
@@ -276,7 +312,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       const roofMaterial = palette.roof.clone();
       roofMaterial.side = THREE.DoubleSide;
       materials.add(roofMaterial);
-      mesh(geometry, roofMaterial, 0, 0, 0);
+      const roofSurface = mesh(geometry, roofMaterial, 0, 0, 0);
+      if (isMainRoof) roofSurface.name = '大雄宝殿屋面';
 
       // Curved tile ribs are geometry, visible from every camera angle.
       for (let column = 0; column <= across; column++) {
@@ -298,6 +335,18 @@ export function createTempleEnvironment(scene: THREE.Scene): {
         }
         mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 16, 0.025, 4, false), palette.roofShadow, 0, 0, 0, details);
       }
+      const eavePoints = Array.from({ length: 17 }, (_, index) => {
+        const x = -halfWidth + .12 + index / 16 * (width - .24);
+        return new THREE.Vector3(centerX + x, surfaceHeight(x, 1) - .075, centerZ + direction * (halfDepth - .12));
+      });
+      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(eavePoints), 20, .07, 5, false), palette.roofShadow, 0, 0, 0, details);
+      const tileEnd = new THREE.CylinderGeometry(.085, .085, .18, 7, 1, true);
+      const tileCount = Math.ceil(width / .62);
+      for (let tile = 0; tile < tileCount; tile++) {
+        const x = -halfWidth + .16 + tile / (tileCount - 1) * (width - .32);
+        const end = mesh(tileEnd, palette.roofRib, centerX + x, surfaceHeight(x, 1) - .015, centerZ + direction * (halfDepth - .12), details);
+        end.rotation.x = Math.PI / 2;
+      }
     }
     beamBetween(new THREE.Vector3(centerX - halfWidth, baseY + rise + 0.11, centerZ), new THREE.Vector3(centerX + halfWidth, baseY + rise + 0.11, centerZ), 0.105, palette.roofShadow, details);
     for (const side of [-1, 1]) {
@@ -309,7 +358,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   // Deep eaves and interlocking timber brackets frame a hall almost as large as its courtyard.
   box(0, 3.2, -22, 26.3, 6.4, 0.36, hallPlaster);
-  box(0, 0.3, -21.96, 26.4, 0.6, 0.48, palette.stone);
+  carvedStone(0, 0.3, -21.96, 26.4, 0.6, 0.48, palette.stone);
   collider(0, -22, 26.3, 0.4);
   function bracket(x: number, z: number) {
     for (let level = 0; level < 3; level += 1) {
@@ -319,23 +368,25 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     }
   }
   function hallColumn(x: number, z: number) {
-    cylinder(x, 2.9, z, 0.2, 0.26, 5.8, hallWood, world, 12);
-    cylinder(x, 0.19, z, 0.37, 0.43, 0.38, palette.stone, world, 12);
-    cylinder(x, 0.43, z, 0.28, 0.35, 0.13, palette.stoneLight, world, 12);
+    cylinder(x, 2.9, z, 0.2, 0.26, 5.8, hallWood, world, 16);
+    const baseProfile = [[.37, 0], [.43, .055], [.43, .12], [.35, .18], [.31, .29], [.34, .38]];
+    mesh(new THREE.LatheGeometry(baseProfile.map(([radius, height]) => new THREE.Vector2(radius, height)), 16), palette.stone, x, 0, z);
+    cylinder(x, 0.43, z, 0.28, 0.35, 0.13, palette.stoneLight, world, 16);
+    cylinder(x, 5.5, z, .24, .26, .17, palette.gold, world, 12);
     collider(x, z, 0.75, 0.75);
     bracket(x, z);
   }
   for (const side of [-1, 1]) {
     box(side * 13, 3.15, -12, 0.36, 6.3, 20, hallPlaster);
-    box(side * 12.96, 0.3, -12, 0.5, 0.6, 20.2, palette.stone);
+    carvedStone(side * 12.96, 0.3, -12, 0.5, 0.6, 20.2, palette.stone);
     collider(side * 13, -12, 0.4, 20);
     box(side * 9.4, 3.15, -2, 7.2, 6.3, 0.3, hallPlaster);
-    box(side * 9.4, 0.35, -1.94, 7.4, 0.7, 0.45, palette.stone);
+    carvedStone(side * 9.4, 0.35, -1.94, 7.4, 0.7, 0.45, palette.stone);
     collider(side * 9.4, -2, 7.2, 0.4);
     for (const z of [-21.3, -12, -1.7]) hallColumn(side * 12.2, z);
     hallColumn(side * 6.1, -1.7);
     hallColumn(side * 7.7, -12.5);
-    const frontWindow = mesh(new THREE.CircleGeometry(1.21, 32), tealTimber, side * 9.4, 3.2, -1.82);
+    const frontWindow = mesh(new THREE.CircleGeometry(1.21, 32), windowPaper, side * 9.4, 3.2, -1.82);
     frontWindow.castShadow = false;
     mesh(new THREE.TorusGeometry(1.27, 0.09, 6, 32), palette.gold, side * 9.4, 3.2, -1.75);
     for (let bar = -2; bar <= 2; bar += 1) {
@@ -345,7 +396,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     }
     // Lattice windows sit beyond the mural panels at either end of the side aisles.
     for (const z of [-4.4, -20]) {
-      const glass = mesh(new THREE.CircleGeometry(1.21, 32), tealTimber, side * 12.76, 3.2, z);
+      const glass = mesh(new THREE.CircleGeometry(1.21, 32), windowPaper, side * 12.76, 3.2, z);
       glass.rotation.y = -side * Math.PI / 2;
       const frame = mesh(new THREE.TorusGeometry(1.27, 0.09, 6, 32), palette.gold, side * 12.68, 3.2, z);
       frame.rotation.y = Math.PI / 2;
@@ -356,7 +407,11 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       }
     }
     box(side * 12.1, 6.2, -12, 0.34, 0.35, 20.2, palette.woodDark);
+    box(side * 5.9, 3.25, -1.78, .14, 5.7, .22, hallWood);
+    box(side * 7.0, 4.68, -1.79, 1.45, .12, .18, palette.woodDark);
+    for (const y of [1.1, 1.25]) box(side * 9.4, y, -1.77, 7.05, .045, .06, palette.stoneLight);
   }
+  box(0, 5.95, -1.78, 11.8, .17, .24, hallWood);
   for (const z of [-21.3, -16.7, -12.1, -7.5, -1.7]) {
     box(0, 6.2, z, 25, 0.34, 0.3, palette.woodDark);
     box(0, 6.42, z, 24.7, 0.09, 0.4, palette.gold);
@@ -377,14 +432,15 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   }
   for (const x of [-11.8, 11.8]) box(x, 7.6, -12.8, 0.25, 0.6, 14.6, tealTimber);
   roof(0, -12.8, 24.5, 15.5, 7.9, 1.45);
-  box(0, 5.1, -1.66, 4.4, 1.05, 0.18, palette.woodDark);
-  box(0, 5.1, -1.55, 4.15, 0.84, 0.04, palette.gold);
-  box(0, 5.1, -1.52, 3.9, 0.65, 0.025, palette.woodDark);
-  for (let petal = -2; petal <= 2; petal += 1) {
-    const carving = sphere(petal * 0.21, 5.1, -1.49, 0.17, palette.goldLight);
-    carving.scale.set(0.6, 1.35, 0.3);
-    carving.rotation.z = -petal * 0.32;
-  }
+  const mainPlaque = new THREE.Group();
+  mainPlaque.name = '大雄宝殿门楣匾额';
+  world.add(mainPlaque);
+  mainRoofDetails.push(mainPlaque);
+  box(0, 5.1, -1.66, 4.4, 1.05, 0.18, palette.woodDark, mainPlaque);
+  box(0, 5.1, -1.55, 4.15, 0.84, 0.04, palette.gold, mainPlaque);
+  box(0, 5.1, -1.52, 3.9, 0.65, 0.025, palette.woodDark, mainPlaque);
+  inscription('大雄宝殿', 0, 5.1, -1.49, mainPlaque);
+  batchMovingGroup(mainPlaque);
 
   function lantern(x: number, y: number, z: number, scale = 1) {
     const group = new THREE.Group();
@@ -456,10 +512,12 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     cylinder(x, 1.18 * size, z, 0.15 * size, 0.23 * size, 2.36 * size, palette.wood, world, 7);
     beamBetween(new THREE.Vector3(x, 1.2 * size, z), new THREE.Vector3(x - 0.55 * size, 2.18 * size, z + 0.15), 0.09 * size, palette.wood);
     beamBetween(new THREE.Vector3(x, 1.4 * size, z), new THREE.Vector3(x + 0.6 * size, 2.4 * size, z - 0.2), 0.08 * size, palette.wood);
-    const crowns = [[0, 2.85, 0, 1.1], [-0.7, 2.45, 0.17, 0.84], [0.7, 2.64, -0.05, 0.88], [0.1, 2.48, 0.7, 0.85]];
+    beamBetween(new THREE.Vector3(x - .55 * size, 2.18 * size, z + .15 * size), new THREE.Vector3(x - size, 2.65 * size, z + .08 * size), .052 * size, palette.wood);
+    beamBetween(new THREE.Vector3(x + .6 * size, 2.4 * size, z - .2 * size), new THREE.Vector3(x + .97 * size, 2.8 * size, z + .12 * size), .05 * size, palette.wood);
+    const crowns = [[0, 2.95, 0, 1], [-.73, 2.58, .15, .76], [.68, 2.7, -.07, .81], [.18, 2.48, .72, .78], [-.2, 3.39, .18, .52]];
     for (const [index, crown] of crowns.entries()) {
-      const leaf = mesh(new THREE.IcosahedronGeometry(crown[3] * size, 1), [palette.leaf, palette.leafLight, palette.leafDark][(index + variation) % 3], x + crown[0] * size, crown[1] * size, z + crown[2] * size);
-      leaf.scale.y = 0.82;
+      const leaf = mesh(new THREE.IcosahedronGeometry(crown[3] * size, 2), [palette.leaf, palette.leafLight, palette.leafDark][(index + variation) % 3], x + crown[0] * size, crown[1] * size, z + crown[2] * size);
+      leaf.scale.set(1, .72 + index % 3 * .06, .9);
     }
     collider(x, z, 0.65 * size, 0.65 * size);
   }
@@ -741,6 +799,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     for (const piece of batch.pieces) piece.dispose();
     if (!geometry) continue;
     const combined = mesh(geometry, batch.surface, 0, 0, 0);
+    if (batch.objects.every(object => object.name === '大雄宝殿屋面')) combined.name = '大雄宝殿屋面';
     combined.castShadow = batch.castShadow;
     combined.receiveShadow = batch.receiveShadow;
     for (const object of batch.objects) object.removeFromParent();
@@ -872,6 +931,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       for (const instance of instances) instance.dispose();
       for (const geometry of geometries) geometry.dispose();
       for (const surface of materials) surface.dispose();
+      for (const texture of textures) texture.dispose();
     },
   };
 }

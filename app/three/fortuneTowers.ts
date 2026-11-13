@@ -21,14 +21,15 @@ export function createFortuneTowers() {
     materials.add(surface);
     return surface;
   };
-  const stone = material("#d4cdb4");
-  const plaster = material("#dfc695");
-  const redWood = material("#994d3d");
-  const darkWood = material("#634a38");
-  const tile = material("#678475", { side: THREE.DoubleSide });
-  const gold = material("#d6ae60", { metalness: 0.42, roughness: 0.48 });
-  const bronze = material("#87704b", { metalness: 0.6, roughness: 0.5 });
-  const skin = plaster;
+  const stone = material("#cfc5af");
+  const plaster = material("#d9c8a6");
+  const redWood = material("#815441");
+  const darkWood = material("#534536");
+  const tile = material("#526f68", { side: THREE.DoubleSide });
+  const gold = material("#b59050", { metalness: 0.28, roughness: 0.58 });
+  const goldLight = material("#d8bb7a", { metalness: .24, roughness: .54 });
+  const bronze = material("#886b43", { metalness: 0.35, roughness: 0.6 });
+  const skin = material("#d8b98e", { roughness: .78 });
   const beard = material("#4a4037");
   const meshes = (geometry: THREE.BufferGeometry, surface: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = staticGroup) => {
     geometries.add(geometry);
@@ -42,7 +43,7 @@ export function createFortuneTowers() {
   const box = (x: number, y: number, z: number, w: number, h: number, d: number, surface: THREE.Material, parent?: THREE.Object3D) => meshes(new THREE.BoxGeometry(w, h, d), surface, x, y, z, parent);
   const cylinder = (x: number, y: number, z: number, top: number, bottom: number, h: number, surface: THREE.Material, parent?: THREE.Object3D, segments = 12) => meshes(new THREE.CylinderGeometry(top, bottom, h, segments), surface, x, y, z, parent);
   const oval = (x: number, y: number, z: number, sx: number, sy: number, sz: number, surface: THREE.Material, parent?: THREE.Object3D) => {
-    const mesh = meshes(new THREE.SphereGeometry(1, 10, 7), surface, x, y, z, parent);
+    const mesh = meshes(new THREE.SphereGeometry(1, 12, 8), surface, x, y, z, parent);
     mesh.scale.set(sx, sy, sz);
     return mesh;
   };
@@ -184,30 +185,45 @@ export function createFortuneTowers() {
   // A seated official-style figure carries a sycee, with crown, beard and layered robe.
   const fortuneStatueStart = staticGroup.children.length;
   const fortuneColliderStart = colliders.length;
-  cylinder(0, 0.2, -33, 1.5, 1.65, 0.4, stone, undefined, 20);
+  meshes(new THREE.LatheGeometry([[0, 0], [1.58, 0], [1.65, .07], [1.65, .17], [1.57, .29], [1.5, .4], [0, .4]].map(([r, y]) => new THREE.Vector2(r, y)), 28), stone, 0, 0, -33);
   box(0, 1.2, -33.35, 2.5, 1.9, 0.7, darkWood);
   box(0, 2.0, -33.55, 2.75, 0.16, 0.6, gold);
   for (const side of [-1, 1]) {
     oval(side * 0.64, 0.98, -32.6, 0.61, 0.25, 0.58, redWood);
     oval(side * 0.52, 0.6, -32.18, 0.24, 0.17, 0.4, beard);
   }
-  const robeProfile = [[0, 0], [0.88, 0.05], [0.85, 0.42], [0.61, 1.18], [0.7, 1.55], [0.4, 1.8], [0, 1.82]];
-  meshes(new THREE.LatheGeometry(robeProfile.map(([r, y]) => new THREE.Vector2(r, y)), 20), redWood, 0, 0.88, -33);
-  oval(0, 3.1, -32.94, 0.45, 0.55, 0.36, skin);
+  const robeProfile = [[0, 0], [.82, .025], [.88, .12], [.88, .29], [.79, .61], [.64, 1.05], [.61, 1.22], [.7, 1.48], [.64, 1.61], [.4, 1.8], [0, 1.82]];
+  meshes(new THREE.LatheGeometry(robeProfile.map(([r, y]) => new THREE.Vector2(r, y)), 26), redWood, 0, 0.88, -33);
+  const fortuneFace = meshes(new THREE.SphereGeometry(1, 24, 16), skin, 0, 3.1, -32.94);
+  fortuneFace.scale.set(.45, .55, .36);
+  const fortuneFacePoint = (dx: number, dy: number): number[] => [dx, 3.1 + dy, -32.928 + Math.sqrt(Math.max(.03, 1 - (dx / .45) ** 2 - (dy / .55) ** 2)) * .36];
+  oval(0, 3.15, -32.566, .036, .11, .032, skin);
+  oval(0, 3.07, -32.54, .057, .052, .062, skin);
   cylinder(0, 3.58, -33, 0.38, 0.48, 0.24, beard);
   cylinder(0, 3.8, -33, 0.3, 0.39, 0.34, gold);
   for (const side of [-1, 1]) {
     box(side * 0.55, 3.67, -33, 0.62, 0.15, 0.3, gold).rotation.z = side * 0.15;
+    oval(side * .61, 3.73, -32.99, .34, .065, .12, goldLight).rotation.z = side * .15;
+    oval(side * .455, 3.02, -32.93, .075, .20, .08, skin);
+    oval(side * .475, 3.05, -32.858, .023, .105, .008, bronze);
+    const eyeX = side * .18;
+    curve([fortuneFacePoint(eyeX - .08, .09), fortuneFacePoint(eyeX, .068), fortuneFacePoint(eyeX + .08, .09)], .013, beard);
+    curve([fortuneFacePoint(eyeX - .09, .20), fortuneFacePoint(eyeX, .235), fortuneFacePoint(eyeX + .09, .208)], .017, beard);
     curve([[side * 0.42, 2.46, -32.99], [side * 0.88, 2.05, -32.65], [side * 0.62, 1.8, -32.1]], 0.21, redWood);
     oval(side * 0.57, 1.84, -32.08, 0.19, 0.13, 0.18, skin);
-    curve([[side * 0.33, 3.2, -32.64], [side * 0.2, 3.22, -32.57], [side * 0.09, 3.19, -32.6]], 0.025, beard);
     curve([[side * 0.1, 3.0, -32.57], [side * 0.28, 2.96, -32.55], [side * 0.36, 3.0, -32.6]], 0.035, beard);
     curve([[side * 0.65, 2.5, -32.94], [side * 0.5, 1.88, -32.52], [side * 0.76, 1.15, -32.5]], 0.03, gold);
     oval(side * 0.5, 2.0, -31.98, 0.3, 0.21, 0.23, gold).rotation.z = -side * 0.48;
+    for (let finger = 0; finger < 3; finger++) {
+      const fx = side * .57 + (finger - 1) * .055;
+      curve([[fx - .02, 1.87, -31.925], [fx, 1.9, -31.91], [fx + .025, 1.87, -31.92]], .009, bronze);
+    }
   }
   oval(0, 3.99, -33, 0.11, 0.19, 0.12, gold);
-  const beardShape = meshes(new THREE.ConeGeometry(0.31, 0.91, 10), beard, 0, 2.55, -32.47);
-  beardShape.rotation.z = Math.PI;
+  meshes(new THREE.LatheGeometry([[0, 0], [.045, .06], [.16, .26], [.26, .6], [.31, .79], [.27, .91], [0, .92]].map(([r, y]) => new THREE.Vector2(r, y)), 20), beard, 0, 2.09, -32.47);
+  for (const offset of [-.13, 0, .13]) curve([[offset, 2.91, -32.19], [offset * .7, 2.58, -32.25], [offset * .25, 2.21, -32.4]], .01, bronze);
+  curve([[-.36, 2.56, -32.52], [0, 2.22, -32.23], [.36, 2.56, -32.52]], .04, goldLight);
+  for (const offset of [-.45, -.15, .15, .45]) curve([[offset * .65, 2.18, -32.4], [offset * .85, 1.63, -32.22], [offset, 1.02, -32.3]], .022, goldLight);
   oval(0, 1.91, -31.98, 0.56, 0.14, 0.26, gold);
   oval(0, 2.06, -31.98, 0.31, 0.16, 0.23, gold);
   for (let bead = 0; bead < 9; bead++) {
