@@ -24,6 +24,14 @@ const appearances = [
   { id: "wenxin", robe: "#628b8a", sash: "#e3c88d", skin: "#edc69a", width: .88, height: .97, head: [.96, 1.04, 1.01], nose: .95 },
   { id: "shanhe", robe: "#818b59", sash: "#cfa265", skin: "#d1a477", width: 1.07, height: 1.02, head: [1.04, 1.02, .98], nose: 1.25 },
   { id: "xingchen", robe: "#b97b4d", sash: "#dbc39a", skin: "#e4b785", width: .93, height: 1.08, head: [.98, 1.01, 1], nose: 1.05 },
+  { id: "qinghe", robe: "#718c87", sash: "#c5c8a6", skin: "#efc2a5", width: 1.06, height: .92, head: [1.06, .98, 1.04], nose: .88 },
+  { id: "zhuyin", robe: "#9b747b", sash: "#d5af81", skin: "#dba87d", width: .91, height: 1.06, head: [.98, 1.08, .97], nose: 1.12 },
+  { id: "jingwu", robe: "#6d7778", sash: "#c98f6c", skin: "#cfa076", width: 1.15, height: 1.07, head: [1.03, 1.01, 1.04], nose: 1.18 },
+  { id: "fuman", robe: "#b28c51", sash: "#8e9473", skin: "#f2d2a8", width: 1.16, height: .94, head: [1.1, .98, 1.03], nose: 1.08 },
+  { id: "chengguang", robe: "#6f7c98", sash: "#d6c7a0", skin: "#e8b893", width: .87, height: 1.1, head: [.94, 1.09, 1.01], nose: .92 },
+  { id: "songfeng", robe: "#8c958b", sash: "#d4d0b5", skin: "#d9bda0", width: .97, height: 1.04, head: [1.01, 1.06, .96], nose: 1.23 },
+  { id: "anyun", robe: "#7f8270", sash: "#d0ba90", skin: "#c9956d", width: 1.02, height: .99, head: [1.05, 1.02, 1.02], nose: 1.16 },
+  { id: "ruyi", robe: "#bb9686", sash: "#95a58c", skin: "#edc8a5", width: .99, height: .9, head: [1.07, 1, .98], nose: .82 },
 ] as const;
 
 /** Scene residents use one posed prototype and shared instancing, independent of online visitors. */
@@ -39,6 +47,14 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
     { from: [TEMPLE_LAYOUT.wenshu.x + 2, TEMPLE_LAYOUT.wenshu.z + 2.5], to: [TEMPLE_LAYOUT.wenshu.x + 2, TEMPLE_LAYOUT.wenshu.z + 4], action: "idle", heading: 0, speed: .16 },
     { from: [-33, 1], to: [-37, 1], action: "idle", heading: -Math.PI / 2, speed: .14 },
     { from: [44, -22], to: [44, -19], action: "idle", heading: 0, speed: .15 },
+    { from: [-19.3, 4.5], to: [-19.3, 6.5], action: "idle", heading: 0, speed: .14 },
+    { from: [16.7, -27.8], to: [16.7, -25.2], action: "idle", heading: 0, speed: .16 },
+    { from: [32.3, 12], to: [32.3, 15], action: "idle", heading: Math.PI, speed: .18 },
+    { from: [37, 22], to: [37, 24.5], action: "idle", heading: 0, speed: .13 },
+    { from: [45.4, 31.5], to: [45.4, 34.5], action: "idle", heading: 0, speed: .12 },
+    { from: [-34, 22], to: [-34, 25], action: "idle", heading: Math.PI, speed: .12 },
+    { from: [-7.8, 24], to: [-7.8, 27], action: "idle", heading: Math.PI, speed: .15 },
+    { from: [11, 13], to: [11, 16], action: "idle", heading: 0, speed: .14 },
   ];
   const prototype = createMonk();
   function visiblePart(object: THREE.Object3D) {
@@ -181,6 +197,51 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
   accessory(7, "cylinder", "#805d3f", torso, [-.32, .13, .06], [.021, .49, .021], [0, 0, -.24]);
   accessory(7, "cylinder", "#c8a674", torso, [-.26, .36, .06], [.069, .17, .069], [0, 0, Math.PI / 2]);
 
+  // The pond keeper carries a woven basket with a little blue fish-shaped tag.
+  accessory(8, "oval", "#b19768", torso, [-.27, -.02, .08], [.13, .115, .1]);
+  accessory(8, "ring", "#8a744f", torso, [-.27, .1, .08], [.1, .12, .07]);
+  for (const y of [-.07, -.02, .03]) accessory(8, "ring", "#8a744f", torso, [-.27, y, .08], [.125, .09, .04], [Math.PI / 2, 0, 0]);
+  accessory(8, "oval", "#769caa", torso, [-.27, -.01, .18], [.044, .023, .012]);
+  accessory(8, "cone", "#769caa", torso, [-.32, -.01, .18], [.025, .04, .012], [0, 0, -Math.PI / 2]);
+  // A tiny practice drum and paired sticks distinguish the drum keeper.
+  accessory(9, "cylinder", "#99634e", torso, [.28, -.01, .06], [.09, .13, .09], [0, 0, Math.PI / 2]);
+  for (const x of [.205, .355]) accessory(9, "cylinder", "#e2c89b", torso, [x, -.01, .06], [.097, .014, .097], [0, 0, Math.PI / 2]);
+  for (const x of [.22, .3]) accessory(9, "cylinder", "#a98a59", torso, [x, .18, .1], [.012, .3, .012], [0, 0, x === .22 ? -.2 : .2]);
+  // Broad cloth cuffs and a crimson headband suit the martial-arts novice.
+  accessory(10, "ring", "#a96c55", head, [0, .085, -.005], [.282, .27, .23], [Math.PI / 2, 0, 0]);
+  accessory(10, "box", "#a96c55", head, [-.235, -.015, -.15], [.045, .23, .025], [0, 0, .18]);
+  for (const side of [-1, 1]) {
+    accessory(10, "cylinder", "#9c7256", torso, [side * .27, -.04, .03], [.075, .12, .075], [0, 0, side * .2]);
+    accessory(10, "ring", "#e0b78a", torso, [side * .27, .025, .03], [.073, .073, .035], [Math.PI / 2, 0, side * .2]);
+  }
+  // A plump drawstring pouch and an old brass ring hang at the fortune shrine.
+  accessory(11, "oval", "#8a7456", torso, [.27, -.01, .12], [.115, .14, .09]);
+  accessory(11, "cylinder", "#b49a6f", torso, [.27, .115, .12], [.045, .055, .045]);
+  accessory(11, "ring", "#d0b174", torso, [.27, -.005, .213], [.053, .053, .045]);
+  for (const side of [-1, 1]) accessory(11, "oval", "#705644", head, [side * .1, .06, .254], [.05, .013, .012], [0, 0, side * -.2]);
+  // A framed paper lantern has a warm inset and a small hanging tassel.
+  accessory(12, "ring", "#8b7657", torso, [-.29, .22, .06], [.06, .075, .04]);
+  accessory(12, "box", "#d5b16c", torso, [-.29, .04, .06], [.13, .21, .13]);
+  accessory(12, "box", "#eed5a0", torso, [-.29, .04, .13], [.1, .16, .015]);
+  for (const y of [-.075, .155]) accessory(12, "box", "#79694e", torso, [-.29, y, .06], [.16, .027, .16]);
+  accessory(12, "cylinder", "#c69b67", torso, [-.29, -.13, .06], [.016, .09, .016]);
+  // A muted shoulder bag, silver brows and a pine-green tie mark the tower walk.
+  accessory(13, "box", "#797d6a", torso, [-.26, -.015, .06], [.16, .23, .1], [0, 0, -.12]);
+  accessory(13, "box", "#c3bea2", torso, [-.26, .105, .07], [.175, .04, .12], [0, 0, -.12]);
+  accessory(13, "ring", "#a99a70", torso, [-.26, .01, .119], [.032, .032, .035]);
+  for (const side of [-1, 1]) accessory(13, "oval", "#b5b09b", head, [side * .1, .062, .255], [.048, .014, .014], [0, 0, side * -.13]);
+  // A rolled blanket on a red backpack and a bamboo staff belong to the walker.
+  accessory(14, "box", "#9a6d60", torso, [0, .11, -.19], [.29, .33, .12]);
+  accessory(14, "cylinder", "#c4ac8e", torso, [0, .32, -.2], [.075, .34, .075], [0, 0, Math.PI / 2]);
+  for (const x of [-.11, .11]) accessory(14, "ring", "#7b7862", torso, [x, .32, -.2], [.078, .078, .055], [0, Math.PI / 2, 0]);
+  accessory(14, "cylinder", "#9e8a5e", torso, [.34, .03, -.015], [.017, 1.08, .017], [0, 0, -.1]);
+  // The courtyard resident keeps a round flask and a little cup at the belt.
+  accessory(15, "oval", "#8a9c8a", torso, [.27, .015, .1], [.095, .12, .065]);
+  accessory(15, "cylinder", "#727f69", torso, [.27, .135, .1], [.036, .04, .036]);
+  accessory(15, "ring", "#8a9c8a", torso, [.37, .035, .1], [.047, .055, .035]);
+  accessory(15, "cylinder", "#d8c4a2", torso, [-.24, -.03, .13], [.049, .065, .049]);
+  accessory(15, "ring", "#968369", torso, [-.24, .005, .13], [.051, .051, .025], [Math.PI / 2, 0, 0]);
+
   const accessoryBatches = Object.values(accessoryGeometry).map(geometry => {
     const parts = accessoryParts.filter(part => part.object.geometry === geometry);
     const instance = new THREE.InstancedMesh(geometry, accessorySurface, parts.length);
@@ -192,7 +253,13 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
     group.add(instance);
     return { instance, parts };
   });
-  const residents = routes.map((route, index) => ({ id: appearances[index].id as NpcResidentId, x: route.from[0], y: floorHeightAt(...route.from), z: route.from[1], heading: route.heading }));
+  // First arrivals during a class share the same route phase as ordinary visits.
+  const residents = routes.map((route, index) => {
+    const progress = (1 - Math.cos(index * .7)) / 2;
+    const x = THREE.MathUtils.lerp(route.from[0], route.to[0], progress);
+    const z = THREE.MathUtils.lerp(route.from[1], route.to[1], progress);
+    return { id: appearances[index].id as NpcResidentId, x, y: floorHeightAt(x, z), z, heading: route.heading };
+  });
   const routeTimes = routes.map(() => 0);
   const rootTransform = new THREE.Object3D();
   const matrix = new THREE.Matrix4();

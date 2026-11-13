@@ -133,7 +133,7 @@ export default function TempleWorld(props: WorldProps) {
         const scene = new T.Scene();
         scene.background = new T.Color(0xe5ece4);
         scene.fog = new T.Fog(0xe5ece4, 120, 360);
-        const camera = new T.PerspectiveCamera(42, 1, 0.1, 430);
+        const camera = new T.PerspectiveCamera(42, 1, 0.1, 650);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
         let cameraRadius = mobile ? 7.8 : 10;
@@ -373,7 +373,7 @@ export default function TempleWorld(props: WorldProps) {
         let lessonActive = false;
         const touchPoints = new Map<number, { x: number; y: number }>();
         let pinchDistance = 0;
-        function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.45, 3.2); }
+        function changeZoom(amount: number) { zoomScale = clamp(zoomScale * amount, 0.3, 4.5); }
         zoomView.current = changeZoom;
         let currentPlace = "静心庭院";
         let actualSeated: boolean | undefined;
@@ -1159,7 +1159,7 @@ export default function TempleWorld(props: WorldProps) {
           const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView || interactionView ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode || ritualView !== ritualCameraActive;
           ritualCameraActive = ritualView;
-          const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 42, 85) : mapMode || martialView ? 48 : 42;
+          const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 34, 92) : mapMode || martialView ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
             cameraMode = nextCameraMode;
             camera.fov = fieldOfView;
