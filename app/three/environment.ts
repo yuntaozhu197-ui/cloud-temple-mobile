@@ -12,6 +12,7 @@ import { createNpcMonks } from './npcMonks';
 import { createAltarAtmosphere } from './altarAtmosphere';
 import { TEMPLE_SEATS } from '../templeSeats';
 import type { NpcResidentId } from '../npcResidents';
+import { TEMPLE_LAYOUT } from '../templeLayout';
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -201,12 +202,14 @@ export function createTempleEnvironment(scene: THREE.Scene): {
 
   box(0, 0.014, 11, 26, 0.028, 22, palette.path).name = '中央庭院石铺地面';
   box(0, 0.022, -12, 26, 0.045, 20, palette.stoneLight).name = '大殿石铺地面';
-  box(15.8, 0.018, -9, 1.4, 0.035, 23, palette.path);
+  for (const x of [-15.8, 15.8]) box(x, 0.018, -10, 1.4, 0.035, 29, palette.path);
   box(-22, 0.018, 0, 44, 0.035, 1.8, palette.path);
-  box(-30, 0.018, -3.5, 2.2, 0.035, 7, palette.path);
-  box(25, 0.018, 0, 50, 0.035, 1.8, palette.path);
+  box(TEMPLE_LAYOUT.guanyin.x, 0.018, -4.5, 2.2, 0.035, 9, palette.path);
+  box(17.5, 0.018, 0, 35, 0.035, 1.8, palette.path);
   box(30, 0.018, -2.5, 2.2, 0.035, 5, palette.path);
-  box(42, 0.018, -6, 2.2, 0.035, 12, palette.path);
+  box(42, 0.018, -10, 2.2, 0.035, 4, palette.path);
+  box(38.5, 0.018, -8, 7, 0.035, 1.8, palette.path);
+  box(39, 0.018, 7.5, 8, 0.035, 1.8, palette.path);
   box(17, 0.018, -5.5, 3.5, 0.035, 1.4, palette.path);
   box(-7.6, 0.018, 0.7, 5.6, 0.035, 1.35, palette.path);
   box(0, 0.014, 16.5, 4.6, 0.028, 12.4, palette.path);
@@ -757,7 +760,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       ...fortuneTowers.landmarks,
       ...skyLanterns.landmarks,
       { name: '大雄宝殿', x: 0, z: -13.8 },
-      { name: '藏经阁', x: -30, z: -13.5 },
+      { name: '藏经阁', x: TEMPLE_LAYOUT.library.x, z: TEMPLE_LAYOUT.library.z + 2.5 },
       { name: '观云阁', x: 30, z: -16 },
       { name: '莲池', x: 5.8, z: 2 },
       { name: '竹林', x: -8.4, z: 0.7 },
@@ -782,7 +785,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       { kind: 'fish', label: '◌ 喂锦鲤', x: 6, y: 0.7, z: 2 },
       { kind: 'mural', label: '✧ 赏壁画', x: -11.2, y: 1.3, z: -10 },
       { kind: 'lamp', label: '✺ 点莲灯', x: 8.8, y: 1.3, z: -15.5 },
-      { kind: 'sutra', label: '▤ 藏经阁诵读', x: -30, y: 1.7, z: -13.5 },
+      { kind: 'sutra', label: '▤ 藏经阁诵读', x: TEMPLE_LAYOUT.library.x, y: 1.7, z: TEMPLE_LAYOUT.library.z + 2.5 },
       { kind: 'breathe', label: '☁ 观云调息', x: 30, y: 1.7, z: -16 },
     ],
     offerFlowers() {

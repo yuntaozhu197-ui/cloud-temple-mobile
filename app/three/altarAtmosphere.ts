@@ -1,10 +1,17 @@
 import * as THREE from "three";
+import { TEMPLE_LAYOUT } from "../templeLayout";
 
 /** Candle flames and faint smoke remain close to the three prayer-hall altars. */
 export function createAltarAtmosphere() {
   const group = new THREE.Group();
   group.name = "三座殿堂香案 · 烛火薄烟";
-  const positions = [[-2.2, -15.8], [2.2, -15.8], [-16.8, 28.5], [-13.2, 28.5], [13.2, 28.5], [16.8, 28.5]];
+  const positions = [
+    [-2.2, -15.8], [2.2, -15.8],
+    [TEMPLE_LAYOUT.guanyin.x - 1.8, TEMPLE_LAYOUT.guanyin.z - .5],
+    [TEMPLE_LAYOUT.guanyin.x + 1.8, TEMPLE_LAYOUT.guanyin.z - .5],
+    [TEMPLE_LAYOUT.wenshu.x - 1.8, TEMPLE_LAYOUT.wenshu.z - .5],
+    [TEMPLE_LAYOUT.wenshu.x + 1.8, TEMPLE_LAYOUT.wenshu.z - .5],
+  ];
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const instances: THREE.InstancedMesh[] = [];

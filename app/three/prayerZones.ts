@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { TempleRoom } from "./detachedHalls";
+import { TEMPLE_LAYOUT } from "../templeLayout";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
-/** Two independent shrines and a lantern tower in the mountain's southern garden. */
+/** Independent inner-courtyard shrines and a lantern tower beside the southern garden. */
 export function createPrayerZones() {
   const group = new THREE.Group();
   group.name = "观音殿 · 文殊殿 · 长明灯塔";
@@ -173,8 +174,11 @@ export function createPrayerZones() {
     block(x, z, 3.2, 3.1);
   }
 
-  for (const hall of [{ name: "观音殿", x: -15, guanyin: true }, { name: "文殊殿", x: 15, guanyin: false }]) {
+  for (const hall of [{ name: "观音殿", ...TEMPLE_LAYOUT.guanyin, guanyin: true }, { name: "文殊殿", ...TEMPLE_LAYOUT.wenshu, guanyin: false }]) {
     const { x } = hall;
+    const hallMeshStart = staticGroup.children.length;
+    const hallColliderStart = colliders.length;
+    const offsetZ = hall.z - 29;
     box(x, 0.035, 29, 12.2, 0.07, 11.4, stone);
     box(x, 2.95, 24, 11, 5.9, 0.28, plaster);
     block(x, 24, 11, 0.3);
@@ -203,12 +207,15 @@ export function createPrayerZones() {
       cylinder(x + side * 2.6, 4.22, 34.2, 0.03, 0.03, 0.24, gold, 6);
     }
     for (const z of [24.4, 29, 33.7]) box(x, 5.75, z, 10.7, 0.3, 0.3, darkWood);
+    const plaqueStart = staticGroup.children.length;
     plaque(hall.name, x, 4.9, 34.2);
+    const plaqueParts = staticGroup.children.slice(plaqueStart);
     const roofs = new THREE.Group();
     const details = new THREE.Group();
     roofs.name = `${hall.name}重檐`;
     details.name = `${hall.name}瓦垄与屋脊`;
     group.add(roofs, details);
+    for (const part of plaqueParts) details.add(part);
     roof(x, 29, 13.8, 12.3, 5.9, 1.85, roofs, details);
     roof(x, 28.6, 10.3, 8.2, 7.35, 1.2, roofs, details);
     batch(roofs);
@@ -218,14 +225,21 @@ export function createPrayerZones() {
       materials.add(roofMesh.material as THREE.Material);
     }
     batch(details);
-    rooms.push({ name: hall.name, minX: x - 5.2, maxX: x + 5.2, minZ: 24.3, maxZ: 33.7, roofs: roofs.children as THREE.Mesh[], roofDetails: [details], elevation: 0 });
+    roofs.position.z = offsetZ;
+    details.position.z = offsetZ;
+    rooms.push({ name: hall.name, minX: x - 5.2, maxX: x + 5.2, minZ: hall.z - 4.7, maxZ: hall.z + 4.7, roofs: roofs.children as THREE.Mesh[], roofDetails: [details], elevation: 0 });
     statue(x, hall.guanyin);
     block(x, 30, 0.95, 0.85);
     box(x, 0.025, 35.4, 4, 0.05, 2.6, stone);
+    for (const mesh of staticGroup.children.slice(hallMeshStart)) mesh.position.z += offsetZ;
+    for (const collider of colliders.slice(hallColliderStart)) {
+      collider.minZ += offsetZ;
+      collider.maxZ += offsetZ;
+    }
   }
 
-  // Broad paths link both halls and the tower while leaving the central gate unobstructed.
-  box(0, 0.012, 36.5, 83, 0.024, 1.9, stone);
+  // The southern garden paths continue to connect the wishing platform and lamp tower.
+  box(20, 0.012, 32.5, 40, 0.024, 1.9, stone);
   box(0, 0.012, 29.5, 2.1, 0.024, 16, stone);
   box(40, 0.012, 34.5, 2.1, 0.024, 5.5, stone);
   const towerX = 40, towerZ = 28;
@@ -324,13 +338,13 @@ export function createPrayerZones() {
     colliders,
     rooms,
     landmarks: [
-      { name: "观音殿 · 平安祈愿", x: -15, z: 31 },
-      { name: "文殊殿 · 学业祈愿", x: 15, z: 31 },
+      { name: "观音殿 · 平安祈愿", x: TEMPLE_LAYOUT.guanyin.x, z: TEMPLE_LAYOUT.guanyin.z + 2 },
+      { name: "文殊殿 · 学业祈愿", x: TEMPLE_LAYOUT.wenshu.x, z: TEMPLE_LAYOUT.wenshu.z + 2 },
       { name: "长明灯塔", x: 40, z: 32.5 },
     ],
     interactions: [
-      { kind: "incenseGuanyin" as const, label: "♧ 观音菩萨敬香", x: -15, y: 1.1, z: 31 },
-      { kind: "incenseWenshu" as const, label: "♧ 文殊菩萨敬香", x: 15, y: 1.1, z: 31 },
+      { kind: "incenseGuanyin" as const, label: "♧ 观音菩萨敬香", x: TEMPLE_LAYOUT.guanyin.x, y: 1.1, z: TEMPLE_LAYOUT.guanyin.z + 2 },
+      { kind: "incenseWenshu" as const, label: "♧ 文殊菩萨敬香", x: TEMPLE_LAYOUT.wenshu.x, y: 1.1, z: TEMPLE_LAYOUT.wenshu.z + 2 },
       { kind: "longLamp" as const, label: "✺ 长明灯许愿", x: 40, y: 1.1, z: 32.5 },
     ],
     light() {

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createMonk } from "./monk";
 import { getTempleSchedule } from "../templeSchedule";
 import type { NpcResidentId } from "../npcResidents";
+import { TEMPLE_LAYOUT } from "../templeLayout";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 type Route = { from: [number, number]; to: [number, number]; action: string; heading: number; speed: number };
@@ -32,10 +33,10 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
   const routes: Route[] = [
     { from: [-4.5, -10.5], to: [-4.5, -10.5], action: "salute", heading: Math.PI, speed: .12 },
     { from: [4.5, -10.5], to: [4.5, -10.5], action: "salute", heading: Math.PI, speed: .13 },
-    { from: [-30, -14.8], to: [-30, -14.8], action: "chantSit", heading: Math.PI, speed: .12 },
+    { from: [TEMPLE_LAYOUT.library.x, TEMPLE_LAYOUT.library.z + 1.3], to: [TEMPLE_LAYOUT.library.x, TEMPLE_LAYOUT.library.z + 1.3], action: "chantSit", heading: Math.PI, speed: .12 },
     { from: [30, -12], to: [30, -12], action: "salute", heading: Math.PI, speed: .12 },
-    { from: [-10, 15], to: [-10, 18], action: "idle", heading: 0, speed: .19 },
-    { from: [10, 15], to: [10, 18], action: "idle", heading: 0, speed: .16 },
+    { from: [TEMPLE_LAYOUT.guanyin.x - 2, TEMPLE_LAYOUT.guanyin.z + 2.5], to: [TEMPLE_LAYOUT.guanyin.x - 2, TEMPLE_LAYOUT.guanyin.z + 4], action: "idle", heading: 0, speed: .19 },
+    { from: [TEMPLE_LAYOUT.wenshu.x + 2, TEMPLE_LAYOUT.wenshu.z + 2.5], to: [TEMPLE_LAYOUT.wenshu.x + 2, TEMPLE_LAYOUT.wenshu.z + 4], action: "idle", heading: 0, speed: .16 },
     { from: [-33, 1], to: [-37, 1], action: "idle", heading: -Math.PI / 2, speed: .14 },
     { from: [44, -22], to: [44, -19], action: "idle", heading: 0, speed: .15 },
   ];

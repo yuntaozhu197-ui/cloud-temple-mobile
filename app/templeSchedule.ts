@@ -1,3 +1,5 @@
+import { TEMPLE_LAYOUT } from "./templeLayout";
+
 export type TempleLesson = {
   id: string;
   kind: "morning" | "evening";
@@ -44,6 +46,6 @@ export function getTempleSchedule(timestamp = Date.now()): TempleSchedule {
 export function isTemplePrayerHall(position: { x: number; z: number }) {
   if (!Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
   return (position.x > -12.6 && position.x < 12.6 && position.z > -21.6 && position.z < -2.2) ||
-    (position.x > -20.2 && position.x < -9.8 && position.z > 24.3 && position.z < 33.7) ||
-    (position.x > 9.8 && position.x < 20.2 && position.z > 24.3 && position.z < 33.7);
+    [TEMPLE_LAYOUT.guanyin, TEMPLE_LAYOUT.wenshu].some(hall => Math.abs(position.x - hall.x) < 5.2 && Math.abs(position.z - hall.z) < 4.7);
 }
+

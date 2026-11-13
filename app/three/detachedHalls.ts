@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { TEMPLE_LAYOUT } from "../templeLayout";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type TempleRoom = Collider & { name: string; roofs: THREE.Mesh[]; roofDetails?: THREE.Object3D[]; elevation: number };
@@ -83,7 +84,7 @@ export function createDetachedHalls() {
     return roofs;
   }
 
-  for (const hall of [{ name: "藏经阁", x: -30, z: -16, width: 20, depth: 18 }, { name: "观云阁", x: 30, z: -17, width: 20, depth: 18 }]) {
+  for (const hall of [{ name: "藏经阁", ...TEMPLE_LAYOUT.library }, { name: "观云阁", x: 30, z: -17, width: 20, depth: 18 }]) {
     const { x, z, width, depth } = hall;
     const front = z + depth / 2;
     const back = z - depth / 2;

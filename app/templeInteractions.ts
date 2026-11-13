@@ -1,3 +1,5 @@
+import { TEMPLE_LAYOUT } from "./templeLayout";
+
 /** Walking destinations and animation contact phases share one timing definition. */
 export const TEMPLE_INTERACTIONS = {
   flower: { x: -2.8, z: -16.15, heading: Math.PI, pose: "offerFlower", duration: 6, impacts: [.78] },
@@ -8,7 +10,7 @@ export const TEMPLE_INTERACTIONS = {
   lamp: { x: 8.8, z: -15.5, heading: Math.PI, pose: "lotusLamp", duration: 5, impacts: [.72] },
   pagoda: { x: -43, z: 21, heading: Math.PI, pose: "pagoda", duration: 5, impacts: [.3] },
   mural: { x: -10.4, z: -10, heading: -Math.PI / 2, pose: "mural", duration: 5, impacts: [.3] },
-  sutra: { x: -30, z: -13.5, heading: Math.PI, pose: "sutra", duration: 8, impacts: [.3] },
+  sutra: { x: TEMPLE_LAYOUT.library.x, z: TEMPLE_LAYOUT.library.z + 2.5, heading: Math.PI, pose: "sutra", duration: 8, impacts: [.3] },
   breathe: { x: 30, z: -16, heading: 0, pose: "breathe", duration: 8, impacts: [.3] },
 } as const;
 
@@ -17,3 +19,4 @@ export type TempleInteractionKind = keyof typeof TEMPLE_INTERACTIONS;
 export function isTempleInteraction(kind: string): kind is TempleInteractionKind {
   return Object.hasOwn(TEMPLE_INTERACTIONS, kind);
 }
+

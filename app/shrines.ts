@@ -1,3 +1,5 @@
+import { TEMPLE_LAYOUT } from "./templeLayout";
+
 export type ShrineId = "rulai" | "guanyin" | "wenshu" | "caishen";
 
 export const SHRINES = {
@@ -7,14 +9,15 @@ export const SHRINES = {
   },
   guanyin: {
     name: "观音菩萨", hall: "观音殿", intention: "慈悲 · 健康 · 家人",
-    description: "愿家人康宁，愿心中多一份慈悲。", x: -15, z: 31, furnaceZ: 30,
+    description: "愿家人康宁，愿心中多一份慈悲。", x: TEMPLE_LAYOUT.guanyin.x, z: TEMPLE_LAYOUT.guanyin.z + 2, furnaceZ: TEMPLE_LAYOUT.guanyin.z + 1,
   },
   wenshu: {
     name: "文殊菩萨", hall: "文殊殿", intention: "学业 · 高考 · 智慧",
-    description: "愿学子专注笃行，愿每一份努力有所收获。", x: 15, z: 31, furnaceZ: 30,
+    description: "愿学子专注笃行，愿每一份努力有所收获。", x: TEMPLE_LAYOUT.wenshu.x, z: TEMPLE_LAYOUT.wenshu.z + 2, furnaceZ: TEMPLE_LAYOUT.wenshu.z + 1,
   },
   caishen: {
     name: "财神", hall: "财神庙", intention: "事业 · 勤勉 · 丰足",
     description: "愿勤勉有所获，愿生活安稳丰足。", x: 43, z: 18, furnaceZ: 17,
   },
 } satisfies Record<ShrineId, { name: string; hall: string; intention: string; description: string; x: number; z: number; furnaceZ: number }>;
+
