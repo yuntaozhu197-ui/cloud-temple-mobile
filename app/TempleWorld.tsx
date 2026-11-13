@@ -139,6 +139,7 @@ export default function TempleWorld(props: WorldProps) {
         let cameraRadius = mobile ? 7.8 : 10;
         let cameraHeight = mobile ? 7.4 : 9.4;
         let cameraMode = latest.current.cameraMode ?? "third";
+        let ritualCameraActive = false;
         let firstPersonPitch = -0.06;
         let firstPersonHeight = 1.1;
         const cameraTarget = new T.Vector3(0, 0.65, 2.9);
@@ -1126,6 +1127,7 @@ export default function TempleWorld(props: WorldProps) {
           const practiceView = seated && ["prayer", "beads", "bow", "meditate"].includes(state.action);
           const conversationView = Boolean(conversationResident);
           const interactionView = Boolean(sceneAction && isTempleInteraction(sceneAction.kind));
+          const ritualView = sceneAction?.kind === "ritual";
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
           if (martialView || fishView || practiceView || skyLanternView || conversationView || interactionView) { firstPerson = false; mapMode = false; }
           if (conversationResident) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationResident.x - position.x, conversationResident.z - position.z)) * Math.min(1, dt * 7);
@@ -1155,7 +1157,8 @@ export default function TempleWorld(props: WorldProps) {
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
           const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView || interactionView ? "third" : state.cameraMode ?? "third";
-          const cameraChanged = nextCameraMode !== cameraMode;
+          const cameraChanged = nextCameraMode !== cameraMode || ritualView !== ritualCameraActive;
+          ritualCameraActive = ritualView;
           const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 42, 85) : mapMode || martialView ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
             cameraMode = nextCameraMode;
@@ -1204,7 +1207,9 @@ export default function TempleWorld(props: WorldProps) {
             } else if (interactionView) {
               const heading = actor.group.rotation.y;
               const distance = Math.max(4.5, 1.1 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, .85, 1.25);
-              cameraGoal.set(cameraLook.x + Math.sin(heading + Math.PI / 2) * distance * .9 - Math.sin(heading) * distance * .35, floorHeight + 2.5, cameraLook.z + Math.cos(heading + Math.PI / 2) * distance * .9 - Math.cos(heading) * distance * .35);
+              // The ritual platform's western side borders the solid wall of Guanyun Hall.
+              const side = ritualView ? -1 : 1;
+              cameraGoal.set(cameraLook.x + Math.sin(heading + Math.PI / 2) * distance * .9 * side - Math.sin(heading) * distance * .35, floorHeight + 2.5, cameraLook.z + Math.cos(heading + Math.PI / 2) * distance * .9 * side - Math.cos(heading) * distance * .35);
             } else if (martialView) {
               const martialZoom = clamp(zoomScale, 0.85, 1.25);
               const distance = Math.max(9.5, 4.2 / (Math.tan(Math.PI * 48 / 360) * camera.aspect)) * martialZoom;
