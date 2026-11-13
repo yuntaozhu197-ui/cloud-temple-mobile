@@ -22,6 +22,7 @@ import type { NpcResidentId } from "./npcResidents";
 import TempleSoundSettings from "./TempleSoundSettings";
 import type { TempleInteractionKind } from "./templeInteractions";
 import { isTemplePrayerHall } from "./templeSchedule";
+import "./temple-theme.css";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };

@@ -1,0 +1,184 @@
+:root {
+  --temple-ink: #263f39;
+  --temple-paper: #f4ead5;
+  --temple-jade: #365f53;
+  --temple-cinnabar: #8b493a;
+  --temple-gold: #b4925b;
+  --temple-line: #cdbd9d;
+  --temple-muted: #5f6c5c;
+  --temple-surface: #fcf5e6;
+  --temple-motion: cubic-bezier(.22, 1, .36, 1);
+  --temple-font: "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body, button, input, textarea, select {
+  font-family: var(--temple-font);
+}
+
+body :is(.modal-backdrop, .lamp-overlay, .pond-overlay, .resident-overlay, .life-backdrop, .social-backdrop) {
+  background: #213c356b;
+  backdrop-filter: blur(8px);
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] {
+  color: var(--temple-ink);
+  background: var(--temple-paper);
+  border: 1px solid var(--temple-line);
+  border-radius: 24px;
+  box-shadow: 0 24px 64px #203b3538;
+  font-family: var(--temple-font);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] :is(h2, h3, p) {
+  font-family: inherit;
+  text-wrap: pretty;
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] h2 {
+  color: var(--temple-ink);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-wrap: balance;
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] h3 {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 600;
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] :is(button, input, textarea, select, strong, b, label) {
+  font-family: inherit;
+  font-weight: 600;
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] :is(input, textarea, select) {
+  color: var(--temple-ink);
+  background: var(--temple-surface);
+  border: 1px solid var(--temple-line);
+  border-radius: 12px;
+  font-size: 16px;
+  line-height: 24px;
+  padding: 8px 12px;
+  accent-color: var(--temple-jade);
+}
+
+body :is(.game-modal, .social-sheet, .life-sheet, .lamp-panel, .resident-panel, .pond-panel)[role="dialog"] :is(input, textarea, select), body .account-form input {
+  border-color: #77846b;
+}
+
+body :is(.lamp-panel, .pond-panel, .resident-panel, .life-sheet, .social-sheet, .game-modal) button {
+  transition: transform .3s var(--temple-motion), color .3s var(--temple-motion), background-color .3s var(--temple-motion), opacity .3s var(--temple-motion);
+}
+
+body :is(.lamp-panel, .pond-panel, .resident-panel, .life-sheet, .social-sheet, .game-modal) button:active:not(:disabled) {
+  transform: translateY(1px) scale(.98);
+}
+
+body :is(.lamp-panel, .pond-panel, .resident-panel, .life-sheet, .social-sheet, .game-modal) :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--temple-jade);
+  outline-offset: 4px;
+}
+
+body :is(.lamp-primary, .pond-release, .resident-farewell, .life-button, .social-main-button, .game-modal .primary-button) {
+  color: #fff7e8;
+  border: 1px solid var(--temple-jade);
+  border-radius: 12px;
+  background: var(--temple-jade);
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600 !important;
+}
+
+body :is(.lamp-secondary, .life-button.secondary, .life-text-button, .resident-topics button, .reading-tabs button, .social-small-button, .pond-error button) {
+  color: var(--temple-jade);
+  border: 1px solid var(--temple-line);
+  border-radius: 12px;
+  background: #e9dfc9;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+body :is(.lamp-close, .resident-close, .social-close, .life-close, .pond-close, .game-modal .modal-close) {
+  color: var(--temple-jade);
+  background: #e5dac1;
+  border: 1px solid var(--temple-line);
+  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+}
+
+body :is(.lamp-footnote, .pond-note, .social-card-foot, .social-soft-label, .life-entry-meta, .resident-dialog-heading p) {
+  color: var(--temple-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+body :is(.social-card, .life-entry, .life-profile, .resident-dialog-speech, .pond-species button, .reading-figure, .sutra-passage) {
+  color: var(--temple-ink);
+  background: var(--temple-surface);
+  border-color: var(--temple-line);
+  border-radius: 16px;
+}
+
+body :is(.pond-species button.is-selected, .resident-topics button.is-selected, .reading-tabs button.is-selected) {
+  background: #dce5d4;
+  color: var(--temple-jade);
+  border-color: var(--temple-jade);
+  box-shadow: inset 0 0 0 1px var(--temple-jade);
+}
+
+body .pond-score > strong { color: var(--temple-jade); font-size: 36px; line-height: 40px; font-weight: 600; }
+body .pond-progress { background: #dfd3b9; color: var(--temple-jade); }
+body .pond-progress::-webkit-progress-bar { background: #dfd3b9; }
+body .pond-progress::-webkit-progress-value { background: var(--temple-jade); }
+body .pond-progress::-moz-progress-bar { background: var(--temple-jade); }
+body .pond-species strong { font-size: 14px; line-height: 20px; font-weight: 600; }
+body .pond-species small { font-size: 12px; line-height: 16px; }
+body .lamp-days button { border-color: var(--temple-line); border-radius: 8px; background: #ede2cb; color: var(--temple-muted); }
+body .lamp-days button.is-lit { background: #ead5a7; color: #75572c; border-color: var(--temple-gold); }
+body .lamp-days button.is-selected { background: var(--temple-jade); color: #fff7e8; }
+body .lamp-hero.is-ceremonial::before { background: #e4c88438; border: 1px solid #b4925b26; }
+body .lamp-wish label, body .lamp-makeup label { font-size: 14px; line-height: 20px; font-weight: 600; }
+body .lamp-calendar h3, body .lamp-hero strong { font-weight: 600; }
+body .life-tabs { margin: 0 16px; padding: 4px; border: 1px solid var(--temple-line); border-radius: 12px; gap: 4px; background: #e9dfc9; }
+body .life-tabs > button { border: 0; border-radius: 8px; min-height: 44px; color: var(--temple-muted); font-size: 14px; line-height: 20px; font-weight: 600; }
+body .life-tabs > button[aria-selected="true"] { color: #fff7e8; background: var(--temple-jade); }
+body .resident-greeting { color: var(--temple-ink); background: #f4ead5f5; border-color: var(--temple-line); border-radius: 16px; box-shadow: 0 8px 24px #263f3926; }
+body .resident-greeting-heading strong { font-weight: 700; }
+body .resident-greeting-heading strong > span { font-size: 12px; line-height: 16px; color: var(--temple-muted); font-weight: 500; }
+body .resident-greeting p { font-size: 14px; line-height: 20px; font-weight: 500; }
+body .resident-talk { font-weight: 600 !important; }
+body .game-toast { color: #fff7e8; background: #284e4cf5; border-color: #b4925b66; border-radius: 12px; font-size: 14px; line-height: 20px; font-weight: 500; }
+body .temple-lesson-notice { color: var(--temple-ink); background: #f4ead5f5; border-color: var(--temple-gold); border-radius: 16px; }
+body .help-list li { color: var(--temple-ink); font-size: 16px; line-height: 24px; }
+body .help-list b { color: var(--temple-jade); font-weight: 600; }
+body .life-text-button.danger { color: var(--temple-cinnabar); }
+body .practice-grid strong { color: var(--temple-jade); font-family: inherit; font-size: 30px; line-height: 36px; font-variant-numeric: tabular-nums; }
+
+@media (hover: hover) {
+  body :is(.lamp-primary, .pond-release, .resident-farewell, .life-button, .social-main-button):hover:not(:disabled) { background: #284e43; }
+  body :is(.resident-topics button, .reading-tabs button, .social-small-button):hover:not(:disabled) { background: #dce5d4; }
+  body .life-button.secondary:hover:not(:disabled) { background: #dce5d4; color: var(--temple-jade); }
+}
+
+@media (max-width: 350px) {
+  body .pond-species small { font-size: 12px; line-height: 16px; white-space: normal; }
+  body .life-tabs { margin-inline: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body :is(.lamp-panel, .pond-panel, .resident-panel, .life-sheet, .social-sheet, .game-modal) button { transition: opacity .3s var(--temple-motion); }
+}

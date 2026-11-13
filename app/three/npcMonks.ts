@@ -16,19 +16,19 @@ export type NpcResident = {
 };
 
 const appearances = [
-  { id: "mingyuan", robe: "#ab744d", sash: "#e1b772", skin: "#f2c995", width: .96, height: 1.01, head: [1.02, .99, 1], nose: 1.1 },
-  { id: "mingjing", robe: "#90604f", sash: "#c3a668", skin: "#ddb88e", width: 1.13, height: 1.03, head: [1.08, .97, 1.02], nose: 1.3 },
-  { id: "huizhi", robe: "#7d8590", sash: "#d6bc8a", skin: "#f1d7b0", width: .94, height: .96, head: [.97, 1.05, .99], nose: .85 },
+  { id: "mingyuan", robe: "#9b6548", sash: "#e1c493", skin: "#f2c995", width: .96, height: 1.01, head: [1.02, .99, 1], nose: 1.1 },
+  { id: "mingjing", robe: "#805546", sash: "#c3b184", skin: "#ddb88e", width: 1.13, height: 1.03, head: [1.08, .97, 1.02], nose: 1.3 },
+  { id: "huizhi", robe: "#657d7b", sash: "#d6c7a5", skin: "#f1d7b0", width: .94, height: .96, head: [.97, 1.05, .99], nose: .85 },
   { id: "kongshan", robe: "#839078", sash: "#d7bd82", skin: "#d9ac80", width: .96, height: 1.12, head: [.96, 1.07, .98], nose: 1.2 },
   { id: "miaolian", robe: "#bc937f", sash: "#e6bbaf", skin: "#f0cfb1", width: 1.03, height: .88, head: [1.08, .96, 1.02], nose: .9 },
-  { id: "wenxin", robe: "#628b8a", sash: "#e3c88d", skin: "#edc69a", width: .88, height: .97, head: [.96, 1.04, 1.01], nose: .95 },
+  { id: "wenxin", robe: "#456f6e", sash: "#e3cf9e", skin: "#edc69a", width: .88, height: .97, head: [.96, 1.04, 1.01], nose: .95 },
   { id: "shanhe", robe: "#818b59", sash: "#cfa265", skin: "#d1a477", width: 1.07, height: 1.02, head: [1.04, 1.02, .98], nose: 1.25 },
   { id: "xingchen", robe: "#b97b4d", sash: "#dbc39a", skin: "#e4b785", width: .93, height: 1.08, head: [.98, 1.01, 1], nose: 1.05 },
   { id: "qinghe", robe: "#718c87", sash: "#c5c8a6", skin: "#efc2a5", width: 1.06, height: .92, head: [1.06, .98, 1.04], nose: .88 },
-  { id: "zhuyin", robe: "#9b747b", sash: "#d5af81", skin: "#dba87d", width: .91, height: 1.06, head: [.98, 1.08, .97], nose: 1.12 },
+  { id: "zhuyin", robe: "#966d57", sash: "#d5bc94", skin: "#dba87d", width: .91, height: 1.06, head: [.98, 1.08, .97], nose: 1.12 },
   { id: "jingwu", robe: "#6d7778", sash: "#c98f6c", skin: "#cfa076", width: 1.15, height: 1.07, head: [1.03, 1.01, 1.04], nose: 1.18 },
   { id: "fuman", robe: "#b28c51", sash: "#8e9473", skin: "#f2d2a8", width: 1.16, height: .94, head: [1.1, .98, 1.03], nose: 1.08 },
-  { id: "chengguang", robe: "#6f7c98", sash: "#d6c7a0", skin: "#e8b893", width: .87, height: 1.1, head: [.94, 1.09, 1.01], nose: .92 },
+  { id: "chengguang", robe: "#5e777f", sash: "#d6c7a0", skin: "#e8b893", width: .87, height: 1.1, head: [.94, 1.09, 1.01], nose: .92 },
   { id: "songfeng", robe: "#8c958b", sash: "#d4d0b5", skin: "#d9bda0", width: .97, height: 1.04, head: [1.01, 1.06, .96], nose: 1.23 },
   { id: "anyun", robe: "#7f8270", sash: "#d0ba90", skin: "#c9956d", width: 1.02, height: .99, head: [1.05, 1.02, 1.02], nose: 1.16 },
   { id: "ruyi", robe: "#bb9686", sash: "#95a58c", skin: "#edc8a5", width: .99, height: .9, head: [1.07, 1, .98], nose: .82 },
@@ -82,6 +82,18 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
       const p = original.parameters;
       const head = p.radius < 1 && p.widthSegments > 20;
       geometry = new THREE.SphereGeometry(p.radius, Math.min(p.widthSegments, head ? 18 : 12), Math.min(p.heightSegments, head ? 12 : 8), p.phiStart, p.phiLength, p.thetaStart, p.thetaLength);
+      const sourceColors = original.getAttribute("color");
+      if (sourceColors) {
+        const uv = geometry.getAttribute("uv");
+        const colors: number[] = [];
+        for (let index = 0; index < uv.count; index++) {
+          const column = THREE.MathUtils.clamp(Math.round(uv.getX(index) * p.widthSegments), 0, p.widthSegments);
+          const row = THREE.MathUtils.clamp(Math.round((1 - uv.getY(index)) * p.heightSegments), 0, p.heightSegments);
+          const sourceIndex = row * (p.widthSegments + 1) + column;
+          colors.push(sourceColors.getX(sourceIndex), sourceColors.getY(sourceIndex), sourceColors.getZ(sourceIndex));
+        }
+        geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      }
     }
     if (!geometry && original instanceof THREE.TubeGeometry) {
       const p = original.parameters;
@@ -106,7 +118,7 @@ export function createNpcMonks(floorHeightAt: (x: number, z: number) => number, 
   for (const mesh of originals) {
     const surface = mesh.material as THREE.MeshStandardMaterial;
     const color = surface.color?.getHex();
-    const tint = color === 0xcf895c ? "robe" : color === 0xdfc49a ? "sash" : color === 0xf2cba8 ? "skin" : null;
+    const tint = color === 0xa87150 ? "robe" : color === 0xedddba ? "sash" : color === 0xf2cba8 ? "skin" : null;
     const key = `${mesh.geometry.uuid}:${surface.uuid}`;
     const entry = sourceGroups.get(key);
     if (entry) entry.parts.push(mesh);

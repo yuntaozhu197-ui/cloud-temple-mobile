@@ -481,3 +481,72 @@ svg { vertical-align: middle; }
  .temple-game .game-action { min-height: 53px; }
  .temple-game .game-meditation-status { top: var(--hud-top); }
 }
+
+/* Warm paper controls frame the mountain scene without covering its center. */
+.temple-game {
+ --hud-surface: #f4ead5f2;
+ --hud-ink: var(--temple-ink, #263f39);
+ --hud-line: var(--temple-line, #cdbd9d);
+ --hud-jade: var(--temple-jade, #365f53);
+ --hud-ease: cubic-bezier(.22, 1, .36, 1);
+ color: var(--hud-ink);
+ font-family: var(--temple-font, "Geist", "PingFang SC", "Microsoft YaHei", sans-serif);
+}
+.temple-game .game-brand {
+ gap: 8px;
+ padding: 4px 12px 4px 8px;
+ border: 1px solid var(--hud-line);
+ border-radius: 12px;
+ background: var(--hud-surface);
+ box-shadow: 0 8px 24px #183e3214;
+}
+.temple-game .game-brand > svg { width: 24px; height: 32px; color: var(--hud-jade); }
+.temple-game .game-brand h1 { font: 700 18px/28px var(--temple-font, "Geist", "PingFang SC", "Microsoft YaHei", sans-serif); letter-spacing: 2px; color: var(--hud-ink); }
+.temple-game .game-brand span { margin: 0; color: #5a6c57; font-size: 12px; font-weight: 600; line-height: 16px; }
+.temple-game .hud-button { border: 1px solid var(--hud-line); border-radius: 12px; background: var(--hud-surface); color: var(--hud-ink); box-shadow: 0 8px 24px #183e3214; }
+.temple-game .menu-control { width: 44px; min-height: 44px; border-radius: 12px; }
+.temple-game .game-presence { top: calc(var(--hud-top) + 64px); gap: 8px; padding: 8px 12px; border: 1px solid var(--hud-line); border-radius: 12px; background: var(--hud-surface); color: #365f53; font-size: 12px; font-weight: 600; line-height: 16px; box-shadow: 0 8px 24px #183e3214; }
+.temple-game .game-presence i { width: 4px; height: 4px; background: #365f53; box-shadow: 0 0 0 3px #365f5314; }
+.temple-game .world-landmarks { width: min(184px, calc(100vw - var(--hud-left) - var(--hud-right))); max-width: 184px; top: calc(var(--hud-top) + 112px) !important; }
+.temple-game .world-nav-buttons { display: grid !important; grid-template-columns: minmax(0, 100px) minmax(0, 1fr); gap: 8px !important; }
+.temple-game .world-nav-buttons > button { min-height: 44px; padding: 8px !important; border: 1px solid var(--hud-line) !important; border-radius: 12px !important; background: var(--hud-surface) !important; color: var(--hud-ink) !important; font-size: 14px !important; font-weight: 700 !important; line-height: 20px; box-shadow: 0 8px 24px #183e3214 !important; }
+.temple-game .world-landmarks > [role="group"] { padding: 8px !important; gap: 4px !important; border: 1px solid var(--hud-line) !important; border-radius: 16px !important; background: #f4ead5fa !important; box-shadow: 0 16px 40px #183e322e !important; }
+.temple-game .world-landmarks > [role="group"] button { padding: 8px 12px; border: 1px solid transparent; border-radius: 8px !important; background: #e8dfc9; color: var(--hud-ink); font-size: 14px !important; font-weight: 600; line-height: 20px; }
+.temple-game .world-landmarks > [role="group"] button:hover { background: #dbe2ce; }
+.temple-game .world-zoom-controls { top: calc(var(--hud-top) + 56px) !important; border: 1px solid var(--hud-line); border-radius: 12px !important; background: var(--hud-surface) !important; box-shadow: 0 8px 24px #183e3214 !important; }
+.temple-game .world-zoom-controls > button { width: 44px !important; height: 44px !important; background: transparent !important; color: var(--hud-ink) !important; font: 500 24px/32px var(--temple-font, "Geist", "PingFang SC", "Microsoft YaHei", sans-serif) !important; }
+.temple-game .world-zoom-controls > button + button { border-left-color: var(--hud-line) !important; }
+.temple-game .world-joystick > button { width: 78px !important; height: 78px !important; border: 1px solid #b5b296 !important; background: #f4ead5d9 !important; box-shadow: 0 8px 24px #183e3221, inset 0 0 0 8px #365f5308 !important; }
+.temple-game .world-joystick > button > span { background: #365f53 !important; box-shadow: 0 4px 8px #183e3233 !important; }
+.temple-game .world-hotspot { height: 44px !important; padding: 8px 12px !important; border: 1px solid var(--hud-line) !important; border-radius: 24px !important; background: #f4ead5f5 !important; color: var(--hud-ink) !important; font: 700 14px/20px var(--temple-font, "Geist", "PingFang SC", "Microsoft YaHei", sans-serif) !important; box-shadow: 0 8px 24px #183e3221 !important; }
+.temple-game .woodfish-shortcut { width: 56px; min-height: 64px; gap: 4px; padding: 8px 4px; border: 1px solid #b4925b; border-radius: 16px; background: #f0dfba; color: #5e402d; box-shadow: 0 8px 24px #183e3226; }
+.temple-game .woodfish-shortcut > svg { width: 32px; height: 28px; }
+.temple-game .woodfish-shortcut > span { font-size: 12px; font-weight: 700; line-height: 16px; }
+.temple-game .woodfish-shortcut.is-active { border-color: #8b493a; background: #dcb58b; color: #493a30; }
+.temple-game .game-menu { padding: 12px; border: 1px solid var(--hud-line); border-radius: 16px; background: #f4ead5fa; color: var(--hud-ink); box-shadow: 0 16px 48px #142f2d38; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); animation: temple-menu-enter 500ms var(--hud-ease); }
+.temple-game .game-menu > strong { padding: 8px 12px 12px; color: #8b493a; font-size: 14px; font-weight: 700; line-height: 20px; }
+.temple-game .game-menu > button, .temple-game .game-menu .social-quick-controls > button, .temple-game .game-menu .life-shortcut { min-height: 44px; padding: 8px 12px; gap: 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--hud-ink); font-size: 14px; font-weight: 600; line-height: 20px; }
+.temple-game .game-menu > button > svg, .temple-game .game-menu .social-quick-controls > button > svg, .temple-game .game-menu .life-shortcut > svg { width: 16px; height: 16px; color: var(--hud-jade); stroke-width: 1.75; }
+.temple-game .game-menu > button:hover, .temple-game .game-menu .social-quick-controls > button:hover, .temple-game .game-menu .life-shortcut:hover { border-color: #b7b89c; background: #e4e3cd; }
+.temple-game .game-menu .social-temple-compact, .temple-game .game-menu .temple-life { margin: 4px 0; }
+.temple-game .game-action-dock { padding: 8px; border: 1px solid var(--hud-line); border-radius: 16px; background: #f4ead5f5; box-shadow: 0 8px 32px #183e3226; pointer-events: auto; }
+.temple-game .game-action-grid { gap: 4px; }
+.temple-game .game-action { gap: 4px; padding: 8px 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--hud-ink); box-shadow: none; backdrop-filter: none; }
+.temple-game .game-action > svg { width: 24px; height: 24px; }
+.temple-game .game-action span { font-size: 14px; font-weight: 700; line-height: 20px; }
+.temple-game .game-action.is-active, .temple-game .auto-bow-control.is-active { border-color: #365f53; background: #d6e0c6; color: #284e4c; }
+.temple-game .auto-bow-control { padding: 8px 12px; border: 1px solid #cdbd9d; border-radius: 8px; background: #eee4cc; color: var(--hud-ink); box-shadow: none; font-size: 14px; font-weight: 700; line-height: 20px; }
+.temple-game .auto-bow-control strong { font-size: 16px; font-weight: 700; line-height: 24px; }
+.temple-game .auto-bow-control small { font-size: 12px; line-height: 16px; }
+.temple-game .auto-bow-progress { background: #b4925b; transition: none; }
+.temple-game .practice-toggle, .temple-game .bow-speed-control { min-height: 44px; padding: 8px 12px; border: 1px solid #b4925b; border-radius: 12px; background: #365f53; color: #fff9e9; box-shadow: 0 8px 24px #183e3221; font-size: 14px; font-weight: 700; line-height: 20px; }
+.temple-game .bow-speed-control.is-active { border-color: #8b493a; background: #8b493a; color: #fff9e9; }
+.temple-game .game-meditation-status { gap: 8px; padding: 8px 16px; border: 1px solid var(--hud-line); border-radius: 16px; background: #f4ead5f2; color: var(--hud-ink); box-shadow: 0 8px 24px #183e3214; font-size: 14px; font-weight: 600; line-height: 20px; }
+.temple-game .game-meditation-status strong { font-size: 20px; font-weight: 700; line-height: 28px; }
+.temple-game :is(.game-menu button, .hud-button, .world-nav-buttons > button, .world-landmarks > [role="group"] button, .woodfish-shortcut, .practice-toggle, .bow-speed-control, .game-action, .auto-bow-control) { transition: transform 300ms var(--hud-ease), background-color 300ms var(--hud-ease), opacity 300ms var(--hud-ease); }
+.temple-game :is(.game-menu button, .hud-button, .world-nav-buttons > button, .world-landmarks > [role="group"] button, .woodfish-shortcut, .practice-toggle, .bow-speed-control, .game-action, .auto-bow-control):active:not(:disabled) { transform: scale(.98); }
+.temple-game :is(.game-menu button, .hud-button, .world-nav-buttons > button, .world-landmarks > [role="group"] button, .world-zoom-controls > button, .world-hotspot, .woodfish-shortcut, .practice-toggle, .bow-speed-control, .game-action, .auto-bow-control):focus-visible { outline: 2px solid #365f53; outline-offset: 4px; }
+@keyframes temple-menu-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 360px) { .temple-game .game-brand { padding-right: 8px; gap: 4px; } .temple-game .game-brand h1 { font-size: 18px; line-height: 28px; } .temple-game .game-action-dock { padding: 4px; } .temple-game .game-action { padding: 8px 2px; } .temple-game .auto-bow-control { padding: 8px; gap: 4px; } }
+@media (max-height: 500px) and (orientation: landscape) { .temple-game .game-presence { top: calc(var(--hud-top) + 56px); } .temple-game .world-landmarks { top: calc(var(--hud-top) + 104px) !important; } .temple-game .woodfish-shortcut { top: var(--hud-top); right: calc(var(--hud-right) + 56px); width: 88px; min-height: 44px; flex-direction: row; padding: 8px; border-radius: 12px; } .temple-game .woodfish-shortcut > svg { width: 24px; height: 24px; } .temple-game .game-action-dock { padding: 4px; } .temple-game .game-action { padding: 4px 2px; gap: 0; } }
+@media (prefers-reduced-motion: reduce) { .temple-game .game-menu { animation: none; } .temple-game :is(.game-menu button, .hud-button, .world-nav-buttons > button, .world-landmarks > [role="group"] button, .woodfish-shortcut, .practice-toggle, .bow-speed-control, .game-action, .auto-bow-control) { transition: none; } .temple-game :is(.game-menu button, .hud-button, .world-nav-buttons > button, .world-landmarks > [role="group"] button, .woodfish-shortcut, .practice-toggle, .bow-speed-control, .game-action, .auto-bow-control):active:not(:disabled) { transform: none; } }

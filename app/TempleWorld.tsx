@@ -126,7 +126,7 @@ export default function TempleWorld(props: WorldProps) {
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
         renderer.outputColorSpace = T.SRGBColorSpace;
         renderer.toneMapping = T.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.04;
+        renderer.toneMappingExposure = 1.01;
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = T.PCFSoftShadowMap;
         renderer.domElement.style.cssText = "display:block;width:100%;height:100%;touch-action:none;outline:none";
@@ -135,8 +135,8 @@ export default function TempleWorld(props: WorldProps) {
         host.insertBefore(renderer.domElement, host.firstChild);
 
         const scene = new T.Scene();
-        scene.background = new T.Color(0xe5ece4);
-        scene.fog = new T.Fog(0xe5ece4, 120, 360);
+        scene.background = new T.Color(0xc9dacf);
+        scene.fog = new T.Fog(0xc9dacf, 120, 360);
         const camera = new T.PerspectiveCamera(42, 1, 0.1, 650);
         let mobile = host.clientWidth < 640;
         let yaw = 0.18;
@@ -152,18 +152,18 @@ export default function TempleWorld(props: WorldProps) {
         camera.position.set(Math.sin(yaw) * cameraRadius, cameraHeight, 9 + Math.cos(yaw) * cameraRadius);
         camera.lookAt(cameraTarget);
 
-        const skyLight = new T.HemisphereLight(0xfff7e9, 0x89997e, 2.1);
-        const sunlight = new T.DirectionalLight(0xffefd6, 3.05);
-        sunlight.position.set(-18, 24, 14);
+        const skyLight = new T.HemisphereLight(0xffedcd, 0x5d8278, 1.55);
+        const sunlight = new T.DirectionalLight(0xffd7a7, 3.8);
+        sunlight.position.set(-38, 55, 24);
         sunlight.target.position.set(0, 0, -2);
         sunlight.castShadow = true;
         sunlight.shadow.mapSize.set(mobile ? 1024 : 1536, mobile ? 1024 : 1536);
-        sunlight.shadow.camera.left = -54;
-        sunlight.shadow.camera.right = 54;
-        sunlight.shadow.camera.top = 42;
-        sunlight.shadow.camera.bottom = -42;
+        sunlight.shadow.camera.left = -62;
+        sunlight.shadow.camera.right = 62;
+        sunlight.shadow.camera.top = 52;
+        sunlight.shadow.camera.bottom = -52;
         sunlight.shadow.camera.near = 0.5;
-        sunlight.shadow.camera.far = 80;
+        sunlight.shadow.camera.far = 200;
         sunlight.shadow.bias = -0.00025;
         sunlight.shadow.normalBias = 0.025;
         scene.add(skyLight, sunlight, sunlight.target);
@@ -180,7 +180,7 @@ export default function TempleWorld(props: WorldProps) {
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
         const selfLabel = document.createElement("div");
-        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:5px 10px;border-radius:12px;background:rgba(252,251,238,.94);border:1px solid rgba(111,136,96,.26);color:#42573d;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 7px #52694c12;will-change:transform";
+        selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:8px;background:rgba(244,234,213,.94);border:1px solid #b4925b66;color:#263f39;font:600 12px/16px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px #263f391f;will-change:transform";
         selfLabel.textContent = "● 你的小和尚";
         labels.appendChild(selfLabel);
 
@@ -213,7 +213,7 @@ export default function TempleWorld(props: WorldProps) {
         local.group.rotation.y = 0;
         const actor = local;
         const world = environment;
-        const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #84976d77;border-radius:22px;background:rgba(255,253,238,.95);color:#405438;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 3px 10px #354c2525;pointer-events:auto;touch-action:manipulation;will-change:transform";
+        const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #b4925b99;border-radius:12px;background:rgba(244,234,213,.97);color:#284e4c;font:600 14px/20px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px #263f392e;pointer-events:auto;touch-action:manipulation;will-change:transform";
         const interactivePoints = world.interactions.map(point => {
           const button = document.createElement("button");
           button.type = "button";

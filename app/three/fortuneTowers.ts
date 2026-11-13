@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { TempleRoom } from "./detachedHalls";
+import { createArchitecturalTextures, createBracketArmGeometry } from "./architecturalMaterials";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 type TowerAction = "drum" | "towerBell";
@@ -14,6 +15,7 @@ export function createFortuneTowers() {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
+  const architecturalTextures = createArchitecturalTextures();
   const colliders: Collider[] = [];
   const rooms: TempleRoom[] = [];
   const material = (color: string, options: THREE.MeshStandardMaterialParameters = {}) => {
@@ -21,12 +23,15 @@ export function createFortuneTowers() {
     materials.add(surface);
     return surface;
   };
-  const stone = material("#cfc5af");
-  const plaster = material("#d9c8a6");
-  const redWood = material("#815441");
-  const darkWood = material("#534536");
-  const tile = material("#526f68", { side: THREE.DoubleSide });
-  const gold = material("#b59050", { metalness: 0.28, roughness: 0.58 });
+  const stone = material("#cbbfa6");
+  const plaster = material("#edddba", { map: architecturalTextures.plaster ?? null });
+  const redWood = material("#8b493a", { map: architecturalTextures.wood ?? null, roughness: .78 });
+  const darkWood = material("#493a30", { map: architecturalTextures.wood ?? null });
+  const tile = material("#284e4c", { side: THREE.DoubleSide, roughness: .76 });
+  const tileRib = material("#507d70");
+  const eaveTrim = material("#bb9560", { metalness: .15, roughness: .74 });
+  const paper = material("#f3e6c8", { map: architecturalTextures.plaster ?? null });
+  const gold = material("#b4925b", { metalness: 0.28, roughness: 0.66 });
   const goldLight = material("#d8bb7a", { metalness: .24, roughness: .54 });
   const bronze = material("#886b43", { metalness: 0.35, roughness: 0.6 });
   const skin = material("#d8b98e", { roughness: .78 });
@@ -67,10 +72,10 @@ export function createFortuneTowers() {
       if (geometry) meshes(geometry, surface, 0, 0, 0, parent);
     }
   }
-  function plaque(title: string, x: number, y: number, z: number) {
-    box(x, y, z, 3.8, 0.84, 0.18, darkWood);
-    box(x, y, z + 0.1, 3.62, 0.68, 0.03, gold);
-    box(x, y, z + 0.12, 3.45, 0.54, 0.025, redWood);
+  function plaque(title: string, x: number, y: number, z: number, parent: THREE.Group) {
+    box(x, y, z, 3.8, 0.84, 0.18, darkWood, parent);
+    box(x, y, z + 0.1, 3.62, 0.68, 0.03, gold, parent);
+    box(x, y, z + 0.12, 3.45, 0.54, 0.025, redWood, parent);
     if (typeof document === "undefined") return;
     const canvas = document.createElement("canvas");
     canvas.width = 512;
@@ -87,7 +92,7 @@ export function createFortuneTowers() {
     textures.add(texture);
     const lettering = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
     materials.add(lettering);
-    meshes(new THREE.PlaneGeometry(3.03, 0.59), lettering, x, y, z + 0.15);
+    meshes(new THREE.PlaneGeometry(3.03, 0.59), lettering, x, y, z + 0.15, parent);
   }
   function roof(x: number, z: number, width: number, depth: number, base: number, rise: number, roofs: THREE.Group, details: THREE.Group) {
     const height = (u: number, v: number) => base + rise * Math.pow(1 - v, 1.4) + 0.35 * Math.max(0, (v - 0.7) / 0.3) ** 2 + 0.3 * Math.abs(u) ** 6;
@@ -112,7 +117,22 @@ export function createFortuneTowers() {
         curve(Array.from({ length: 7 }, (_, row) => {
           const v = row / 6;
           return [x + u * width / 2, height(u, v) + 0.02, z + side * v * depth / 2];
-        }), 0.025, gold, details);
+        }), 0.035, tileRib, details);
+      }
+      const eavePoints = Array.from({ length: 13 }, (_, column) => {
+        const u = column / 6 - 1;
+        return [x + u * (width / 2 - .12), height(u, 1) - .08, z + side * (depth / 2 - .12)];
+      });
+      curve(eavePoints, .075, darkWood, details);
+      curve(eavePoints.map(([px, py, pz]) => [px, py - .1, pz - side * .035]), .045, eaveTrim, details);
+      const tileCount = Math.ceil(width / .65);
+      const tileEnd = new THREE.CylinderGeometry(.085, .085, .17, 7, 1, true);
+      for (let end = 0; end < tileCount; end++) {
+        const u = end / (tileCount - 1) * 2 - 1;
+        const cap = meshes(tileEnd, tileRib, x + u * (width / 2 - .18), height(u, 1) - .01, z + side * (depth / 2 - .12), details);
+        cap.rotation.x = Math.PI / 2;
+        const rafter = box(x + u * (width / 2 - .25), height(u, 1) - .23, z + side * (depth / 2 - .65), .09, .11, .9, redWood, details);
+        rafter.rotation.x = side * .08;
       }
     }
     box(x, base + rise + 0.1, z, width + 0.1, 0.17, 0.2, gold, details);
@@ -126,10 +146,13 @@ export function createFortuneTowers() {
       for (const pz of [back + 0.3, front - 0.3]) {
         cylinder(x + side * (width / 2 - 0.3), height / 2, pz, 0.2, 0.28, height, redWood);
         cylinder(x + side * (width / 2 - 0.3), 0.16, pz, 0.33, 0.39, 0.32, stone);
+        cylinder(x + side * (width / 2 - .3), .38, pz, .29, .33, .12, gold);
+        cylinder(x + side * (width / 2 - .3), height - .65, pz, .24, .24, .14, eaveTrim);
         block(x + side * (width / 2 - 0.3), pz, 0.65, 0.65);
         for (let bracket = 0; bracket < 3; bracket++) {
-          box(x + side * (width / 2 - 0.3), height - 0.45 + bracket * 0.17, pz, 0.75 + bracket * 0.3, 0.14, 0.25, tile);
-          box(x + side * (width / 2 - 0.3), height - 0.36 + bracket * 0.17, pz, 0.25, 0.14, 0.75 + bracket * 0.3, darkWood);
+          meshes(createBracketArmGeometry(.75 + bracket * .3, .25), bracket % 2 ? eaveTrim : tile, x + side * (width / 2 - .3), height - .45 + bracket * .17, pz);
+          const crossing = meshes(createBracketArmGeometry(.75 + bracket * .3, .25), redWood, x + side * (width / 2 - .3), height - .36 + bracket * .17, pz);
+          crossing.rotation.y = Math.PI / 2;
         }
       }
       box(x, height - 0.05, z + side * (depth / 2 - 0.3), width, 0.32, 0.3, darkWood);
@@ -141,23 +164,35 @@ export function createFortuneTowers() {
         box(x + side * (width / 4 + 1.2), height / 2, front, panelWidth, height, 0.3, plaster);
         block(x + side * (width / 4 + 1.2), front, panelWidth, 0.32);
         const windowX = x + side * (width / 4 + 1.2);
+        const windowPaper = meshes(new THREE.CircleGeometry(.63, 24), paper, windowX, 2.7, front + .16);
+        windowPaper.castShadow = false;
         meshes(new THREE.TorusGeometry(0.68, 0.055, 5, 24), gold, windowX, 2.7, front + 0.17);
         for (let bar = -1; bar <= 1; bar++) {
           box(windowX + bar * 0.28, 2.7, front + 0.19, 0.04, 1.15, 0.05, tile);
           box(windowX, 2.7 + bar * 0.28, front + 0.2, 1.15, 0.04, 0.05, tile);
         }
+        box(windowX, 1.25, front + .18, panelWidth - .3, .8, .15, redWood);
+        box(windowX, 1.25, front + .27, panelWidth - .65, .51, .05, darkWood);
       }
     }
     if (closed) {
       box(x, height / 2, back, width, height, 0.3, plaster);
       block(x, back, width, 0.32);
     }
-    plaque(name, x, height - 1.1, front + 0.22);
     const roofs = new THREE.Group();
     const details = new THREE.Group();
     roofs.name = `${name}双层飞檐`;
     details.name = `${name}瓦垄与脊饰`;
     group.add(roofs, details);
+    plaque(name, x, height - 1.1, front + .22, details);
+    for (const direction of [-1, 1]) {
+      box(x, height - .55, z + direction * (depth / 2 - .26), width - .55, .42, .19, tile, details);
+      for (const offset of [-.17, .17]) box(x, height - .55 + offset, z + direction * (depth / 2 - .14), width - .75, .035, .04, eaveTrim, details);
+      for (const bay of [-1, 0, 1]) {
+        const boss = box(x + bay * width * .28, height - .55, z + direction * (depth / 2 - .11), .22, .22, .06, eaveTrim, details);
+        boss.rotation.z = Math.PI / 4;
+      }
+    }
     roof(x, z, width + 2.7, depth + 2.7, height + 0.05, 1.65, roofs, details);
     roof(x, z - 0.3, width - 0.5, depth - 0.5, height + 1.5, 1.2, roofs, details);
     batch(roofs);
@@ -369,6 +404,7 @@ export function createFortuneTowers() {
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
       textures.forEach(texture => texture.dispose());
+      architecturalTextures.dispose();
     },
   };
 }

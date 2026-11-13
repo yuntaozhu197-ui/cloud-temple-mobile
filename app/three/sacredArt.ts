@@ -26,20 +26,20 @@ export function createSacredArt(): {
   }
 
   const palette = {
-    gold: surface("#b59050", { metalness: 0.28, roughness: 0.58 }),
-    goldLight: surface("#d8bb7a", { metalness: 0.25, roughness: 0.54 }),
-    bronze: surface("#886b43", { metalness: 0.26, roughness: 0.66 }),
-    jade: surface("#ebe0ca", { roughness: 0.70 }),
-    jadeShade: surface("#c0cbbb", { roughness: 0.78 }),
-    ochre: surface("#a77742", { roughness: 0.86 }),
-    ink: surface("#55594d", { roughness: 0.84 }),
-    stone: surface("#cfc5af", { roughness: 0.91 }),
-    leaf: surface("#748971", { roughness: 0.88 }),
-    mural: surface("#648d7b", { roughness: 0.95 }),
+    gold: surface("#b4925b", { metalness: .38, roughness: .56 }),
+    goldLight: surface("#d5bd86", { metalness: .3, roughness: .5 }),
+    bronze: surface("#7e6546", { metalness: .32, roughness: .65 }),
+    jade: surface("#f0e6ce", { roughness: .64 }),
+    jadeShade: surface("#bdcdb8", { roughness: .76 }),
+    ochre: surface("#a5794d", { roughness: .87 }),
+    ink: surface("#284e4c", { roughness: .86 }),
+    stone: surface("#cbbfa6", { roughness: .93 }),
+    leaf: surface("#507d70", { roughness: .88 }),
+    mural: surface("#6b9582", { roughness: .95 }),
   };
   const rounded = new THREE.SphereGeometry(1, 16, 10);
   const faceShape = new THREE.SphereGeometry(1, 24, 16);
-  const petalShape = new THREE.SphereGeometry(1, 8, 4);
+  const petalShape = new THREE.SphereGeometry(1, 10, 6);
   geometries.add(rounded);
   geometries.add(faceShape);
   geometries.add(petalShape);
@@ -110,7 +110,20 @@ export function createSacredArt(): {
   function face(parent: THREE.Object3D, center: Point, size: Point, material: THREE.Material) {
     const [cx, cy, cz] = center;
     const [sx, sy, sz] = size;
-    oval(parent, material, center, size, faceShape);
+    const facialSurface = (material as THREE.MeshStandardMaterial).clone();
+    facialSurface.vertexColors = true;
+    materials.add(facialSurface);
+    const facialGeometry = faceShape.clone();
+    const positions = facialGeometry.getAttribute("position");
+    const colors: number[] = [];
+    for (let index = 0; index < positions.count; index++) {
+      const x = positions.getX(index), y = positions.getY(index), z = positions.getZ(index);
+      const shadow = (1 - y) * .045 + Math.max(0, -z) * .025;
+      const cheek = Math.exp(-((Math.abs(x) - .5) ** 2 / .07 + (y + .18) ** 2 / .055)) * Math.max(0, z);
+      colors.push(1 - shadow * .6, 1 - shadow - cheek * .025, 1 - shadow * 1.3 - cheek * .045);
+    }
+    facialGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    oval(parent, facialSurface, center, size, facialGeometry);
     for (const side of [-1, 1]) {
       oval(parent, material, [cx + side * sx * 1.02, cy - sy * 0.10, cz - 0.04], [sx * 0.15, sy * 0.37, sz * 0.18]);
       oval(parent, palette.bronze, [cx + side * sx * 1.04, cy - sy * 0.06, cz + sz * 0.10], [sx * 0.05, sy * 0.21, sz * 0.025]);
@@ -121,9 +134,9 @@ export function createSacredArt(): {
     }
     for (const side of [-1, 1]) {
       const x = side * sx * 0.34;
-      curve(parent, palette.ink, [onFace(x - sx * 0.15, sy * 0.025), onFace(x, -sy * 0.018), onFace(x + sx * 0.15, sy * 0.025)], 0.009, 10);
-      curve(parent, palette.bronze, [onFace(x - sx * 0.17, sy * 0.19), onFace(x, sy * 0.23), onFace(x + sx * 0.17, sy * 0.20)], 0.011, 10);
-      oval(parent, material, onFace(side * sx * .52, -sy * .14, .006), [sx * .19, sy * .17, sz * .055]);
+      curve(parent, palette.ink, [onFace(x - sx * .15, sy * .025), onFace(x, -sy * .018), onFace(x + sx * .15, sy * .025)], .0075, 10);
+      curve(parent, palette.bronze, [onFace(x - sx * .17, sy * .19), onFace(x, sy * .23), onFace(x + sx * .17, sy * .20)], .009, 10);
+      curve(parent, material, [onFace(x - sx * .16, sy * .006, .014), onFace(x, -sy * .045, .018), onFace(x + sx * .16, sy * .006, .014)], .006, 8);
     }
     oval(parent, material, onFace(0, sy * .025, .012), [sx * .065, sy * .19, sz * .075]);
     oval(parent, material, onFace(0, -sy * 0.11, 0.018), [sx * 0.095, sy * 0.10, sz * 0.13]);
@@ -137,6 +150,9 @@ export function createSacredArt(): {
       const angle = Math.PI * index / (count - 1);
       oval(parent, palette.goldLight, [Math.cos(angle) * radius, centerY - Math.sin(angle) * radius * 0.65, depth + Math.sin(angle) * 0.12], [0.063, 0.069, 0.057], petalShape);
     }
+    const setting = mesh(new THREE.TorusGeometry(.082, .013, 4, 16), palette.gold, parent, 0, centerY - radius * .65 - .10, depth + .15);
+    setting.scale.y = 1.3;
+    oval(parent, palette.jadeShade, [0, centerY - radius * .65 - .10, depth + .15], [.064, .086, .025], petalShape);
   }
 
   // The blocked platform keeps visitors on the main hall floor in front of the altar.
@@ -162,7 +178,7 @@ export function createSacredArt(): {
   face(buddha, [0, 4.27, 0.04], [0.65, 0.80, 0.56], palette.goldLight);
   const hair = mesh(new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI * 0.38), palette.ink, buddha, 0, 4.28, 0.015);
   hair.scale.set(0.70, 0.87, 0.62);
-  for (const latitude of [0.35, 0.71, 1.07]) {
+  for (const latitude of [.3, .58, .86, 1.12]) {
     for (let index = 0; index < 9; index += 1) {
       const angle = index * Math.PI * 2 / 9 + latitude;
       oval(buddha, palette.ink,
@@ -212,6 +228,7 @@ export function createSacredArt(): {
     const petal = oval(guanyin, palette.goldLight, [Math.sin(angle) * 0.36, 4.69 + Math.cos(angle) * 0.12, 0.16 + Math.cos(angle) * 0.14], [0.115, 0.28, 0.065], petalShape);
     petal.rotation.z = -angle * 0.35;
   }
+  oval(guanyin, palette.jadeShade, [0, 4.85, .35], [.045, .1, .025], petalShape);
   necklace(guanyin, 3.49, 0.43, 0.47, 10);
   curve(guanyin, palette.jade, [[-0.49, 3.46, 0.0], [-0.73, 2.90, 0.15], [-0.31, 2.73, 0.57]], 0.18, 14);
   oval(guanyin, palette.jade, [-0.27, 2.74, 0.66], [0.21, 0.11, 0.17]);
@@ -246,7 +263,7 @@ export function createSacredArt(): {
     const angle = (index - 2) * 0.62;
     const crown = oval(ksitigarbha, palette.gold, [Math.sin(angle) * 0.39, 4.72 + Math.cos(angle) * 0.10, 0.04 + Math.cos(angle) * 0.29], [0.13, 0.30, 0.08], petalShape);
     crown.rotation.z = -angle * 0.22;
-    oval(ksitigarbha, palette.goldLight, [Math.sin(angle) * 0.39, 4.72 + Math.cos(angle) * 0.10, 0.115 + Math.cos(angle) * 0.29], [0.060, 0.085, 0.025], petalShape);
+    oval(ksitigarbha, palette.jadeShade, [Math.sin(angle) * 0.39, 4.72 + Math.cos(angle) * 0.10, 0.115 + Math.cos(angle) * 0.29], [0.060, 0.085, 0.025], petalShape);
   }
   necklace(ksitigarbha, 3.50, 0.47, 0.49, 12);
   curve(ksitigarbha, palette.gold, [[-0.48, 3.50, 0.22], [-0.14, 2.98, 0.71], [0.53, 2.21, 0.62], [0.74, 1.42, 0.56]], 0.07, 18);
@@ -297,7 +314,7 @@ export function createSacredArt(): {
   }, undefined, () => {
     if (disposed) return;
     palette.mural.map = null;
-    palette.mural.color.set("#648d7b");
+    palette.mural.color.set("#6b9582");
     palette.mural.needsUpdate = true;
   });
   muralTexture.colorSpace = THREE.SRGBColorSpace;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createArchitecturalTextures, createBracketArmGeometry } from './architecturalMaterials';
 import { createSacredArt } from './sacredArt';
 import { createDetachedHalls, type TempleRoom } from './detachedHalls';
 import { createScenicAreas } from './scenicAreas';
@@ -44,6 +45,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
+  const architecturalTextures = createArchitecturalTextures();
   const colliders: Collider[] = [];
   const instances: THREE.InstancedMesh[] = [];
   const cushions = TEMPLE_SEATS.map(position => ({ ...position }));
@@ -54,22 +56,22 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     return result;
   };
   const palette = {
-    grass: material('#a8bc8a'),
-    grassDark: material('#8caa78'),
-    stone: material('#c3bba6'),
-    stoneLight: material('#d6cbb3'),
-    path: material('#e5dcc5'),
-    plaster: material('#d9c8a6'),
-    wood: material('#815441'),
-    woodDark: material('#534536'),
-    roof: material('#526f68'),
-    roofRib: material('#789187'),
-    roofShadow: material('#3f5954'),
-    gold: material('#a68a55', { metalness: 0.22, roughness: 0.58 }),
+    grass: material('#93a67c'),
+    grassDark: material('#6f8c6a'),
+    stone: material('#cbbfa6'),
+    stoneLight: material('#e0d3b8'),
+    path: material('#dfcda8'),
+    plaster: material('#edddba', { map: architecturalTextures.plaster ?? null }),
+    wood: material('#8b493a', { map: architecturalTextures.wood ?? null, roughness: .78 }),
+    woodDark: material('#493a30', { map: architecturalTextures.wood ?? null }),
+    roof: material('#284e4c', { roughness: .76 }),
+    roofRib: material('#507d70', { roughness: .75 }),
+    roofShadow: material('#203d3b'),
+    gold: material('#b4925b', { metalness: 0.22, roughness: 0.66 }),
     goldLight: material('#d8bb7a', { metalness: 0.18, roughness: 0.52 }),
-    leaf: material('#8caa78'),
-    leafLight: material('#adc390'),
-    leafDark: material('#6d8d66'),
+    leaf: material('#507967'),
+    leafLight: material('#829765'),
+    leafDark: material('#365f53'),
     bamboo: material('#95ad70'),
     straw: material('#ccb681'),
     strawRim: material('#aa9666'),
@@ -79,10 +81,11 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     pink: material('#e7b5a3'),
     koi: material('#dca474'),
   };
-  const hallPlaster = material('#d9c8a6');
-  const hallWood = material('#815441');
-  const tealTimber = material('#526f68');
-  const windowPaper = material('#e9dfc5');
+  const hallPlaster = material('#edddba', { map: architecturalTextures.plaster ?? null });
+  const hallWood = material('#8b493a', { map: architecturalTextures.wood ?? null, roughness: .78 });
+  const tealTimber = material('#284e4c');
+  const windowPaper = material('#f3e6c8', { map: architecturalTextures.plaster ?? null });
+  const eaveTrim = material('#bb9560', { metalness: .15, roughness: .74 });
 
   function mesh(
     geometry: THREE.BufferGeometry,
@@ -342,6 +345,17 @@ export function createTempleEnvironment(scene: THREE.Scene): {
         return new THREE.Vector3(centerX + x, surfaceHeight(x, 1) - .075, centerZ + direction * (halfDepth - .12));
       });
       mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(eavePoints), 20, .07, 5, false), palette.roofShadow, 0, 0, 0, details);
+      const trimPoints = eavePoints.map(point => point.clone().add(new THREE.Vector3(0, -.095, -direction * .035)));
+      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(trimPoints), 20, .045, 4, false), eaveTrim, 0, 0, 0, details);
+      const rafterCount = Math.ceil(width / .85);
+      for (let rafter = 0; rafter < rafterCount; rafter++) {
+        const x = -halfWidth + .34 + rafter / (rafterCount - 1) * (width - .68);
+        beamBetween(
+          new THREE.Vector3(centerX + x, surfaceHeight(x, .8) - .17, centerZ + direction * halfDepth * .8),
+          new THREE.Vector3(centerX + x, surfaceHeight(x, 1) - .17, centerZ + direction * (halfDepth - .2)),
+          .055, hallWood, details,
+        );
+      }
       const tileEnd = new THREE.CylinderGeometry(.085, .085, .18, 7, 1, true);
       const tileCount = Math.ceil(width / .62);
       for (let tile = 0; tile < tileCount; tile++) {
@@ -354,6 +368,8 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     for (const side of [-1, 1]) {
       const ornament = sphere(centerX + side * halfWidth, baseY + rise + 0.25, centerZ, 0.15, palette.gold, details);
       ornament.scale.set(0.75, 1.3, 0.75);
+      const ridgeTail = [new THREE.Vector3(centerX + side * (halfWidth - .85), baseY + rise + .13, centerZ), new THREE.Vector3(centerX + side * (halfWidth - .3), baseY + rise + .25, centerZ), new THREE.Vector3(centerX + side * (halfWidth - .13), baseY + rise + .6, centerZ)];
+      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ridgeTail), 8, .075, 5, false), eaveTrim, 0, 0, 0, details);
     }
     if (isMainRoof) batchMovingGroup(details);
   }
@@ -365,8 +381,10 @@ export function createTempleEnvironment(scene: THREE.Scene): {
   function bracket(x: number, z: number) {
     for (let level = 0; level < 3; level += 1) {
       const span = 0.75 + level * 0.36;
-      box(x, 5.62 + level * 0.22, z, span, 0.17, 0.28, level % 2 ? palette.gold : tealTimber);
-      box(x, 5.72 + level * 0.22, z, 0.28, 0.17, span, hallWood);
+      mesh(createBracketArmGeometry(span, .28), level % 2 ? eaveTrim : tealTimber, x, 5.62 + level * .22, z);
+      const crossArm = mesh(createBracketArmGeometry(span, .28), hallWood, x, 5.72 + level * .22, z);
+      crossArm.rotation.y = Math.PI / 2;
+      box(x, 5.57 + level * .22, z, .36, .13, .36, palette.woodDark);
     }
   }
   function hallColumn(x: number, z: number) {
@@ -412,6 +430,22 @@ export function createTempleEnvironment(scene: THREE.Scene): {
     box(side * 5.9, 3.25, -1.78, .14, 5.7, .22, hallWood);
     box(side * 7.0, 4.68, -1.79, 1.45, .12, .18, palette.woodDark);
     for (const y of [1.1, 1.25]) box(side * 9.4, y, -1.77, 7.05, .045, .06, palette.stoneLight);
+    box(side * 9.4, 1.0, -1.81, 6.8, .63, .13, hallWood);
+    for (let panel = -2; panel <= 2; panel++) {
+      box(side * 9.4 + panel * 1.26, 1.0, -1.73, 1.08, .39, .045, palette.woodDark);
+      box(side * 9.4 + panel * 1.26, 1.0, -1.7, .84, .24, .025, eaveTrim);
+    }
+  }
+  // Painted lintels use recessed teal panels, gold borders and raised lozenge bosses.
+  for (const bayX of [-9.1, -3.05, 3.05, 9.1]) {
+    box(bayX, 5.85, -1.49, 5.55, .49, .14, tealTimber);
+    for (const offset of [-.205, .205]) box(bayX, 5.85 + offset, -1.4, 5.4, .035, .035, eaveTrim);
+    const boss = box(bayX, 5.85, -1.36, .27, .27, .06, eaveTrim);
+    boss.rotation.z = Math.PI / 4;
+    for (const side of [-1, 1]) {
+      const cloud = mesh(new THREE.TorusGeometry(.15, .022, 3, 10, Math.PI * 1.5), eaveTrim, bayX + side * 1.7, 5.85, -1.37);
+      cloud.rotation.z = side * .7;
+    }
   }
   box(0, 5.95, -1.78, 11.8, .17, .24, hallWood);
   for (const z of [-21.3, -16.7, -12.1, -7.5, -1.7]) {
@@ -935,6 +969,7 @@ export function createTempleEnvironment(scene: THREE.Scene): {
       for (const geometry of geometries) geometry.dispose();
       for (const surface of materials) surface.dispose();
       for (const texture of textures) texture.dispose();
+      architecturalTextures.dispose();
     },
   };
 }

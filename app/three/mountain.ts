@@ -12,16 +12,17 @@ export function createTempleMountain() {
     materials.add(material);
     return material;
   };
-  const mountainMaterial = surface("#ffffff", { vertexColors: true });
-  const ridgeMaterial = surface("#7d9182", { flatShading: false });
-  const exposedRock = surface("#a7a58e");
-  const bark = surface("#796b53");
-  const pineMaterials = [surface("#557462"), surface("#73896b"), surface("#8ea17d")];
-  const stone = surface("#c7c0a9");
-  const pathMaterial = surface("#ded3bb");
-  const distantMaterials = [surface("#a9bdb3", { flatShading: false }), surface("#c2d1c8", { flatShading: false })];
+  const mountainMaterial = surface("#ffffff", { vertexColors: true, flatShading: false });
+  const ridgeMaterial = surface("#63877d", { flatShading: false });
+  const exposedRock = surface("#b6b69a");
+  const bark = surface("#67533c");
+  const pineMaterials = [surface("#365f53"), surface("#507967"), surface("#829765")];
+  const stone = surface("#cbbfa6");
+  const pathMaterial = surface("#dfcda8");
+  const distantMaterials = ["#628e87", "#8cac9f", "#b0c7b9"].map(color => surface(color, { flatShading: false }));
+  const floweringLeaves = surface("#c29659");
   const cloudMaterials = [0.36, 0.24].map(opacity => {
-    const material = new THREE.MeshBasicMaterial({ color: "#edf2e7", transparent: true, opacity, depthWrite: false });
+    const material = new THREE.MeshBasicMaterial({ color: "#e6e8ce", transparent: true, opacity, depthWrite: false });
     materials.add(material);
     return material;
   });
@@ -52,9 +53,9 @@ export function createTempleMountain() {
   const vertices: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
-  const grassColor = new THREE.Color("#a9b68a");
-  const rockColor = new THREE.Color("#aca58d");
-  const mossColor = new THREE.Color("#798d72");
+  const grassColor = new THREE.Color("#93a67c");
+  const rockColor = new THREE.Color("#b7b396");
+  const mossColor = new THREE.Color("#5f8472");
   for (const [levelIndex, level] of levels.entries()) {
     const ring: THREE.Vector3[] = [];
     for (let index = 0; index < segments; index++) {
@@ -69,7 +70,8 @@ export function createTempleMountain() {
       const point = new THREE.Vector3(x, y, z);
       ring.push(point);
       vertices.push(x, y, z);
-      const color = levelIndex === 0 ? grassColor.clone() : rockColor.clone().lerp(mossColor, 0.18 + (Math.sin(angle * 8 + levelIndex) + 1) * 0.22);
+      const strata = .24 + (Math.sin(angle * 8 + levelIndex * 1.6) + 1) * .23;
+      const color = levelIndex === 0 ? grassColor.clone() : rockColor.clone().lerp(mossColor, strata);
       color.multiplyScalar(0.94 + Math.sin(index * 2.3 + levelIndex) * 0.06);
       colors.push(color.r, color.g, color.b);
     }
@@ -171,6 +173,22 @@ export function createTempleMountain() {
     }
   }
 
+  // Planted ledges sit beyond the walking boundary and frame the temple above the valley.
+  for (let index = 0; index < 28; index++) {
+    const angle = index / 28 * Math.PI * 2;
+    const point = rings[1][Math.floor(index / 28 * segments)];
+    if (point.z > 36 && Math.abs(point.x) < 30) continue;
+    const x = point.x * .98, z = point.z * .98;
+    const y = terrainHeight(x, z);
+    const rock = add(new THREE.IcosahedronGeometry(1, 1), exposedRock, x, y + .12, z);
+    rock.scale.set(1.25 + index % 3 * .3, .45, .9);
+    rock.rotation.y = angle;
+    for (let tuft = 0; tuft < 3; tuft++) {
+      const crown = add(new THREE.IcosahedronGeometry(1, 1), index % 5 === 0 ? floweringLeaves : pineMaterials[tuft], x + Math.cos(angle + tuft) * .85, y + .48 + tuft * .16, z + Math.sin(angle + tuft) * .65);
+      crown.scale.set(.8, .48, .65);
+    }
+  }
+
   // Volumetric cloud banks wrap the lower slopes, leaving the connected foothills visible.
   for (let band = 0; band < 2; band++) for (let puff = 0; puff < 30; puff++) {
     const angle = puff / 30 * Math.PI * 2 + band * 0.24;
@@ -182,7 +200,7 @@ export function createTempleMountain() {
   }
 
   // Each distant ridge is a wide folded height field, with several peaks and valleys.
-  for (let layer = 0; layer < 2; layer++) {
+  for (let layer = 0; layer < distantMaterials.length; layer++) {
     const positions: number[] = [];
     const faces: number[] = [];
     const columns = 48;
@@ -191,7 +209,7 @@ export function createTempleMountain() {
       const x = -225 + column / columns * 450;
       const cross = row / (rows - 1);
       const crest = 23 + Math.sin(column * 0.42 + layer) * 17 + Math.sin(column * 1.08) * 8;
-      const y = -83 + Math.sin(cross * Math.PI) * crest * (layer === 0 ? 1.8 : 2.4);
+      const y = -78 + Math.sin(cross * Math.PI) * crest * (2.7 + layer * .35);
       const z = -150 - layer * 80 - cross * 88 + Math.sin(column * 0.21) * 12;
       positions.push(x, y, z);
     }

@@ -4,7 +4,7 @@ import { createHeldPondCreature } from "./pondCreatures";
 import type { PondSpecies } from "../pondGame";
 
 /** A self-contained mesh character. Forward is +Z and the feet rest at y=0. */
-export function createMonk(color = 0xcf895c): {
+export function createMonk(color = 0xa87150): {
   group: THREE.Group;
   update: (action: string, t: number, walking: boolean, phase?: number) => void;
   setReleaseSpecies: (species: PondSpecies) => void;
@@ -26,14 +26,20 @@ export function createMonk(color = 0xcf895c): {
     return result;
   }
 
-  const skin = material(0xf2cba8, .72);
-  const earInside = material(0xdfad91, .78);
-  const blush = material(0xe4af9e, .9);
-  const robe = material(color, .94);
-  const sash = material(0xdfc49a, .92);
-  const ink = material(0x594737);
-  const sandal = material(0x89694f, .9);
-  const beadMaterial = material(0x785136, .48);
+  const skin = material(0xf2cba8, .79);
+  const faceSurface = skin.clone();
+  faceSurface.vertexColors = true;
+  materials.add(faceSurface);
+  const earInside = material(0xdcb096, .88);
+  const blush = material(0xdba18d, .94);
+  blush.transparent = true;
+  blush.opacity = .38;
+  blush.depthWrite = false;
+  const robe = material(color, .91);
+  const sash = material(0xedddba, .96);
+  const ink = material(0x4d463e);
+  const sandal = material(0x735a43, .92);
+  const beadMaterial = material(0x704c36, .38);
   const woodMaterial = material(0xae7749);
   const woodLight = material(0xc6925c);
   const slitMaterial = material(0x624731);
@@ -80,6 +86,9 @@ export function createMonk(color = 0xcf895c): {
   skirt.name = "rounded-cloth-hem";
   skirt.scale.z = 0.76;
   oval(torso, sash, 0, 0.38, 0.045, 0.16, 0.075, 0.12);
+  for (const side of [-1, 1]) {
+    line(torso, [[side * .125, .39, .08], [side * .09, .35, .15], [side * .025, .30, .20]], .011, sash);
+  }
   const sashRows = 16, sashColumns = 4;
   const sashPositions: number[] = [], sashIndices: number[] = [];
   const sashLayerSize = (sashRows + 1) * (sashColumns + 1);
@@ -123,6 +132,7 @@ export function createMonk(color = 0xcf895c): {
   crossingSash.rotation.z = 0.60;
   crossingSash.rotation.x = -0.10;
   line(torso, [[-0.19, -0.03, 0.173], [-0.04, -0.08, 0.224], [0.15, -0.08, 0.194]], 0.009, sash);
+  line(torso, [[-.18, -.065, .15], [0, -.10, .214], [.18, -.065, .15]], .0035, sash);
   for (const side of [-1, 1]) {
     line(torso, [[side * .19, .26, .11], [side * .235, .1, .13], [side * .205, -.08, .15]], .007, robe);
     line(torso, [[side * .11, -.04, .19], [side * .14, -.09, .2], [side * .16, -.123, .185]], .006, robe);
@@ -135,19 +145,33 @@ export function createMonk(color = 0xcf895c): {
   torso.add(head);
   oval(head, skin, -0.283, -0.008, 0, 0.067, 0.084, 0.052);
   oval(head, skin, 0.283, -0.008, 0, 0.067, 0.084, 0.052);
-  oval(head, earInside, -0.301, -0.008, 0.044, 0.029, 0.049, 0.013);
-  oval(head, earInside, 0.301, -0.008, 0.044, 0.029, 0.049, 0.013);
-  const headMesh = mesh(new THREE.SphereGeometry(0.282, 32, 22), skin, head);
+  oval(head, earInside, -0.301, -0.008, 0.044, 0.022, 0.038, 0.012);
+  oval(head, earInside, 0.301, -0.008, 0.044, 0.022, 0.038, 0.012);
+  const headGeometry = new THREE.SphereGeometry(.282, 32, 22);
+  const headPositions = headGeometry.getAttribute("position");
+  const headColors: number[] = [];
+  for (let index = 0; index < headPositions.count; index++) {
+    const x = headPositions.getX(index) / .282;
+    const y = headPositions.getY(index) / .282;
+    const z = headPositions.getZ(index) / .282;
+    const lowerShade = (1 - y) * .024;
+    const cheek = Math.exp(-((Math.abs(x) - .55) ** 2 / .027 + (y + .22) ** 2 / .018)) * Math.max(0, z);
+    headColors.push(1 - lowerShade * .3, 1 - lowerShade - cheek * .12, 1 - lowerShade * 1.25 - cheek * .16);
+  }
+  headGeometry.setAttribute("color", new THREE.Float32BufferAttribute(headColors, 3));
+  const headMesh = mesh(headGeometry, faceSurface, head);
+  headMesh.name = "soft-clay-monk-face";
   headMesh.scale.set(1, 1.04, 0.94);
 
   // Facial features follow the sphere surface and remain actual curved mesh geometry.
   for (const side of [-1, 1]) {
     const eyeX = side * 0.094;
-    line(head, [[eyeX - 0.034, 0.004, 0.251], [eyeX, -0.009, 0.265], [eyeX + 0.034, 0.004, 0.251]], 0.008, ink);
-    line(head, [[eyeX - .031, .049, .246], [eyeX, .058, .258], [eyeX + .03, .051, .246]], .0045, ink);
+    line(head, [[eyeX - .034, .004, .251], [eyeX, -.007, .265], [eyeX + .034, .004, .251]], .0065, ink);
+    line(head, [[eyeX - .031, .049, .246], [eyeX, .058, .258], [eyeX + .03, .051, .246]], .0038, ink);
     oval(head, blush, side * 0.16, -0.064, 0.207, 0.045, 0.024, 0.013);
+    line(head, [[side * .304, .019, .052], [side * .313, -.004, .055], [side * .302, -.026, .052]], .003, earInside);
   }
-  line(head, [[-0.032, -0.083, 0.247], [0, -0.099, 0.253], [0.032, -0.083, 0.247]], 0.006, ink);
+  line(head, [[-.032, -.083, .247], [0, -.095, .253], [.032, -.083, .247]], .0045, ink);
   oval(head, skin, 0, -0.035, 0.267, 0.021, 0.022, 0.016);
   for (const [x, y] of [[-0.052, 0.183], [0, 0.198], [0.052, 0.183]]) {
     const z = Math.sqrt(0.282 ** 2 - x ** 2 - (y / 1.04) ** 2) * 0.94;
@@ -164,6 +188,7 @@ export function createMonk(color = 0xcf895c): {
     oval(arm, robe, 0, -0.095, 0, 0.107, 0.17, 0.108);
     oval(arm, sash, 0, -0.209, 0.006, 0.082, 0.037, 0.085);
     palms.push(oval(arm, skin, 0, -0.25, 0.008, 0.061, 0.073, 0.055));
+    line(arm, [[-.057, -.195, .062], [0, -.19, .09], [.057, -.195, .062]], .0035, sash);
     arms.push(arm);
   }
 

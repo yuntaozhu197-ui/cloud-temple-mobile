@@ -21,18 +21,18 @@ export function createScenicAreas() {
   materials.add(material);
   return material;
  };
- const stone = surface("#b8b39e");
- const paleStone = surface("#d6cbb3");
- const brick = surface("#bbab91");
- const shadowBrick = surface("#796b57");
- const roof = surface("#61796e");
- const wood = surface("#956b49");
- const darkWood = surface("#534536");
- const red = surface("#aa7257");
- const gold = surface("#b99b60", { metalness: .2, roughness: .65 });
- const water = surface("#78a99b", { roughness: .28, metalness: .08 });
- const leaf = surface("#6f8b68");
- const lotusPetal = surface("#d8a99b", { roughness: .8 });
+ const stone = surface("#b3aa8f");
+ const paleStone = surface("#cbbfa6");
+ const brick = surface("#c9ad83");
+ const shadowBrick = surface("#72634d");
+ const roof = surface("#284e4c");
+ const wood = surface("#8b493a");
+ const darkWood = surface("#493a30");
+ const red = surface("#a95640");
+ const gold = surface("#b4925b", { metalness: .28, roughness: .58 });
+ const water = surface("#4b9b91", { roughness: .18, metalness: .12 });
+ const leaf = surface("#507967");
+ const lotusPetal = surface("#e2baa4", { roughness: .8 });
  const lotusHeart = surface("#d2b06b", { roughness: .78 });
  const glow = surface("#e8cc88", { emissive: "#c7a15e", emissiveIntensity: .7, transparent: true, opacity: .5, depthWrite: false });
  function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Group = staticGroup) {
@@ -114,6 +114,13 @@ export function createScenicAreas() {
    mesh(new THREE.LatheGeometry(eaveProfile.map(([r, h]) => new THREE.Vector2(r, h * scale)), 8), roof, x, y + .55 * scale, z);
    const belt = mesh(new THREE.TorusGeometry(radius * .965, .022 * scale, 3, 8), paleStone, x, y + .47 * scale, z);
    belt.rotation.x = Math.PI / 2;
+   const eaveEdge = mesh(new THREE.TorusGeometry(radius * 1.25, .018 * scale, 3, 8), gold, x, y + .55 * scale, z);
+   eaveEdge.rotation.x = Math.PI / 2;
+   for (let face = 0; face < 8; face++) {
+    const turn = face * Math.PI / 4 + Math.PI / 8;
+    const panel = box(x + Math.sin(turn) * radius * .925, y + .28 * scale, z + Math.cos(turn) * radius * .925, .23 * scale, .28 * scale, .022 * scale, face % 2 ? paleStone : shadowBrick);
+    panel.rotation.y = turn;
+   }
    box(x, y + .28 * scale, z + radius * .94, .22 * scale, .28 * scale, .04, shadowBrick);
    for (const side of [-1, 1]) box(x + side * .14 * scale, y + .28 * scale, z + radius * .965, .035 * scale, .33 * scale, .045 * scale, paleStone);
    box(x, y + .45 * scale, z + radius * .965, .31 * scale, .04 * scale, .045 * scale, paleStone);
@@ -168,6 +175,15 @@ export function createScenicAreas() {
  group.add(fishSchool.group);
  const pondCreatures = createPondCreatures();
  group.add(pondCreatures.group);
+ const glintGeometry = new THREE.PlaneGeometry(1, 1);
+ geometries.add(glintGeometry);
+ const glintSurface = surface("#f2e2b2", { transparent: true, opacity: .24, depthWrite: false, side: THREE.DoubleSide });
+ const waterGlints = new THREE.InstancedMesh(glintGeometry, glintSurface, 18);
+ waterGlints.name = "池面细碎天光";
+ waterGlints.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+ waterGlints.frustumCulled = false;
+ group.add(waterGlints);
+ const glintTransform = new THREE.Object3D();
  const releaseRipple = mesh(new THREE.RingGeometry(.28, .34, 32), glow, -24.3, .13, 8, group);
  releaseRipple.rotation.x = -Math.PI / 2;
  releaseRipple.castShadow = false;
@@ -278,6 +294,17 @@ export function createScenicAreas() {
    const releaseAge = now - releasedAt;
    fishSchool.animate(time);
    pondCreatures.animate(time);
+   for (let index = 0; index < waterGlints.count; index++) {
+    const angle = index * 2.39996 + time * .015;
+    const radius = 1.1 + index % 5 * .48;
+    const shimmer = .3 + .7 * Math.sin(time * .7 + index * 1.7) ** 2;
+    glintTransform.position.set(-28 + Math.cos(angle) * radius, .104, 8 + Math.sin(angle) * radius);
+    glintTransform.rotation.set(-Math.PI / 2, 0, -.35);
+    glintTransform.scale.set(.06 * shimmer, (.18 + index % 4 * .055) * shimmer, 1);
+    glintTransform.updateMatrix();
+    waterGlints.setMatrixAt(index, glintTransform.matrix);
+   }
+   waterGlints.instanceMatrix.needsUpdate = true;
    releaseRipple.visible = releaseAge < 5;
    if (releaseRipple.visible) releaseRipple.scale.setScalar(1 + (releaseAge % 1.4) * 1.7);
    const martialAge = now - martialAt;
@@ -370,6 +397,7 @@ export function createScenicAreas() {
    impactRings.dispose();
    fishSchool.dispose();
    pondCreatures.dispose();
+   waterGlints.dispose();
    geometries.forEach(geometry => geometry.dispose());
    materials.forEach(material => material.dispose());
    group.clear();

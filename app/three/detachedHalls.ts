@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { TEMPLE_LAYOUT } from "../templeLayout";
+import { createArchitecturalTextures, createBracketArmGeometry } from "./architecturalMaterials";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 export type TempleRoom = Collider & { name: string; roofs: THREE.Mesh[]; roofDetails?: THREE.Object3D[]; elevation: number };
@@ -13,6 +14,7 @@ export function createDetachedHalls() {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
+  const architecturalTextures = createArchitecturalTextures();
   const colliders: Collider[] = [];
   const rooms: TempleRoom[] = [];
   const material = (color: string, options: THREE.MeshStandardMaterialParameters = {}) => {
@@ -20,15 +22,16 @@ export function createDetachedHalls() {
     materials.add(surface);
     return surface;
   };
-  const wood = material("#815441");
-  const darkWood = material("#534536");
-  const plaster = material("#d9c8a6");
-  const teal = material("#526f68");
-  const tile = material("#526f68");
-  const tileRib = material("#789187");
-  const gold = material("#a68a55", { metalness: 0.22, roughness: 0.58 });
-  const stone = material("#d6cbb3");
-  const paper = material("#e9dfc5");
+  const wood = material("#8b493a", { map: architecturalTextures.wood ?? null, roughness: .78 });
+  const darkWood = material("#493a30", { map: architecturalTextures.wood ?? null });
+  const plaster = material("#edddba", { map: architecturalTextures.plaster ?? null });
+  const teal = material("#284e4c");
+  const tile = material("#284e4c", { roughness: .76 });
+  const tileRib = material("#507d70");
+  const gold = material("#b4925b", { metalness: 0.22, roughness: 0.66 });
+  const eaveTrim = material("#bb9560", { metalness: .15, roughness: .74 });
+  const stone = material("#cbbfa6");
+  const paper = material("#f3e6c8", { map: architecturalTextures.plaster ?? null });
   const bookColors = [material("#768d82"), material("#bb9975"), material("#9a7d6b")];
   const mesh = (geometry: THREE.BufferGeometry, surface: THREE.Material, x: number, y: number, z: number, parent = staticGroup) => {
     geometries.add(geometry);
@@ -114,6 +117,15 @@ export function createDetachedHalls() {
         return new THREE.Vector3(cx + x, y, cz + direction * (depth / 2 - .12));
       });
       mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(eavePoints), 16, .07, 5, false), darkWood, 0, 0, 0, details);
+      const trimPoints = eavePoints.map(point => point.clone().add(new THREE.Vector3(0, -.095, -direction * .035)));
+      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(trimPoints), 16, .045, 4, false), eaveTrim, 0, 0, 0, details);
+      const rafterCount = Math.ceil(width / .9);
+      for (let rafter = 0; rafter < rafterCount; rafter++) {
+        const x = -width / 2 + .32 + rafter / (rafterCount - 1) * (width - .64);
+        const y = baseY + .32 + .32 * Math.pow(Math.abs(x) / (width / 2), 6) - .21;
+        const timber = box(cx + x, y, cz + direction * (depth / 2 - .68), .09, .11, 1.0, wood, details);
+        timber.rotation.x = direction * .08;
+      }
       const tileEnd = new THREE.CylinderGeometry(.085, .085, .18, 7, 1, true);
       const tileCount = Math.ceil(width / .62);
       for (let tileIndex = 0; tileIndex < tileCount; tileIndex++) {
@@ -127,6 +139,8 @@ export function createDetachedHalls() {
     for (const side of [-1, 1]) {
       const finial = mesh(new THREE.SphereGeometry(0.22, 10, 7), gold, cx + side * width / 2, baseY + rise + 0.35, cz, details);
       finial.scale.set(0.7, 1.6, 0.7);
+      const tail = [new THREE.Vector3(cx + side * (width / 2 - .8), baseY + rise + .14, cz), new THREE.Vector3(cx + side * (width / 2 - .26), baseY + rise + .27, cz), new THREE.Vector3(cx + side * (width / 2 - .11), baseY + rise + .63, cz)];
+      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(tail), 8, .07, 5, false), eaveTrim, 0, 0, 0, details);
     }
     return roofs;
   }
@@ -137,6 +151,8 @@ export function createDetachedHalls() {
     const back = z - depth / 2;
     carvedStone(x, 0.21, z, width + 0.8, 0.42, depth + 0.8);
     box(x, 0.45, z, width + 0.4, 0.06, depth + 0.4, plaster);
+    box(x, .34, front + .36, width + .42, .045, .05, gold);
+    for (let joint = 1; joint < 10; joint++) box(x - width / 2 + joint * width / 10, .19, front + .42, .025, .24, .025, darkWood);
     for (let step = 0; step < 3; step++) carvedStone(x, (step + 1) * 0.08, front + 2.5 - step, 8.2 + step * 0.25, (step + 1) * 0.16, 1.05);
     box(x, 3.83, back, width, 6.7, 0.3, plaster);
     block(x, back, width, 0.35);
@@ -152,8 +168,9 @@ export function createDetachedHalls() {
         const profile = [[.26, 0], [.33, .045], [.33, .12], [.27, .2], [.25, .3]];
         mesh(new THREE.LatheGeometry(profile.map(([radius, height]) => new THREE.Vector2(radius, height)), 12), stone, sideX - side * .5, .48, pz);
         for (let bracket = 0; bracket < 3; bracket++) {
-          box(sideX - side * 0.5, 6.65 + bracket * 0.2, pz, 0.9 + bracket * 0.38, 0.16, 0.3, teal);
-          box(sideX - side * 0.5, 6.75 + bracket * 0.2, pz, 0.3, 0.15, 0.9 + bracket * 0.38, darkWood);
+          mesh(createBracketArmGeometry(.9 + bracket * .38, .3), bracket % 2 ? eaveTrim : teal, sideX - side * .5, 6.65 + bracket * .2, pz);
+          const crossing = mesh(createBracketArmGeometry(.9 + bracket * .38, .3), wood, sideX - side * .5, 6.75 + bracket * .2, pz);
+          crossing.rotation.y = Math.PI / 2;
         }
         block(sideX - side * 0.5, pz, 0.7, 0.7);
       }
@@ -164,13 +181,19 @@ export function createDetachedHalls() {
         box(window.position.x + bar * 0.4, 2.2, front + 0.26, 0.055, 1.55, 0.05, darkWood);
         box(window.position.x, 2.2 + bar * 0.4, front + 0.27, 1.55, 0.055, 0.05, darkWood);
       }
+      box(window.position.x, 1.08, front + .18, frontWidth - .25, .68, .14, wood);
+      for (const panel of [-1, 0, 1]) {
+        box(window.position.x + panel * (frontWidth - .65) / 3, 1.08, front + .27, (frontWidth - .9) / 3, .44, .05, darkWood);
+      }
+      for (const edge of [-1, 1]) box(window.position.x + edge * (frontWidth / 2 - .08), 3.4, front + .18, .13, 5.6, .16, wood);
     }
     for (const side of [-1, 1]) {
       mesh(new THREE.CylinderGeometry(0.23, 0.3, 6.7, 10), darkWood, x + side * 3.8, 3.83, front - 0.25);
       block(x + side * 3.8, front - 0.25, 0.55, 0.55);
       for (let bracket = 0; bracket < 3; bracket++) {
-        box(x + side * 3.8, 6.65 + bracket * 0.2, front - 0.25, 0.9 + bracket * 0.38, 0.16, 0.3, teal);
-        box(x + side * 3.8, 6.75 + bracket * 0.2, front - 0.25, 0.3, 0.15, 0.9 + bracket * 0.38, darkWood);
+        mesh(createBracketArmGeometry(.9 + bracket * .38, .3), bracket % 2 ? eaveTrim : teal, x + side * 3.8, 6.65 + bracket * .2, front - .25);
+        const crossing = mesh(createBracketArmGeometry(.9 + bracket * .38, .3), wood, x + side * 3.8, 6.75 + bracket * .2, front - .25);
+        crossing.rotation.y = Math.PI / 2;
       }
       const lantern = mesh(new THREE.SphereGeometry(0.25, 10, 7), gold, x + side * 3.7, 5.6, front + 0.1);
       lantern.scale.y = 1.3;
@@ -184,6 +207,18 @@ export function createDetachedHalls() {
     const roofDetails = new THREE.Group();
     roofDetails.name = `${hall.name}瓦垄与屋脊`;
     group.add(roofDetails);
+    for (const bay of [-1, 0, 1]) {
+      const bx = x + bay * width / 3;
+      const span = width / 3 - .2;
+      box(bx, 6.45, front + .17, span, .48, .17, teal, roofDetails);
+      for (const offset of [-.19, .19]) box(bx, 6.45 + offset, front + .27, span - .14, .03, .035, eaveTrim, roofDetails);
+      const boss = box(bx, 6.45, front + .3, .23, .23, .05, gold, roofDetails);
+      boss.rotation.z = Math.PI / 4;
+      for (const side of [-1, 1]) {
+        const cloud = mesh(new THREE.TorusGeometry(.115, .018, 3, 10, Math.PI * 1.5), eaveTrim, bx + side * span * .33, 6.45, front + .3, roofDetails);
+        cloud.rotation.z = side * .7;
+      }
+    }
     box(x, 6.45, front + .16, 7.1, .14, .2, darkWood);
     box(x, 5.7, front + 0.2, 5, 0.95, 0.2, darkWood, roofDetails);
     box(x, 5.7, front + 0.32, 4.7, 0.72, 0.05, gold, roofDetails);
@@ -258,6 +293,7 @@ export function createDetachedHalls() {
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(surface => surface.dispose());
       textures.forEach(texture => texture.dispose());
+      architecturalTextures.dispose();
     },
   };
 }

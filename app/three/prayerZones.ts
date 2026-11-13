@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { TempleRoom } from "./detachedHalls";
 import { TEMPLE_LAYOUT } from "../templeLayout";
+import { createArchitecturalTextures, createBracketArmGeometry } from "./architecturalMaterials";
 
 type Collider = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -16,21 +17,24 @@ export function createPrayerZones() {
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
   const textures = new Set<THREE.Texture>();
+  const architecturalTextures = createArchitecturalTextures();
   const surface = (color: string, options: THREE.MeshStandardMaterialParameters = {}) => {
     const material = new THREE.MeshStandardMaterial({ color, roughness: 0.82, ...options });
     materials.add(material);
     return material;
   };
-  const stone = surface("#cfc5af");
-  const plaster = surface("#d9c8a6");
-  const timber = surface("#815441");
-  const darkWood = surface("#534536");
-  const tile = surface("#526f68", { side: THREE.DoubleSide });
-  const gold = surface("#b59050", { metalness: 0.28, roughness: 0.58 });
-  const goldLight = surface("#d8bb7a", { metalness: .24, roughness: .54 });
-  const bronze = surface("#886b43", { metalness: .23, roughness: .68 });
-  const white = surface("#ebe0ca");
-  const ink = surface("#55594d");
+  const stone = surface("#cbbfa6", { roughness: .94 });
+  const plaster = surface("#edddba", { map: architecturalTextures.plaster ?? null, roughness: .97 });
+  const timber = surface("#8b493a", { map: architecturalTextures.wood ?? null, roughness: .91 });
+  const darkWood = surface("#493a30", { map: architecturalTextures.wood ?? null });
+  const tile = surface("#284e4c", { side: THREE.DoubleSide, roughness: .88 });
+  const tileLight = surface("#507d70", { roughness: .91 });
+  const gold = surface("#b4925b", { metalness: .38, roughness: .56 });
+  const goldLight = surface("#d5bd86", { metalness: .30, roughness: .5 });
+  const bronze = surface("#7e6546", { metalness: .32, roughness: .65 });
+  const white = surface("#f0e6ce", { roughness: .64 });
+  const jade = surface("#bdcdb8", { roughness: .76 });
+  const ink = surface("#284e4c");
   const lampSurface = surface("#ffc977", { emissive: "#da8d37", emissiveIntensity: 0.18, metalness: 0.15 });
   const towerLamps = Array.from({ length: 4 }, () => surface("#ffd990", { emissive: "#e6a348", emissiveIntensity: 0.12, metalness: 0.1 }));
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = staticGroup) => {
@@ -117,7 +121,7 @@ export function createPrayerZones() {
           const v = row / 6;
           return [x + u * width / 2, height(u, v) + 0.025, z + side * v * depth / 2];
         });
-        curve(points, 0.025, gold, details);
+        curve(points, .028, tileLight, details);
       }
     }
     box(x, base + rise + 0.1, z, width + 0.15, 0.17, 0.18, gold, details);
@@ -134,6 +138,9 @@ export function createPrayerZones() {
       const leaf = oval(x + Math.sin(angle) * 0.97, 0.64, z + Math.cos(angle) * 0.97, 0.3, 0.37, 0.18, white);
       leaf.rotation.y = angle;
       leaf.rotation.x = 0.22;
+      const vein = curve([[0, -.15, .17], [0, 0, .195], [0, .22, .09]], .008, goldLight);
+      vein.position.copy(leaf.position);
+      vein.rotation.copy(leaf.rotation);
       const inner = oval(x + Math.sin(angle + Math.PI / 14) * .78, .87, z + Math.cos(angle + Math.PI / 14) * .78, .23, .20, .32, goldLight);
       inner.rotation.y = angle + Math.PI / 14;
       inner.rotation.x = -.25;
@@ -149,7 +156,19 @@ export function createPrayerZones() {
     const innerHalo = add(new THREE.TorusGeometry(.96, .018, 4, 36), bronze, x, 3.05, z - .5);
     innerHalo.castShadow = false;
     const faceSurface = guanyin ? white : goldLight;
-    const face = add(new THREE.SphereGeometry(1, 24, 16), faceSurface, x, 3.18, z + .01);
+    const faceMaterial = faceSurface.clone();
+    faceMaterial.vertexColors = true;
+    materials.add(faceMaterial);
+    const faceGeometry = new THREE.SphereGeometry(1, 24, 16);
+    const facePositions = faceGeometry.getAttribute("position");
+    const faceColors: number[] = [];
+    for (let index = 0; index < facePositions.count; index++) {
+      const y = facePositions.getY(index), depth = facePositions.getZ(index);
+      const shade = (1 - y) * .045 + Math.max(0, -depth) * .025;
+      faceColors.push(1 - shade * .6, 1 - shade, 1 - shade * 1.3);
+    }
+    faceGeometry.setAttribute("color", new THREE.Float32BufferAttribute(faceColors, 3));
+    const face = add(faceGeometry, faceMaterial, x, 3.18, z + .01);
     face.scale.set(.39, .51, .32);
     const facePoint = (dx: number, dy: number): [number, number, number] => [x + dx, 3.18 + dy, z + .022 + Math.sqrt(Math.max(.03, 1 - (dx / .39) ** 2 - (dy / .51) ** 2)) * .32];
     const nose = facePoint(0, -.055);
@@ -164,10 +183,8 @@ export function createPrayerZones() {
       oval(x + side * .395, 3.10, z, .063, .19, .065, faceSurface);
       oval(x + side * .407, 3.12, z + .056, .019, .11, .009, bronze);
       const eyeX = side * .14;
-      curve([facePoint(eyeX - .055, .025), facePoint(eyeX, -.012), facePoint(eyeX + .055, .025)], .009, ink);
-      curve([facePoint(eyeX - .06, .13), facePoint(eyeX, .158), facePoint(eyeX + .06, .132)], .011, bronze);
-      const cheek = facePoint(side * .22, -.08);
-      oval(cheek[0], cheek[1], cheek[2], .065, .06, .014, faceSurface);
+      curve([facePoint(eyeX - .055, .025), facePoint(eyeX, -.012), facePoint(eyeX + .055, .025)], .0075, ink);
+      curve([facePoint(eyeX - .06, .13), facePoint(eyeX, .158), facePoint(eyeX + .06, .132)], .009, bronze);
       curve([[x + side * 0.45, 2.45, z], [x + side * 0.8, 2.03, z + 0.15], [x + side * 0.6, 1.73, z + 0.65]], 0.16, robe);
       oval(x + side * 0.57, 1.75, z + 0.67, 0.17, 0.12, 0.17, faceSurface);
       for (let finger = 0; finger < 3; finger++) {
@@ -185,6 +202,7 @@ export function createPrayerZones() {
       for (const side of [-1, 1]) curve([[x + side * .22, 3.75, z + .22], [x + side * .43, 3.42, z + .3], [x + side * .48, 2.91, z + .24], [x + side * .49, 2.38, z + .16]], .016, goldLight);
       cylinder(x, 3.79, z, 0.13, 0.24, 0.32, gold);
       oval(x, 4.02, z, 0.08, 0.14, 0.08, gold);
+      oval(x, 3.83, z + .19, .055, .087, .024, jade);
       add(new THREE.LatheGeometry([[0.1, 0], [0.17, 0.1], [0.14, 0.28], [0.07, 0.36], [0.07, 0.49], [0.1, 0.5]].map(([r, y]) => new THREE.Vector2(r, y)), 12), white, x - 0.6, 1.76, z + 0.63);
       curve([[x + 0.58, 1.78, z + 0.68], [x + 0.77, 2.18, z + 0.66], [x + 0.96, 2.54, z + 0.66]], 0.025, tile);
       for (let leaf = 0; leaf < 4; leaf++) oval(x + 0.8 + leaf * 0.045, 2.22 + leaf * 0.08, z + 0.66, 0.1, 0.035, 0.035, tile).rotation.z = -0.5;
@@ -193,6 +211,7 @@ export function createPrayerZones() {
       for (let crown = -2; crown <= 2; crown++) {
         const tip = oval(x + crown * 0.15, 3.87 - Math.abs(crown) * 0.05, z + 0.02, 0.095, 0.26, 0.12, gold);
         tip.rotation.z = -crown * 0.12;
+        oval(x + crown * .15, 3.89 - Math.abs(crown) * .05, z + .145, .035, .075, .018, jade);
       }
       // Wisdom sword and a bound sutra distinguish this shrine from Guanyin's vase.
       box(x + 0.69, 2.75, z + 0.59, 0.075, 1.6, 0.045, white);
@@ -221,6 +240,8 @@ export function createPrayerZones() {
       block(x + side * 4.1, 34, 2.8, 0.3);
       const window = add(new THREE.TorusGeometry(0.64, 0.05, 5, 24), gold, x + side * 4.1, 2.6, 34.16);
       window.castShadow = false;
+      const reveal = add(new THREE.TorusGeometry(.69, .055, 5, 28), stone, x + side * 4.1, 2.6, 34.10);
+      reveal.castShadow = false;
       for (let bar = -1; bar <= 1; bar++) {
         box(x + side * 4.1 + bar * 0.28, 2.6, 34.17, 0.04, 1.05, 0.05, tile);
         box(x + side * 4.1, 2.6 + bar * 0.28, 34.18, 1.05, 0.04, 0.05, tile);
@@ -229,8 +250,8 @@ export function createPrayerZones() {
         cylinder(x + side * 5, 2.95, z, 0.17, 0.23, 5.9, timber);
         cylinder(x + side * 5, 0.13, z, 0.3, 0.36, 0.26, stone);
         for (let bracket = 0; bracket < 3; bracket++) {
-          box(x + side * 5, 5.35 + bracket * 0.18, z, 0.6 + bracket * 0.25, 0.14, 0.22, tile);
-          box(x + side * 5, 5.44 + bracket * 0.18, z, 0.22, 0.14, 0.6 + bracket * 0.25, timber);
+          add(createBracketArmGeometry(.6 + bracket * .25), tileLight, x + side * 5, 5.35 + bracket * .18, z);
+          add(createBracketArmGeometry(.6 + bracket * .25), timber, x + side * 5, 5.44 + bracket * .18, z).rotation.y = Math.PI / 2;
         }
       }
       cylinder(x + side * 2.65, 2.95, 33.7, 0.19, 0.25, 5.9, timber);
@@ -248,6 +269,19 @@ export function createPrayerZones() {
     details.name = `${hall.name}瓦垄与屋脊`;
     group.add(roofs, details);
     for (const part of plaqueParts) details.add(part);
+    box(x, 5.73, 34.17, 10.8, .36, .12, tile, details);
+    for (const y of [5.59, 5.87]) box(x, y, 34.245, 10.8, .027, .025, gold, details);
+    for (const side of [-1, 1]) {
+      box(x + side * 4.1, 5.72, 34.245, 1.85, .16, .02, tileLight, details);
+      for (const offset of [-.5, 0, .5]) {
+        const diamond = box(x + side * 4.1 + offset, 5.72, 34.26, .075, .075, .018, goldLight, details);
+        diamond.rotation.z = Math.PI / 4;
+      }
+      for (const z of [24.4, 29, 33.7]) {
+        const bearing = add(createBracketArmGeometry(1.03, .28), gold, x + side * 5, 5.22, z, details);
+        bearing.rotation.y = Math.PI / 2;
+      }
+    }
     roof(x, 29, 13.8, 12.3, 5.9, 1.85, roofs, details);
     roof(x, 28.6, 10.3, 8.2, 7.35, 1.2, roofs, details);
     batch(roofs);
@@ -449,6 +483,7 @@ export function createPrayerZones() {
       geometries.forEach(geometry => geometry.dispose());
       materials.forEach(material => material.dispose());
       textures.forEach(texture => texture.dispose());
+      architecturalTextures.dispose();
     },
   };
 }
