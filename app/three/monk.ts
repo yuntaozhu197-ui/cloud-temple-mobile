@@ -2,12 +2,14 @@ import * as THREE from "three";
 import { MARTIAL_DURATION, sampleMartial } from "./martial";
 import { createHeldPondCreature } from "./pondCreatures";
 import type { PondSpecies } from "../pondGame";
+import { createPracticeProp, type PracticePropKind } from "./practiceModels";
 
 /** A self-contained mesh character. Forward is +Z and the feet rest at y=0. */
 export function createMonk(color = 0xa87150): {
   group: THREE.Group;
   update: (action: string, t: number, walking: boolean, phase?: number) => void;
   setReleaseSpecies: (species: PondSpecies) => void;
+  setPracticeTiers: (tiers: Record<PracticePropKind, number>) => void;
   dispose: () => void;
 } {
   const group = new THREE.Group();
@@ -39,10 +41,7 @@ export function createMonk(color = 0xa87150): {
   const sash = material(0xedddba, .96);
   const ink = material(0x4d463e);
   const sandal = material(0x735a43, .92);
-  const beadMaterial = material(0x704c36, .38);
-  const woodMaterial = material(0xae7749);
   const woodLight = material(0xc6925c);
-  const slitMaterial = material(0x624731);
 
   function mesh(
     geometry: THREE.BufferGeometry,
@@ -321,26 +320,9 @@ export function createMonk(color = 0xa87150): {
   const lanternFire = mesh(lampPetalGeometry, lampFlameMaterial, heldSkyLantern, 0, -0.1, 0);
   lanternFire.scale.set(0.025, 0.04, 0.025);
 
-  const flowerPink = material(0xe8b4a4);
-  const flowerCream = material(0xf2d9b0);
-  const flowerLeaf = material(0x82936b);
   const offeringBouquet = new THREE.Group();
   offeringBouquet.name = "ceremonial-flower-bouquet";
   torso.add(offeringBouquet);
-  for (let index = 0; index < 3; index++) {
-    const x = (index - 1) * 0.095;
-    const y = index === 1 ? 0.16 : 0.1;
-    mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.26, 5), flowerLeaf, offeringBouquet, x, y - 0.12, 0);
-    for (let petal = 0; petal < 6; petal++) {
-      const angle = petal * Math.PI / 3;
-      const blossom = mesh(lampPetalGeometry, index === 1 ? flowerCream : flowerPink, offeringBouquet, x + Math.sin(angle) * 0.035, y, Math.cos(angle) * 0.035);
-      blossom.scale.set(0.035, 0.065, 0.03);
-      blossom.rotation.set(Math.cos(angle) * 0.65, angle, Math.sin(angle) * 0.65);
-    }
-    oval(offeringBouquet, lampGold, x, y + 0.01, 0, 0.026, 0.035, 0.026);
-  }
-  const bouquetTie = mesh(new THREE.BoxGeometry(0.21, 0.06, 0.05), sash, offeringBouquet, 0, -0.06, 0);
-  bouquetTie.rotation.z = -0.1;
 
   const drumSticks: THREE.Group[] = [];
   for (let index = 0; index < 2; index++) {
@@ -436,26 +418,33 @@ export function createMonk(color = 0xa87150): {
   beadRing.name = "monk-prayer-beads";
   beadRing.position.set(0.25, 0.14, 0.34);
   torso.add(beadRing);
-  mesh(new THREE.TorusGeometry(0.088, 0.004, 4, 20), sandal, beadRing);
-  for (let index = 0; index < 14; index += 1) {
-    const angle = index / 14 * Math.PI * 2;
-    oval(beadRing, beadMaterial, Math.sin(angle) * 0.088, Math.cos(angle) * 0.088, 0, 0.019, 0.019, 0.019);
-  }
-  line(beadRing, [[0, -0.09, 0], [0, -0.13, 0], [0.015, -0.15, 0]], 0.005, robe);
 
   const woodenFish = new THREE.Group();
   woodenFish.position.set(0.42, 0.10, 0.24);
   motionRig.add(woodenFish);
-  oval(woodenFish, woodMaterial, 0, 0.015, 0, 0.17, 0.105, 0.13);
-  oval(woodenFish, woodLight, 0.125, 0.013, 0.038, 0.059, 0.058, 0.069);
-  line(woodenFish, [[-0.08, 0.075, 0.06], [-0.015, 0.105, 0.025], [0.045, 0.085, 0.067], [0.01, 0.045, 0.116]], 0.013, slitMaterial);
-  line(woodenFish, [[-0.11, 0.035, 0.083], [-0.08, 0.002, 0.105], [-0.025, -0.004, 0.118]], 0.006, woodLight);
   const mallet = new THREE.Group();
   mallet.position.set(-0.19, 0.20, 0.02);
   woodenFish.add(mallet);
   const handle = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.23, 8), sandal, mallet, 0.07, 0.045, 0);
   handle.rotation.z = -0.95;
   oval(mallet, woodLight, 0.16, 0.105, 0, 0.043, 0.037, 0.04);
+
+  const practiceHolders = { wood: woodenFish, beads: beadRing, flower: offeringBouquet };
+  const practiceProps = { wood: createPracticeProp("wood", 0), beads: createPracticeProp("beads", 0), flower: createPracticeProp("flower", 0) };
+  const practiceTiers = { wood: 0, beads: 0, flower: 0 };
+  for (const kind of ["wood", "beads", "flower"] as const) practiceHolders[kind].add(practiceProps[kind].group);
+  function setPracticeTiers(tiers: Record<PracticePropKind, number>) {
+    for (const kind of ["wood", "beads", "flower"] as const) {
+      const value = tiers[kind];
+      const tier = Number.isFinite(value) ? THREE.MathUtils.clamp(Math.trunc(value), 0, 4) : 0;
+      if (practiceTiers[kind] === tier) continue;
+      practiceProps[kind].dispose();
+      practiceProps[kind] = createPracticeProp(kind, tier);
+      practiceHolders[kind].add(practiceProps[kind].group);
+      practiceTiers[kind] = tier;
+    }
+  }
+  let disposed = false;
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
     const scenePose = ["offerFlower", "drum", "towerBell", "bell", "ritual", "pagoda", "mural", "sutra", "breathe", "lotusLamp"].includes(action);
@@ -835,7 +824,11 @@ export function createMonk(color = 0xa87150): {
     group,
     update,
     setReleaseSpecies(species) { heldCreature.setSpecies(species); },
+    setPracticeTiers,
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      Object.values(practiceProps).forEach(prop => prop.dispose());
       heldCreature.dispose();
       thrownFood.dispose();
       geometries.forEach((geometry) => geometry.dispose());

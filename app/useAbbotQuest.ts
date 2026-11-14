@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { actAbbot, getAbbotSnapshot, type AbbotAction, type AbbotSnapshot } from "./abbotQuest";
+import { actAbbot, getAbbotSnapshot, type AbbotAction, type AbbotObjectiveKind, type AbbotSnapshot } from "./abbotQuest";
 
 /** Keep progress current while avoiding races between polling and ritual receipts. */
 export function useAbbotQuest(selfId: string) {
@@ -12,6 +12,7 @@ export function useAbbotQuest(selfId: string) {
   const revision = useRef(0);
   const generation = useRef(0);
   const controllers = useRef(new Set<AbortController>());
+  const recording = useRef(new Set<string>());
 
   const receive = useCallback((next: AbbotSnapshot) => {
     if (!alive.current) return;
@@ -61,13 +62,15 @@ export function useAbbotQuest(selfId: string) {
     pending.current++;
     revision.current++;
     const session = generation.current;
+    const encounterId = current.current?.encounter.id;
+    const questId = current.current?.quest.id;
     const operation = queue.current.catch(() => {}).then(async () => {
       const controller = new AbortController();
       controllers.current.add(controller);
       const timeout = window.setTimeout(() => controller.abort(), 15_000);
       try {
         if (!alive.current || session !== generation.current) throw new Error("这次奇遇已经结束，请重新进入寺庙。");
-        const next = await actAbbot(selfId, action, current.current?.encounter.id, controller.signal);
+        const next = await actAbbot(selfId, action, encounterId, controller.signal, questId);
         if (session === generation.current) receive(next);
       } catch (failure) {
         const message = controller.signal.aborted ? "这次修行记录连接超时，请稍后重试。" : (failure as Error).message;
@@ -83,10 +86,15 @@ export function useAbbotQuest(selfId: string) {
     return operation;
   }, [selfId, receive]);
 
-  const record = useCallback(async (action: "prayer" | "flower") => {
-    const progress = current.current?.progress;
-    if (!progress?.accepted || progress.rewarded || progress[action]) return;
+  const record = useCallback(async (action: AbbotObjectiveKind) => {
+    const snapshot = current.current;
+    const objective = snapshot?.quest.objectives.find(item => item.kind === action);
+    if (!snapshot?.progress.accepted || snapshot.progress.rewarded || !objective || snapshot.progress.objectives[objective.id]) return;
+    const key = `${generation.current}:${objective.id}`;
+    if (recording.current.has(key)) return;
+    recording.current.add(key);
     try { await act(action); } catch { /* The quest panel keeps the retry message visible. */ }
+    finally { recording.current.delete(key); }
   }, [act]);
 
   return { snapshot, error, act, record };

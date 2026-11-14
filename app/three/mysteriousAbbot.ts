@@ -2,6 +2,37 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 type AbbotMode = "idle" | "greeting" | "blessing" | "chant";
+type HandPose = { x: number; y: number; z: number; pitch: number; turn: number; roll: number };
+
+const prayerPose: readonly HandPose[] = [
+  { x: -.031, y: .245, z: .34, pitch: -.1, turn: 0, roll: -.19 },
+  { x: .031, y: .245, z: .34, pitch: -.1, turn: 0, roll: .19 },
+];
+const greetingPoses: readonly (readonly HandPose[])[] = [
+  prayerPose,
+  [
+    { x: -.12, y: .18, z: .35, pitch: -.25, turn: -.15, roll: -.18 },
+    { x: .195, y: .375, z: .38, pitch: -.28, turn: -.15, roll: .08 },
+  ],
+  [
+    { x: -.18, y: .105, z: .33, pitch: -.15, turn: .1, roll: -.28 },
+    { x: .125, y: .22, z: .32, pitch: -.2, turn: -.2, roll: .28 },
+  ],
+  prayerPose,
+];
+const blessingPoses: readonly (readonly HandPose[])[] = [
+  [prayerPose[0], { x: .13, y: .43, z: .38, pitch: -.3, turn: 0, roll: .19 }],
+  [
+    { x: -.095, y: .245, z: .445, pitch: -1.12, turn: .2, roll: -.18 },
+    { x: .095, y: .245, z: .445, pitch: -1.12, turn: -.2, roll: .18 },
+  ],
+  [
+    { x: -.42, y: .23, z: .34, pitch: -.7, turn: .24, roll: -.35 },
+    { x: .42, y: .23, z: .34, pitch: -.7, turn: -.24, roll: .35 },
+  ],
+  prayerPose,
+];
+const ceremonyColors = [0xe7c57a, 0x9dc9b0, 0xe0b4a3, 0xf2db97];
 
 function createCraftedModel(name: string) {
   const group = new THREE.Group();
@@ -195,7 +226,14 @@ export function createMysteriousAbbot() {
     curve(head, hair, [[side * .018, -.1, .25], [side * .06, -.118, .235], [side * .088, -.11, .216]], .015);
   }
   oval(head, skin, 0, -.059, .245, .028, .036, .024);
-  curve(head, ink, [[-.027, -.12, .226], [0, -.127, .234], [.027, -.12, .226]], .0032);
+  const mouth = new THREE.Group();
+  mouth.name = "abbot-speaking-smile";
+  mouth.position.set(0, -.12, .235);
+  head.add(mouth);
+  curve(mouth, ink, [[-.027, 0, -.009], [0, -.007, -.001], [.027, 0, -.009]], .0032);
+  const speakingLip = oval(mouth, skinShadow, 0, -.003, -.002, .012, .005, .002);
+  speakingLip.name = "abbot-speaking-lip";
+  speakingLip.visible = false;
   oval(head, hair, 0, -.191, .167, .084, .107, .058);
   for (const side of [-1, 1]) curve(head, hair, [[side * .044, -.148, .21], [side * .043, -.224, .197], [side * .012, -.281, .161]], .016);
   curve(head, skinShadow, [[-.074, .12, .201], [0, .132, .218], [.074, .12, .201]], .002);
@@ -252,6 +290,11 @@ export function createMysteriousAbbot() {
   motes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   group.add(motes);
   const moteGeometry = motes.geometry;
+  const orbitPetals = new THREE.InstancedMesh(petalGeometry, light, 12);
+  orbitPetals.name = "abbot-prayer-lotus-petal-ring";
+  orbitPetals.frustumCulled = false;
+  orbitPetals.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  group.add(orbitPetals);
   const transform = new THREE.Object3D();
   const shoulder = new THREE.Vector3();
   const elbow = new THREE.Vector3();
@@ -266,23 +309,30 @@ export function createMysteriousAbbot() {
     part.scale.set(width, direction.length() * .58, width);
     part.quaternion.setFromUnitVectors(axis, direction.normalize());
   }
-  function animate(time: number, mode: AbbotMode, progress = 0) {
+  function animate(time: number, mode: AbbotMode, progress = 0, variant = 0) {
     if (disposed) return;
     const p = THREE.MathUtils.clamp(progress, 0, 1);
+    const ceremony = Number.isFinite(variant) ? THREE.MathUtils.clamp(Math.trunc(variant), 0, 3) : 0;
     const gesture = mode === "chant" ? 1 : mode === "idle" ? 0 : THREE.MathUtils.smoothstep(p, 0, .22) * (1 - THREE.MathUtils.smoothstep(p, .84, 1));
-    const bow = mode === "greeting" ? Math.sin(Math.PI * THREE.MathUtils.smoothstep(p, .22, .78)) * .17 : 0;
+    const bow = mode === "greeting" ? Math.sin(Math.PI * THREE.MathUtils.smoothstep(p, .22, .78)) * [.17, .045, .065, .31][ceremony] : 0;
+    const pose = mode === "greeting" ? greetingPoses[ceremony] : mode === "blessing" ? blessingPoses[ceremony] : prayerPose;
     body.position.y = .65 + Math.sin(time * 1.4) * .003 - bow * .04;
     body.rotation.x = bow;
     head.rotation.x = .035 + bow * .25;
-    head.rotation.y = mode === "idle" ? Math.sin(time * .34) * .035 : 0;
+    head.rotation.y = mode === "idle" ? Math.sin(time * .34) * .035 : mode === "greeting" && ceremony === 2 ? Math.sin(time * .85) * .075 * gesture : 0;
+    head.rotation.z = mode === "greeting" && ceremony === 1 ? Math.sin(time * .9) * .025 * gesture : 0;
+    mouth.scale.y = mode === "greeting" ? 1 + Math.sin(time * 7.2) ** 2 * .18 * gesture : 1;
+    speakingLip.visible = mode === "greeting" && gesture > .1;
+    speakingLip.scale.y = .003 + Math.sin(time * 7.2) ** 2 * .003;
     for (let index = 0; index < 2; index++) {
       const side = index === 0 ? -1 : 1;
-      const blessingHand = mode === "blessing" && side > 0;
-      const handX = blessingHand ? .13 : side * .031;
-      const handY = blessingHand ? .43 : .245;
-      const handZ = blessingHand ? .38 : .34;
+      const hand = pose[index];
+      const respectfulLift = mode === "greeting" && ceremony === 3 && side > 0 ? THREE.MathUtils.smoothstep(p, .48, .7) : 0;
+      const handX = THREE.MathUtils.lerp(hand.x, .16, respectfulLift);
+      const handY = THREE.MathUtils.lerp(hand.y, .38, respectfulLift);
+      const handZ = THREE.MathUtils.lerp(hand.z, .385, respectfulLift);
       shoulder.set(side * .255, .28, 0);
-      elbow.set(THREE.MathUtils.lerp(side * .34, side * .245, gesture), THREE.MathUtils.lerp(-.06, .075, gesture), THREE.MathUtils.lerp(.06, .23, gesture));
+      elbow.set(THREE.MathUtils.lerp(side * .34, side * (.245 + Math.max(0, Math.abs(handX) - .15) * .45), gesture), THREE.MathUtils.lerp(-.06, .075, gesture), THREE.MathUtils.lerp(.06, .23, gesture));
       wrist.set(THREE.MathUtils.lerp(side < 0 ? -.18 : .445, handX, gesture), THREE.MathUtils.lerp(side < 0 ? -.05 : .06, handY, gesture), THREE.MathUtils.lerp(side < 0 ? .24 : .005, handZ, gesture));
       between(upperArms[index], shoulder, elbow, .106);
       between(forearms[index], elbow, wrist, .084);
@@ -290,26 +340,43 @@ export function createMysteriousAbbot() {
       cuffs[index].quaternion.copy(forearms[index].quaternion);
       palms[index].position.copy(wrist);
       palms[index].position.y += .032;
-      palms[index].rotation.set(blessingHand ? -.3 * gesture : -.1, 0, side * THREE.MathUtils.lerp(-.3, .19, gesture));
+      palms[index].rotation.set(THREE.MathUtils.lerp(-.1, hand.pitch, gesture), hand.turn * gesture, THREE.MathUtils.lerp(-side * .3, hand.roll, gesture));
       palms[index].scale.set(1, 1, 1);
     }
     const radiance = mode === "blessing" ? Math.sin(Math.PI * p) : 0;
+    light.color.setHex(ceremonyColors[ceremony]);
+    light.emissive.copy(light.color);
     blessing.visible = radiance > .01;
-    blessing.position.y = .94 + gesture * .1 + Math.sin(time * 2) * .012;
+    const rising = mode === "blessing" && ceremony === 2 ? THREE.MathUtils.smoothstep(p, .2, .85) : 0;
+    const lotusSide = mode === "blessing" && ceremony === 2 ? THREE.MathUtils.smoothstep(p, .12, .4) : 0;
+    blessing.position.set(-lotusSide * .38, (ceremony === 1 ? .88 + gesture * .06 : .94 + gesture * .1) + rising * .7 + Math.sin(time * 2) * .012, ceremony === 1 ? .53 : .6);
     blessing.scale.setScalar(.6 + radiance * .5);
     blessing.rotation.y = time * .25;
     motes.visible = radiance > .01;
     if (motes.visible) {
       for (let index = 0; index < 18; index++) {
-        const angle = index * 2.399 + time * .38;
+        const angle = index * 2.399 + time * (ceremony === 1 ? .23 : .38);
         const height = ((time * .2 + index / 18) % 1);
         const radius = .15 + Math.sin(height * Math.PI) * .23;
-        transform.position.set(Math.cos(angle) * radius, .65 + height * .94, .48 + Math.sin(angle) * radius);
+        transform.position.set(Math.cos(angle) * radius - rising * .2, .65 + height * .94 + rising * .3, .48 + Math.sin(angle) * radius);
         transform.scale.setScalar(radiance * Math.sin(height * Math.PI) * (index % 3 ? .7 : 1.25));
         transform.updateMatrix();
         motes.setMatrixAt(index, transform.matrix);
       }
       motes.instanceMatrix.needsUpdate = true;
+    }
+    orbitPetals.visible = mode === "blessing" && ceremony === 3 && radiance > .01;
+    if (orbitPetals.visible) {
+      for (let index = 0; index < 12; index++) {
+        const angle = index / 12 * Math.PI * 2 + time * .27;
+        const radius = .23 + radiance * .03;
+        transform.position.set(Math.sin(angle) * radius, .9 + Math.cos(angle) * radius, .53);
+        transform.rotation.set(-.15, 0, -angle);
+        transform.scale.set(.023 * radiance, .045 * radiance, .025 * radiance);
+        transform.updateMatrix();
+        orbitPetals.setMatrixAt(index, transform.matrix);
+      }
+      orbitPetals.instanceMatrix.needsUpdate = true;
     }
   }
   animate(0, "idle");
@@ -319,6 +386,7 @@ export function createMysteriousAbbot() {
       if (disposed) return;
       disposed = true;
       motes.dispose();
+      orbitPetals.dispose();
       moteGeometry.dispose();
       model.dispose();
     },

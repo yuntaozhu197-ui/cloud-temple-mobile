@@ -138,6 +138,9 @@
 .abbot-reward strong { font-size: 16px; line-height: 24px; font-weight: 600; }
 .abbot-reward span { color: var(--temple-muted, #5f6c5c); font-size: 12px; line-height: 16px; }
 .abbot-error { margin: 12px 0 0; color: #8b493a; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.abbot-title-collection { margin-top: 16px; padding: 12px; border: 1px solid #cdbd9d; border-radius: 12px; color: #796341; font-size: 12px; line-height: 20px; }
+.abbot-title-collection summary { cursor: pointer; min-height: 24px; font-weight: 600; }
+.abbot-title-collection p { margin: 8px 0 0; overflow-wrap: anywhere; }
 .abbot-cinematic {
   position: absolute;
   z-index: 14;

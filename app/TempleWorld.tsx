@@ -10,6 +10,7 @@ import { findNpcEncounter } from "./npcEncounters";
 import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
 import type { PondSpecies } from "./pondGame";
 import type { AbbotSnapshot } from "./abbotQuest";
+import { createRemoteMotion } from "./three/remoteMotion";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -23,6 +24,7 @@ type Participant = {
   heading?: number;
   bowSpeed?: 1 | 4;
   floor?: TempleFloor;
+  at?: number;
 };
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
@@ -68,16 +70,20 @@ type WorldProps = {
   abbot?: AbbotSnapshot | null;
   abbotTalking?: boolean;
   abbotNavigatePulse?: number;
-  abbotCinematic?: { id: number; kind: "greeting" | "blessing" } | null;
+  abbotCinematic?: { id: number; kind: "greeting" | "blessing"; variant?: number } | null;
   onAbbotNearbyChange?: (nearby: boolean) => void;
   onAbbotCinematicEnd?: () => void;
   onPrayerComplete?: () => void;
+  onBeadsComplete?: () => void;
+  practiceTiers?: { wood: number; beads: number; flower: number };
+  practiceTravelPulse?: number;
 };
 
 type MonkInstance = {
   group: THREE.Group;
   update: (action: string, time: number, walking: boolean, phase?: number) => void;
   setReleaseSpecies: (species: PondSpecies) => void;
+  setPracticeTiers: (tiers: { wood: number; beads: number; flower: number }) => void;
   dispose: () => void;
 };
 
@@ -120,13 +126,14 @@ export default function TempleWorld(props: WorldProps) {
 
     void (async () => {
       try {
-        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot, createAbbotReward }, { createCinematicCamera }] = await Promise.all([
+        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot, createAbbotReward }, { createCinematicCamera }, { RoomEnvironment }] = await Promise.all([
           import("three"),
           import("./three/monk"),
           import("./three/environment"),
           import("./three/incense"),
           import("./three/mysteriousAbbot"),
           import("./three/cinematicCamera"),
+          import("three/addons/environments/RoomEnvironment.js"),
         ]);
         const host = hostRef.current;
         const labels = labelsRef.current;
@@ -187,7 +194,7 @@ export default function TempleWorld(props: WorldProps) {
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
         let observer: ResizeObserver | undefined;
-        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; target: THREE.Vector3; heading: number; action: string; actionStart: number; bowSpeed: number }>();
+        const remote = new Map<string, { monk: MonkInstance; label: HTMLDivElement; motion: ReturnType<typeof createRemoteMotion>; lastSampleAt: number; seat: number | null; floor: number; action: string; actionStart: number; bowSpeed: number }>();
         const cleanupListeners: (() => void)[] = [];
         const hotspotButtons: HTMLButtonElement[] = [];
         const ownedGeometries: THREE.BufferGeometry[] = [];
@@ -230,6 +237,14 @@ export default function TempleWorld(props: WorldProps) {
           latest.current.onAbbotNearbyChange?.(false);
         };
 
+        const reflectionRoom = new RoomEnvironment();
+        const reflectionGenerator = new T.PMREMGenerator(renderer);
+        const reflection = reflectionGenerator.fromScene(reflectionRoom, .04);
+        scene.environment = reflection.texture;
+        scene.environmentIntensity = .24;
+        reflectionRoom.dispose();
+        reflectionGenerator.dispose();
+        cleanupListeners.push(() => reflection.dispose());
         environment = createTempleEnvironment(scene);
         abbot = createMysteriousAbbot();
         abbot.group.visible = false;
@@ -337,6 +352,7 @@ export default function TempleWorld(props: WorldProps) {
         cleanupListeners.push(() => cinematicCamera.dispose());
         const cinematicGoal = new T.Vector3();
         const cinematicFocus = [new T.Vector3(), new T.Vector3(), new T.Vector3(), new T.Vector3()];
+        const abbotFacing = { origin: new T.Vector3(), direction: new T.Vector3(), minDot: .4 };
         let lastCinematicCheck = -Infinity;
         let lastCinematicKey = "";
         let cinematicAvoidedObstacle = false;
@@ -393,11 +409,14 @@ export default function TempleWorld(props: WorldProps) {
         let localAction = latest.current.action;
         let actionStart = 0;
         let prayerPending = false;
+        let beadsPending = false;
+        let practiceTravelPulse = latest.current.practiceTravelPulse ?? 0;
+        let practiceTierKey = "";
         let abbotNearby = false;
         let abbotWasTalking = false;
         let abbotNavigatePulse = latest.current.abbotNavigatePulse ?? 0;
         let abbotCinematicId = -1;
-        let abbotScene: { kind: "greeting" | "blessing"; start: number; duration: number; x: number; z: number } | null = null;
+        let abbotScene: { kind: "greeting" | "blessing"; variant: number; start: number; duration: number; x: number; z: number } | null = null;
         let abbotSnapshot: AbbotSnapshot | null | undefined;
         let abbotClockOffset = 0;
         let incensePulse = latest.current.incensePulse ?? 0;
@@ -438,6 +457,7 @@ export default function TempleWorld(props: WorldProps) {
         let lastSent = -1;
         let lastPosition: Position = { x: 100, z: 100, heading: 0, floor: 1 };
         let lastRemoteSync = -1;
+        let lastParticipantSnapshot: Participant[] | null = null;
         let lastOcclusionCheck = -1;
         let lastTime = performance.now();
         const started = lastTime;
@@ -845,11 +865,21 @@ export default function TempleWorld(props: WorldProps) {
               const label = document.createElement("div");
               label.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:9px;background:rgba(252,251,238,.9);color:#42573d;font:700 14px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;will-change:transform";
               labels!.appendChild(label);
-              existing = { monk, label, target: new T.Vector3(), heading: person.heading ?? 0, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1 };
+              existing = { monk, label, motion: createRemoteMotion({ x, z, heading: person.heading ?? 0 }), lastSampleAt: -Infinity, seat: person.seat, floor: person.floor ?? 1, action: "idle", actionStart: time, bowSpeed: person.bowSpeed ?? 1 };
               remote.set(person.id, existing);
             }
-            existing.target.set(x, height, z);
-            existing.heading = seatPosition ? Math.PI : person.heading ?? 0;
+            const heading = seatPosition ? Math.PI : person.heading ?? 0;
+            if (existing.seat !== person.seat || existing.floor !== (person.floor ?? 1)) {
+              existing.motion.reset({ x, z, heading });
+              existing.lastSampleAt = -Infinity;
+            }
+            existing.seat = person.seat;
+            existing.floor = person.floor ?? 1;
+            const sampleAt = person.at ?? Date.now();
+            if (sampleAt > existing.lastSampleAt) {
+              existing.motion.push({ x, z, heading, at: sampleAt });
+              existing.lastSampleAt = sampleAt;
+            }
             const nextAction = person.meditating ? "meditate" : person.action === "idle" && seatPosition ? "sit" : person.action;
             if (nextAction !== existing.action || existing.bowSpeed !== (person.bowSpeed ?? 1)) existing.actionStart = time;
             existing.action = nextAction;
@@ -871,6 +901,16 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          const practiceTiers = state.practiceTiers ?? { wood: 0, beads: 0, flower: 0 };
+          const nextPracticeTierKey = `${practiceTiers.wood}:${practiceTiers.beads}:${practiceTiers.flower}`;
+          if (nextPracticeTierKey !== practiceTierKey) {
+            actor.setPracticeTiers(practiceTiers);
+            practiceTierKey = nextPracticeTierKey;
+          }
+          if ((state.practiceTravelPulse ?? 0) !== practiceTravelPulse) {
+            practiceTravelPulse = state.practiceTravelPulse ?? 0;
+            travel.current({ name: "庭院蒲团", x: 0, z: 7 });
+          }
           if (state.abbot !== abbotSnapshot) {
             abbotSnapshot = state.abbot;
             abbotClockOffset = (state.abbot?.now ?? Date.now()) - Date.now();
@@ -893,7 +933,7 @@ export default function TempleWorld(props: WorldProps) {
               keys.clear();
               joystick.current = { x: 0, y: 0 };
               setKnob({ x: 0, y: 0 });
-              abbotScene = { kind: state.abbotCinematic.kind, start: time, duration: state.abbotCinematic.kind === "blessing" ? 11 : 7, ...encounter.location };
+              abbotScene = { kind: state.abbotCinematic.kind, variant: state.abbotCinematic.variant ?? state.abbot?.quest.ceremony ?? 0, start: time, duration: state.abbotCinematic.kind === "blessing" ? 11 : 7, ...encounter.location };
             } else state.onAbbotCinematicEnd?.();
           }
           if (abbotScene && time - abbotScene.start >= abbotScene.duration) {
@@ -907,7 +947,7 @@ export default function TempleWorld(props: WorldProps) {
             const facingPlayer = state.abbotTalking || Boolean(abbotScene) || abbotNearby;
             const heading = facingPlayer ? Math.atan2(position.x - abbotLocation.x, position.z - abbotLocation.z) : Math.PI * .15;
             master.group.rotation.y += angleDelta(master.group.rotation.y, heading) * Math.min(1, dt * 4);
-            master.animate(time, lessonActive ? "chant" : abbotScene?.kind ?? "idle", abbotScene ? clamp((time - abbotScene.start) / abbotScene.duration, 0, 1) : 0);
+            master.animate(time, lessonActive ? "chant" : abbotScene?.kind ?? "idle", abbotScene ? clamp((time - abbotScene.start) / abbotScene.duration, 0, 1) : 0, abbotScene?.variant ?? state.abbot?.quest.ceremony ?? 0);
           }
           if ((state.abbotNavigatePulse ?? 0) !== abbotNavigatePulse) {
             abbotNavigatePulse = state.abbotNavigatePulse ?? 0;
@@ -1243,12 +1283,18 @@ export default function TempleWorld(props: WorldProps) {
             localAction = state.action;
             actionStart = time;
             prayerPending = localAction === "prayer";
+            beadsPending = localAction === "beads";
           }
           if (prayerPending && localAction === "prayer" && !walking && time - actionStart >= 2.6) {
             prayerPending = false;
             state.onPrayerComplete?.();
           }
           if (walking) prayerPending = false;
+          if (beadsPending && localAction === "beads" && !walking && time - actionStart >= 2.6) {
+            beadsPending = false;
+            state.onBeadsComplete?.();
+          }
+          if (walking) beadsPending = false;
           const incenseAge = time - incensePrayerStart;
           if (sceneAction && time - sceneAction.start >= sceneAction.duration) {
             if (sceneAction.kind === "martial") state.onMartialStage?.("complete");
@@ -1277,22 +1323,27 @@ export default function TempleWorld(props: WorldProps) {
           actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "light" ? (time - lampPrayerStart) / 24 : sceneAction ? incensePhase : pose === "bow" ? bowPhase : undefined);
           selfRing.position.set(position.x, position.y + 0.025, position.z);
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
-          selfRing.visible = !seated && !firstPerson;
-          actor.group.visible = !firstPerson;
-          rewardLantern.group.visible = Boolean(state.abbot?.progress.rewarded) && !firstPerson && (!abbotScene || abbotScene.kind !== "blessing" || time - abbotScene.start > abbotScene.duration * .8);
+          selfRing.visible = !seated && !firstPerson && !abbotConversation;
+          actor.group.visible = !firstPerson && !abbotConversation;
+          rewardLantern.group.visible = Boolean(state.abbot?.rewards.hasLantern) && !firstPerson && !abbotConversation;
           if (rewardLantern.group.visible) {
             const side = actor.group.rotation.y + Math.PI / 2;
             rewardLantern.group.position.set(position.x + Math.sin(side) * .72, position.y + 1.05, position.z + Math.cos(side) * .72);
             rewardLantern.animate(time);
           }
 
-          if (time - lastRemoteSync > 0.3) { syncRemote(time); lastRemoteSync = time; }
+          if (state.participants !== lastParticipantSnapshot || time - lastRemoteSync > .3) {
+            syncRemote(time);
+            lastRemoteSync = time;
+            lastParticipantSnapshot = state.participants;
+          }
           remote.forEach(person => {
-            const distance = person.monk.group.position.distanceTo(person.target);
-            person.monk.group.position.lerp(person.target, 1 - Math.exp(-dt * 7));
-            person.monk.group.rotation.y += angleDelta(person.monk.group.rotation.y, person.heading) * Math.min(1, dt * 8);
-            const remotePose = lessonActive && distance <= 0.12 && (person.action === "idle" || person.action === "sit") ? person.action === "sit" ? "chantSit" : "chant" : person.action;
-            person.monk.update(remotePose, time, distance > 0.12 && person.action !== "sit" && person.action !== "meditate", person.action === "bow" ? Math.min(((time - person.actionStart) * person.bowSpeed) % 1.25, 1) : undefined);
+            const movement = person.motion.sample();
+            person.monk.group.position.set(movement.x, world.floorHeightAt(movement.x, movement.z) + (person.seat === null ? 0 : .12), movement.z);
+            person.monk.group.rotation.y = movement.heading;
+            const walking = movement.moving && person.seat === null && person.action !== "meditate";
+            const remotePose = lessonActive && !walking && (person.action === "idle" || person.action === "sit") ? person.action === "sit" ? "chantSit" : "chant" : person.action;
+            person.monk.update(remotePose, time, walking, person.action === "bow" ? Math.min(((time - person.actionStart) * person.bowSpeed) % 1.25, 1) : undefined);
           });
           world.animate(time);
           offerings.forEach(offering => offering.animate(time));
@@ -1333,7 +1384,8 @@ export default function TempleWorld(props: WorldProps) {
             );
             cameraTarget.copy(cameraLook);
           } else {
-            if (conversationPartner) cameraLook.set((position.x + conversationPartner.x) / 2, floorHeight + 0.9, (position.z + conversationPartner.z) / 2);
+            if (abbotConversation) cameraLook.set(master.group.position.x * .72 + position.x * .28, master.group.position.y + 1.0, master.group.position.z * .72 + position.z * .28);
+            else if (conversationPartner) cameraLook.set((position.x + conversationPartner.x) / 2, floorHeight + 0.9, (position.z + conversationPartner.z) / 2);
             else if (martialView) cameraLook.set(28, 1.1, 12);
             else if (skyLanternView) cameraLook.set(0, 1.4, 28);
             else if (practiceView) cameraLook.set(position.x, floorHeight + 0.65, position.z);
@@ -1343,7 +1395,11 @@ export default function TempleWorld(props: WorldProps) {
             else cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-            if (conversationPartner) {
+            if (abbotConversation) {
+              const heading = master.group.rotation.y;
+              const distance = Math.max(3.7, 1.1 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, .85, 1.25);
+              cameraGoal.set(cameraLook.x + (Math.sin(heading) * .9 + Math.cos(heading) * .55) * distance, floorHeight + 2.05, cameraLook.z + (Math.cos(heading) * .9 - Math.sin(heading) * .55) * distance);
+            } else if (conversationPartner) {
               const distance = Math.max(4.2, 1.3 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, 0.85, 1.25);
               const directionX = conversationPartner.x - position.x;
               const directionZ = conversationPartner.z - position.z;
@@ -1388,16 +1444,26 @@ export default function TempleWorld(props: WorldProps) {
             } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius * zoomScale, floorHeight + cameraHeight * zoomScale, position.z + Math.cos(yaw) * cameraRadius * zoomScale);
             const cinematicKey = cinematicView ? `${conversationView ? abbotConversation ? "abbot" : conversationId : sceneAction?.kind ?? (incensePrayer ? "incense" : lampPrayer ? "longLamp" : pose)}` : "";
             const cinematicChanged = cinematicKey !== lastCinematicKey;
+            if (cinematicChanged) cameraTarget.copy(cameraLook);
             if (cinematicView) {
-              if (cinematicChanged || time - lastCinematicCheck >= .25) {
+              const abbotCameraX = cinematicGoal.x - master.group.position.x;
+              const abbotCameraZ = cinematicGoal.z - master.group.position.z;
+              const abbotCameraFront = (abbotCameraX * Math.sin(master.group.rotation.y) + abbotCameraZ * Math.cos(master.group.rotation.y)) / Math.max(.01, Math.hypot(abbotCameraX, abbotCameraZ));
+              if (cinematicChanged || time - lastCinematicCheck >= .25 || (abbotConversation && abbotCameraFront < .45)) {
                 cinematicFocus[0].set(position.x, floorHeight + (seated ? .65 : .95), position.z);
                 cinematicFocus[1].copy(cameraLook);
                 if (conversationPartner) cinematicFocus[1].set(conversationPartner.x, world.floorHeightAt(conversationPartner.x, conversationPartner.z) + 1.1, conversationPartner.z);
                 else if (lampPrayer) cinematicFocus[1].set(40, 3.8, 30.4);
                 cinematicFocus[2].set(position.x, floorHeight + (martialView ? 2.7 : seated ? .95 : 1.35), position.z);
                 cinematicFocus[3].set(position.x + Math.sin(actor.group.rotation.y) * .55, floorHeight + (fishView ? .65 : seated ? .65 : 1.05), position.z + Math.cos(actor.group.rotation.y) * .55);
+                if (abbotConversation) {
+                  cinematicFocus[2].set(master.group.position.x, master.group.position.y + 1.45, master.group.position.z);
+                  cinematicFocus[3].set(master.group.position.x + Math.sin(master.group.rotation.y) * .4, master.group.position.y + 1.0, master.group.position.z + Math.cos(master.group.rotation.y) * .4);
+                  abbotFacing.origin.copy(master.group.position);
+                  abbotFacing.direction.set(Math.sin(master.group.rotation.y), 0, Math.cos(master.group.rotation.y));
+                }
                 const limits = activeRoom ? { minX: activeRoom.minX + .4, maxX: activeRoom.maxX - .4, minZ: activeRoom.minZ + .4, maxZ: activeRoom.maxZ - .4, minY: floorHeight + 1.5, maxY: floorHeight + 3.6 } : undefined;
-                cinematicGoal.copy(cinematicCamera.resolve(cameraGoal, cameraLook, cinematicFocus, limits));
+                cinematicGoal.copy(cinematicCamera.resolve(cameraGoal, cameraLook, cinematicFocus, limits, abbotConversation ? abbotFacing : undefined));
                 cinematicAvoidedObstacle = cinematicGoal.distanceToSquared(cameraGoal) > .25;
                 lastCinematicCheck = time;
               }
@@ -1468,13 +1534,13 @@ export default function TempleWorld(props: WorldProps) {
           positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
           if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView || conversationView) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
-          const playerTitle = state.abbot?.progress.rewarded ? "照心行者 · 你的小和尚" : "● 你的小和尚";
+          const playerTitle = state.abbot?.rewards.activeTitle ? `${state.abbot.rewards.activeTitle} · 你的小和尚` : "● 你的小和尚";
           if (selfLabel.textContent !== playerTitle) selfLabel.textContent = playerTitle;
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
           if (master.group.visible) positionLabel(abbotLabel, master.group, 2.03);
           else abbotLabel.style.display = "none";
 
-          if (state.selfId && time - lastSent > 0.2 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05)) {
+          if (state.selfId && time - lastSent > .12 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05)) {
             lastSent = time;
             lastPosition = { x: Math.round(position.x * 100) / 100, z: Math.round(position.z * 100) / 100, heading: Math.atan2(Math.sin(actor.group.rotation.y), Math.cos(actor.group.rotation.y)), floor: 1 };
             state.onPositionChange(lastPosition);

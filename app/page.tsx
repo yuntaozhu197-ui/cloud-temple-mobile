@@ -19,13 +19,17 @@ import TempleResidents from "./TempleResidents";
 import TemplePond from "./TemplePond";
 import TempleAbbot from "./TempleAbbot";
 import { useAbbotQuest } from "./useAbbotQuest";
+import TemplePracticeGames from "./TemplePracticeGames";
+import { usePracticeGames } from "./usePracticeGames";
+import { PRACTICE_GAMES, type PracticeGameKind } from "./practiceGames";
+import { createTemplePresence, type TempleMotion } from "./presence";
 import { getPondSpecies, type PondSpecies } from "./pondGame";
 import type { NpcResidentId } from "./npcResidents";
 import TempleSoundSettings from "./TempleSoundSettings";
 import type { TempleInteractionKind } from "./templeInteractions";
 import { isTemplePrayerHall } from "./templeSchedule";
 import "./temple-theme.css";
-type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3 };
+type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3; at?: number; bowSpeed?: 1 | 4 };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
 const seats = TEMPLE_SEATS;
@@ -59,7 +63,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [abbotNearby, setAbbotNearby] = useState(false);
  const [abbotTalking, setAbbotTalking] = useState(false);
  const [abbotNavigatePulse, setAbbotNavigatePulse] = useState(0);
- const [abbotCinematic, setAbbotCinematic] = useState<{ id: number; kind: "greeting" | "blessing" } | null>(null);
+ const [abbotCinematic, setAbbotCinematic] = useState<{ id: number; kind: "greeting" | "blessing"; variant: number } | null>(null);
  const abbotCinematicId = useRef(0);
  const [incensePulse, setIncensePulse] = useState(0);
  const [incenseShrine, setIncenseShrine] = useState<ShrineId>("rulai");
@@ -69,6 +73,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [skyLanternOpen, setSkyLanternOpen] = useState(false);
  const [skyLanternPulse, setSkyLanternPulse] = useState(0);
  const [pondOpen, setPondOpen] = useState(false);
+ const [practiceGamesOpen, setPracticeGamesOpen] = useState(false);
+ const [practiceTravelPulse, setPracticeTravelPulse] = useState(0);
  const [pondRelease, setPondRelease] = useState<{ requestId: string; species: PondSpecies } | null>(null);
  const [pondResult, setPondResult] = useState<{ requestId: string; species: PondSpecies; stage: "released" | "cancelled" } | null>(null);
  const [residentId, setResidentId] = useState<NpcResidentId | null>(null);
@@ -104,8 +110,29 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const departedRef = useRef(false);
  const gameAlive = useRef(true);
  const requestSeq=useRef(0),requestQueue=useRef<Promise<unknown>>(Promise.resolve()),requestBusy=useRef(false),roomRef=useRef<Room|null>(null),preferredSeat=useRef(5),bowCountRef=useRef(0),meditationEnd=useRef(0),lastTick=useRef(0),autoRef=useRef(false),meditatingRef=useRef(false),seatRef=useRef<number|null>(null);
+ const presenceRef = useRef<ReturnType<typeof createTemplePresence> | null>(null);
+ const realtimeOnline = useRef(false);
+ const latestMotion = useRef(new Map<string, TempleMotion>());
+ const mergePresenceRoom = useCallback((incoming: Room): Room => {
+  const previous = roomRef.current;
+  if (previous && previous.now > incoming.now) return previous;
+  const present = new Set(incoming.participants.map(person => person.id));
+  latestMotion.current.forEach((_, id) => { if (!present.has(id)) latestMotion.current.delete(id); });
+  const participants = incoming.participants.map(person => {
+   const move = latestMotion.current.get(person.id);
+   return move && move.at > (person.at ?? -Infinity) ? { ...person, ...move } : person;
+  });
+  const next = { ...incoming, participants };
+  roomRef.current = next;
+  setRoom(next);
+  return next;
+ }, []);
  const notify=useCallback((text:string)=>{setToast(text);if(toastTimer.current)clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(""),3200)},[]);
  const add=useCallback((key:keyof Omit<Stats,"date">,amount=1)=>setStats(s=>{const base=s.date===day()?s:freshStats();return {...base,[key]:base[key]+amount}}),[]);
+ const practiceGames = usePracticeGames(account.id, { onUpgrade: (kind, tier) => {
+  const game = PRACTICE_GAMES.find(item => item.id === kind)!;
+  notify(`已进阶为${game.tiers[tier].name}，新模型已经装备。`);
+ } });
  const getAudio = useCallback(() => {
   if (!audioRef.current) {
    audioRef.current = createTempleAudio();
@@ -175,6 +202,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    const userTransition=Object.hasOwn(body??{},"seat")||Object.hasOwn(body??{},"meditating")||Object.hasOwn(body??{},"leave");
    if(seq!==requestSeq.current&&!userTransition)return null;
    let payload:Record<string,unknown>|undefined=body?{...positionRef.current,...body}:body;
+   if (presenceRef.current && payload) for (const key of ["x", "z", "heading", "floor"]) delete payload[key];
    requestBusy.current=true;
    try{
     for(let attempt=0;attempt<=seats.length;attempt++){
@@ -189,16 +217,17 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      const data=await res.json() as Room & { error?: string };
      if (data.error === "account_changed" || data.selfId !== account.id) { onSignedOut(); return null; }
      // Completed requests are already ordered by the queue, including on slow networks.
-     const self=data.participants.find(v=>v.id===data.selfId);
+     const currentRoom = mergePresenceRoom(data);
+     const self=currentRoom.participants.find(v=>v.id===currentRoom.selfId);
      if(self?.seat===null&&meditatingRef.current&&attempt<seats.length){
       const available=[preferredSeat.current,...seats.map((_,index)=>index)].find(n=>!data.participants.some(p=>p.seat===n));
       if(available!==undefined){
        // A mobile tab may outlive its presence lease. Reclaim an available cushion.
-       payload={...positionRef.current,seat:available,...(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow"}:{})};
+       payload={...(presenceRef.current?{}:positionRef.current),seat:available,...(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow"}:{})};
        continue;
       }
      }
-     roomRef.current=data;setRoom(data);setConnection("online");
+     setConnection("online");
      seatRef.current=self?.seat??null;setSeat(seatRef.current);
      if(seatRef.current!==null)preferredSeat.current=seatRef.current;
      if(seatRef.current===null&&meditatingRef.current){
@@ -208,7 +237,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      return res.status===409?null:data;
     }
    }catch{
-    setConnection("offline");
+    if (!realtimeOnline.current) setConnection("offline");
    }finally{
     requestBusy.current=false;
    }
@@ -217,7 +246,28 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   const result=requestQueue.current.then(run,run);
   requestQueue.current=result;
   return result;
- },[notify,onSignedOut,account.id]);
+ },[notify,onSignedOut,account.id,mergePresenceRoom]);
+ useEffect(() => {
+  const presence = createTemplePresence({ selfId: account.id,
+   onRoom: data => { if (gameAlive.current && !departedRef.current) { mergePresenceRoom(data); setConnection("online"); } },
+   onMotion: moves => {
+    if (!gameAlive.current || departedRef.current) return;
+    for (const move of moves) if (move.at > (latestMotion.current.get(move.id)?.at ?? -Infinity)) latestMotion.current.set(move.id, move);
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
+    const next = { ...currentRoom, participants: currentRoom.participants.map(person => {
+     const move = latestMotion.current.get(person.id);
+     return move && move.at > (person.at ?? -Infinity) ? { ...person, ...move } : person;
+    }) };
+    roomRef.current = next;
+    setRoom(next);
+    setConnection("online");
+   },
+   onStatus: status => { realtimeOnline.current = status === "online"; if (status === "account_changed") onSignedOut(); },
+  });
+  presenceRef.current = presence;
+  return () => { presence.close(); presenceRef.current = null; realtimeOnline.current = false; latestMotion.current.clear(); };
+ }, [account.id, mergePresenceRoom, onSignedOut]);
  useEffect(()=>{gameAlive.current=true;try{const saved=JSON.parse(localStorage.getItem("cloud-temple-stats:"+account.id)||localStorage.getItem("cloud-temple-stats")||"null");if(saved?.date===day()&&["bows","wood","beads","prayer","seconds"].every(k=>Number.isFinite(saved[k])&&saved[k]>=0))setStats(saved)}catch{}setLoaded(true);void sync();const timer=setInterval(()=>{if(!document.hidden&&!requestBusy.current)void sync(meditatingRef.current?{meditating:true,action:"meditate"}:autoRef.current?{action:"bow",bowSpeed:bowSpeedRef.current}:undefined)},3000);return()=>{gameAlive.current=false;clearInterval(timer);if(toastTimer.current)clearTimeout(toastTimer.current);if(actionTimer.current)clearTimeout(actionTimer.current);audioRef.current?.dispose()}},[sync]);
  useEffect(()=>{if(loaded){try{localStorage.setItem("cloud-temple-stats:"+account.id,JSON.stringify(stats));localStorage.removeItem("cloud-temple-stats")}catch{}}},[loaded,stats]);
  useEffect(()=>{autoRef.current=auto;meditatingRef.current=meditating;seatRef.current=seat},[auto,meditating,seat]);
@@ -231,6 +281,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setAction(kind);
   setPulse(value => value + 1);
   const key = ({ prayer: "prayer", bow: "bows", beads: "beads", wood: "wood" } as const)[kind as "prayer" | "bow" | "beads" | "wood"];
+  if (kind === "wood") practiceGames.record("wood");
+  if (kind === "wood") void abbotQuest.record("wood");
   if (key) add(key);
   tone(kind as TempleSound);
   void sync({ action: kind, bowSpeed: 1 });
@@ -239,7 +291,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    setAction("idle");
    void sync({ action: "idle" });
   }, kind === "prayer" || kind === "beads" ? 2800 : 1050);
- }, [add, tone, sync, notify]);
+ }, [add, tone, sync, notify, practiceGames.record, abbotQuest.record]);
  const startAuto=()=>{if(!seatedRef.current){notify("坐上蒲团后，就可以开始108拜");return}unlockAudio();if(autoRef.current)return;if(meditatingRef.current){notify("先结束静坐，再开始礼拜吧");return}if(actionTimer.current)clearTimeout(actionTimer.current);if(bowCountRef.current>=108){bowCountRef.current=0;setBowCount(0)}autoRef.current=true;setAuto(true);setAction("idle");notify(bowCountRef.current>0?"继续礼拜，慢慢来":"已开始 108 次礼拜，可随时暂停")};
  useEffect(() => {
   if (!auto) return;
@@ -275,7 +327,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    ambientPositionRef.current = { x: position.x, z: position.z };
    setAmbientPosition(ambientPositionRef.current);
   }
-  if (Date.now() - positionSent.current > 1200 || floorChanged) {
+  if (presenceRef.current) presenceRef.current.sendPosition(position);
+  else if (Date.now() - positionSent.current > 500 || floorChanged) {
    positionSent.current = Date.now();
    void sync({ ...position });
   }
@@ -291,6 +344,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setMeditating(false);
   if (actionTimer.current) clearTimeout(actionTimer.current);
   audioRef.current?.setEnabled(false);
+  presenceRef.current?.close();
   setDeparted(true);
   void sync({ leave: true });
  };
@@ -317,7 +371,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    tone(sounds[kind]);
   }
   if (stage === "complete") {
+   if (kind === "flower") practiceGames.record("flower");
    if (kind === "flower") void abbotQuest.record("flower");
+   if (kind === "bell" || kind === "towerBell") void abbotQuest.record("bell");
+   if (kind === "sutra") void abbotQuest.record("sutra");
    if (kind === "mural" || kind === "sutra" || kind === "breathe") setModal(kind);
    const messages: Partial<Record<TempleInteractionKind, string>> = { flower: "鲜花已敬放在香案前。", ritual: "合掌礼敬，一念安宁。", drum: "鼓声沉稳，余音慢慢散入山间。", towerBell: "铜钟已响，余韵悠长。", bell: "钟声已响，让这一念慢慢安定。", lamp: "莲灯已点亮。", pagoda: "礼塔圆满，留一念清宁。" };
    if (messages[kind]) notify(messages[kind]!);
@@ -332,6 +389,19 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setAbbotNavigatePulse(value => value + 1);
   notify(`正沿小路前往${abbotQuest.snapshot.encounter.location.name}，寻找云隐住持。`);
  };
+ const playPracticeGame = (kind: PracticeGameKind) => {
+  setPracticeGamesOpen(false);
+  setMenuOpen(false);
+  if (autoRef.current) stopAuto();
+  if (meditatingRef.current) finishMeditation();
+  if (kind === "wood") doAction("wood");
+  else if (kind === "flower") setFlowerRequest(value => value + 1);
+  else if (seatedRef.current) doAction("beads");
+  else {
+   setPracticeTravelPulse(value => value + 1);
+   notify("正前往庭院。走近蒲团入座，再选择转佛珠。");
+  }
+ };
  const startAbbotCinematic = (kind: "greeting" | "blessing") => {
   unlockAudio();
   setAbbotTalking(false);
@@ -340,7 +410,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   setAction("idle");
   void sync({ action: "idle" });
   setCameraMode("third");
-  setAbbotCinematic({ id: ++abbotCinematicId.current, kind });
+  setAbbotCinematic({ id: ++abbotCinematicId.current, kind, variant: abbotQuest.snapshot?.quest.ceremony ?? 0 });
   tone(kind === "blessing" ? "lamp" : "prayer");
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
@@ -361,6 +431,9 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       onPondReleaseResult={setPondResult}
       talkingNpcId={talkingNpcId}
       onNpcEncounter={setResidentId}
+      practiceTiers={{ wood: practiceGames.snapshot.games.wood.tier, beads: practiceGames.snapshot.games.beads.tier, flower: practiceGames.snapshot.games.flower.tier }}
+      practiceTravelPulse={practiceTravelPulse}
+      onBeadsComplete={() => { practiceGames.record("beads"); void abbotQuest.record("beads"); }}
       abbot={abbotQuest.snapshot}
       abbotTalking={abbotTalking}
       abbotNavigatePulse={abbotNavigatePulse}
@@ -386,7 +459,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       onIncenseStage={stage => {
        if (stage === "begin") tone("incense");
        if (stage === "insert") tone("prayer");
-       if (stage === "complete") notify("清香已安放，愿你心安。");
+       if (stage === "complete") { notify("清香已安放，愿你心安。"); void abbotQuest.record("incense"); }
       }}
       onLampStage={stage => {
        if (stage === "begin") { tone("lamp"); notify("灯火逐层点亮，愿你心中常有光。"); }
@@ -395,13 +468,13 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       onMartialStage={stage => {
        if (stage === "begin") { tone("martial"); notify("马步起势、连拳、飞踢！移动即可收招。"); }
        if (stage === "cancel") audioRef.current?.stop("martial");
-       if (stage === "complete") notify("一套功夫练完，抱拳收势。");
+       if (stage === "complete") { notify("一套功夫练完，抱拳收势。"); void abbotQuest.record("martial"); }
       }}
-      onFishStage={(kind, stage) => { if (stage === "offer") {
+      onFishStage={(kind, stage) => { if (stage === "complete" && kind === "fish") void abbotQuest.record("fish"); if (stage === "offer") {
        tone(kind === "release" ? "release" : "water");
        notify(kind === "release" ? pondRelease?.species === "butterfly" ? "彩蝶振翅飞向池边花丛。" : `${getPondSpecies(pondRelease?.species ?? "fish")?.name}已轻轻送入池中。` : "鱼群正游来，吃饱后会缓缓散开。");
       } }}
-      onSkyLanternStage={stage => { if (stage === "release") { tone("incense"); notify("愿这一盏灯，载着你的心愿慢慢升起。"); } }}
+      onSkyLanternStage={stage => { if (stage === "complete") void abbotQuest.record("skyLantern"); if (stage === "release") { tone("incense"); notify("愿这一盏灯，载着你的心愿慢慢升起。"); } }}
       onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
      />
     </div>
@@ -420,6 +493,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <button onClick={() => { setMenuOpen(false); setSoundSettingsOpen(true); }}>{gameVolume > 0 || templeVolume > 0 ? <Volume2 size={18} /> : <VolumeX size={18} />}声音设置</button>
      <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
+     <button onClick={() => { setMenuOpen(false); setPracticeGamesOpen(true); }}><Sparkles size={18} />修行小游戏</button>
      <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       setMenuOpen(false);
@@ -463,7 +537,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    </main>
 
    <TempleResidents residentId={menuOpen || abbotNearby || abbotTalking || abbotCinematic ? null : residentId} onConversationChange={setTalkingNpcId} />
-   <TempleAbbot snapshot={abbotQuest.snapshot} nearby={abbotNearby && !auto && !meditating} cinematic={abbotCinematic?.kind ?? null}
+   <TemplePracticeGames open={practiceGamesOpen} snapshot={practiceGames.snapshot} error={practiceGames.error} busy={practiceGames.busy} onClose={() => setPracticeGamesOpen(false)} onPlay={playPracticeGame} onRetry={practiceGames.retry} />
+   <TempleAbbot snapshot={abbotQuest.snapshot} nearby={abbotNearby && !auto && !meditating} cinematic={abbotCinematic?.kind ?? null} ceremony={abbotCinematic?.variant}
     onConversationChange={setAbbotTalking} onNavigate={navigateToAbbot}
     onAccept={() => abbotQuest.act("accept")} onComplete={() => abbotQuest.act("complete")}
     onCinematic={startAbbotCinematic} onSkipCinematic={() => setAbbotCinematic(null)} error={abbotQuest.error} />

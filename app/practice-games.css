@@ -1,0 +1,40 @@
+.practice-games-overlay { position: fixed; inset: 0; z-index: 136; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); background: #213c3570; box-sizing: border-box; }
+.practice-games-panel { box-sizing: border-box; width: min(100%, 420px); max-height: calc(var(--temple-viewport-height, 100dvh) - 24px); overflow: auto; overscroll-behavior: contain; padding: 16px; border: 1px solid var(--temple-line, #cdbd9d); border-radius: 24px; background: #f4ead5; color: var(--temple-ink, #263f39); font: 500 14px/20px var(--temple-font, "Geist", "PingFang SC", sans-serif); }
+.practice-games-panel header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.practice-games-panel header p { margin: 0 0 4px; color: #6a745e; font-size: 12px; line-height: 16px; }
+.practice-games-panel h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; text-wrap: balance; }
+.practice-games-panel button { font: inherit; cursor: pointer; touch-action: manipulation; transition: transform .3s cubic-bezier(.22, 1, .36, 1), background-color .3s cubic-bezier(.22, 1, .36, 1); }
+.practice-games-panel button:focus-visible { outline: 2px solid #365f53; outline-offset: 2px; }
+.practice-games-panel button:active { transform: scale(.98); }
+.practice-games-close { flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 12px; display: grid; place-items: center; background: #e6dcc7; color: inherit; }
+.practice-game-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 16px; }
+.practice-game-tabs button { min-height: 44px; border: 1px solid #cdbd9d; border-radius: 8px; background: #fcf5e6; color: #5d6e5c; font-weight: 600; font-size: 14px; padding: 8px 4px; white-space: nowrap; }
+.practice-game-tabs button[aria-selected=true] { background: #365f53; color: #fff8e9; border-color: #365f53; }
+.practice-model { height: 160px; width: 100%; margin-top: 8px; display: grid; place-items: center; overflow: hidden; }
+.practice-model canvas { display: block; width: 100%; height: 100%; }
+.practice-model-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.practice-model-title h3 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; }
+.practice-model-title > span { color: #856b43; font-size: 12px; line-height: 16px; white-space: nowrap; }
+.practice-model-description { margin: 8px 0 12px; color: #5f6c5c; min-height: 40px; overflow-wrap: anywhere; text-wrap: pretty; }
+.practice-game-score { display: flex; gap: 12px; align-items: baseline; }
+.practice-game-score strong { font-size: 30px; line-height: 36px; font-weight: 600; color: #365f53; }
+.practice-game-score small { margin-left: 4px; font-size: 12px; line-height: 16px; }
+.practice-game-score > span { flex: 1; min-width: 0; font-size: 12px; line-height: 16px; color: #5f6c5c; }
+.practice-games-panel progress { display: block; width: 100%; height: 8px; margin: 8px 0 16px; appearance: none; border: 0; border-radius: 8px; overflow: hidden; background: #ddd3bb; }
+.practice-games-panel progress::-webkit-progress-bar { background: #ddd3bb; }
+.practice-games-panel progress::-webkit-progress-value { background: #637f65; border-radius: 8px; }
+.practice-games-panel progress::-moz-progress-bar { background: #637f65; }
+.practice-tier-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin-top: 12px; }
+.practice-tier-list button { min-width: 0; min-height: 64px; border: 1px solid #cdbd9d; border-radius: 8px; padding: 8px 2px; background: #fcf5e6; color: #5f6c5c; }
+.practice-tier-list button.is-selected { border-color: #365f53; background: #e1e6d5; color: #263f39; }
+.practice-tier-list button span { display: flex; gap: 2px; align-items: center; justify-content: center; font-size: 12px; line-height: 16px; color: #82704c; }
+.practice-tier-list strong { display: block; margin-top: 4px; font-size: 12px; line-height: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.practice-game-rule { margin: 12px 0; font-size: 12px; line-height: 20px; color: #5f6c5c; }
+.practice-game-play { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-radius: 12px; background: #365f53; color: #fff8e9; font-size: 16px !important; font-weight: 600 !important; }
+.practice-game-play:hover { background: #274c41; }
+.practice-games-save { margin: 8px 0 0; text-align: center; font-size: 12px; line-height: 16px; color: #6c745d; }
+.practice-games-error { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; color: #8b493a; font-size: 12px; }
+.practice-games-error span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.practice-games-error button { min-height: 44px; padding: 8px; border: 1px solid #bca683; border-radius: 8px; color: inherit; background: #fcf5e6; }
+@media (max-height: 650px) { .practice-model { height: 120px; } .practice-games-panel { padding: 12px; } }
+@media (prefers-reduced-motion: reduce) { .practice-games-panel button { transition: none; } }

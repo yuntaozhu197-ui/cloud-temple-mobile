@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 type CameraLimits = { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number };
+type FacingConstraint = { origin: THREE.Vector3; direction: THREE.Vector3; minDot: number };
 type Surface = { object: THREE.Mesh; material: THREE.Material; checked: number; visible: boolean };
 type TriangleBatch = { surface: Surface; vertices: Float32Array; bounds: THREE.Box3; queried: number };
 
@@ -33,6 +34,7 @@ export function createCinematicCamera(obstacles: THREE.Object3D[], ignored = new
   let resolution = 0;
   let hasPrevious = false;
   let disposed = false;
+  let facing: FacingConstraint | undefined;
 
   function isIgnored(object: THREE.Object3D) {
     for (let parent: THREE.Object3D | null = object; parent; parent = parent.parent) if (ignored.has(parent)) return true;
@@ -151,6 +153,11 @@ export function createCinematicCamera(obstacles: THREE.Object3D[], ignored = new
   }
 
   function visibleFocusCount(point: THREE.Vector3) {
+    if (facing) {
+      const dx = point.x - facing.origin.x, dz = point.z - facing.origin.z;
+      const length = Math.hypot(dx, dz) * Math.hypot(facing.direction.x, facing.direction.z);
+      if (length < .01 || (dx * facing.direction.x + dz * facing.direction.z) / length < facing.minDot) return -1;
+    }
     if (!cameraClear(point)) return -1;
     let count = 0;
     for (const focus of queryFocus) if (sightClear(point, focus)) count++;
@@ -167,9 +174,10 @@ export function createCinematicCamera(obstacles: THREE.Object3D[], ignored = new
   }
 
   return {
-    resolve(desired: THREE.Vector3, target: THREE.Vector3, focus: readonly THREE.Vector3[], limits?: CameraLimits) {
+    resolve(desired: THREE.Vector3, target: THREE.Vector3, focus: readonly THREE.Vector3[], limits?: CameraLimits, face?: FacingConstraint) {
       if (disposed) return result.copy(desired);
       resolution++;
+      facing = face;
       queryFocus.length = 0;
       for (const point of focus) if ([point.x, point.y, point.z].every(Number.isFinite)) queryFocus.push(point);
       if (!queryFocus.length) queryFocus.push(target);

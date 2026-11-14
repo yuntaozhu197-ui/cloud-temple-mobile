@@ -13,6 +13,7 @@ import { createTempleLamps } from "./temple-lamps.mjs";
 import { createTempleLanterns } from "./temple-lanterns.mjs";
 import { createPondGame } from "./pond-game.mjs";
 import { createAbbotQuest } from "./abbot-quest.mjs";
+import { createPracticeGames } from "./practice-games.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
@@ -340,7 +341,13 @@ export function createTempleServer({
   const lanterns = createTempleLanterns(database);
   const pond = createPondGame(database, { trialMode });
   const abbot = createAbbotQuest(database, { trialMode });
+  const practiceGames = createPracticeGames(database, { trialMode });
   const auth = createTempleAuth(database, { now });
+  const presenceStreams = new Set();
+  const dirtyMotion = new Map();
+  let roomDirty = false;
+  let presenceClosed = false;
+  let lastPresenceExpiry = 0;
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
     user: database.prepare("SELECT id, name FROM community_users WHERE id = ?"),
@@ -378,7 +385,7 @@ export function createTempleServer({
     queries.register.run(identity.id, identity.name, timestamp);
     identity.name = queries.user.get(identity.id).name;
     const visitor = visitors.get(identity.id);
-    if (visitor) visitor.name = identity.name;
+    if (visitor && visitor.name !== identity.name) { visitor.name = identity.name; roomDirty = true; }
   }
 
   function incenseCounts(identity, timestamp) {
@@ -514,7 +521,7 @@ export function createTempleServer({
 
   function expireVisitors(timestamp) {
     for (const [id, visitor] of visitors) {
-      if (visitor.lastSeen < timestamp - SESSION_AGE_MS) visitors.delete(id);
+      if (visitor.lastSeen < timestamp - SESSION_AGE_MS) { visitors.delete(id); dirtyMotion.delete(id); roomDirty = true; }
       else if ((visitor.floor ?? 1) !== 1) updateVisitor(visitor, {});
     }
   }
@@ -548,11 +555,134 @@ export function createTempleServer({
         meditating: false,
         joinedAt: timestamp,
         lastSeen: timestamp,
+        at: timestamp,
       };
       visitors.set(identity.id, visitor);
+      roomDirty = true;
+      markMotion(visitor, timestamp);
     }
-    if (visitor) { visitor.lastSeen = timestamp; visitor.name = identity.name; }
+    if (visitor) {
+      visitor.lastSeen = timestamp;
+      if (visitor.name !== identity.name) { visitor.name = identity.name; roomDirty = true; }
+    }
     return visitor;
+  }
+
+  function markMotion(visitor, timestamp) {
+    visitor.at = Math.max(timestamp, (visitor.at ?? 0) + 1);
+    dirtyMotion.set(visitor.id, { id: visitor.id, x: visitor.x, z: visitor.z, heading: visitor.heading, floor: 1, at: visitor.at });
+  }
+
+  function writePresence(stream, event, data) {
+    const response = stream.response;
+    if (response.destroyed || response.writableEnded || response.writableLength > 65_536 || stream.blocked) {
+      response.destroy();
+      return false;
+    }
+    if (!response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)) {
+      stream.blocked = true;
+      response.once("drain", () => { stream.blocked = false; });
+    }
+    return true;
+  }
+
+  function closePresenceFor(id, reason = "account_changed") {
+    for (const stream of [...presenceStreams]) if (stream.identity.id === id) {
+      writePresence(stream, "account", { error: reason });
+      stream.response.end();
+      presenceStreams.delete(stream);
+    }
+  }
+
+  function flushPresence() {
+    if (presenceClosed) return;
+    const timestamp = now();
+    if (timestamp - lastPresenceExpiry >= 1000) { lastPresenceExpiry = timestamp; expireVisitors(timestamp); }
+    const moves = [...dirtyMotion.values()];
+    dirtyMotion.clear();
+    const changed = roomDirty;
+    roomDirty = false;
+    for (const stream of presenceStreams) {
+      if (moves.length) writePresence(stream, "motion", { now: timestamp, moves });
+      if (changed) writePresence(stream, "room", snapshot(stream.identity, timestamp));
+    }
+  }
+
+  function heartbeatPresence() {
+    if (presenceClosed) return;
+    const timestamp = now();
+    for (const stream of [...presenceStreams]) {
+      const current = auth.resolve(stream.request);
+      if (!current || current.id !== stream.identity.id) { closePresenceFor(stream.identity.id); continue; }
+      const visitor = visitors.get(current.id);
+      if (visitor) visitor.lastSeen = timestamp;
+      writePresence(stream, "ping", { now: timestamp });
+    }
+  }
+
+  function openPresence(request, response, identity, url) {
+    if (request.method !== "GET") {
+      response.setHeader("Allow", "GET");
+      sendJson(response, { error: "method_not_allowed" }, 405, identity);
+      return;
+    }
+    if (!sameOrigin(request, publicOrigin)) { sendJson(response, { error: "invalid_origin" }, 403, identity); return; }
+    const expectedId = url.searchParams.get("selfId");
+    if (expectedId && expectedId !== identity.id) { sendJson(response, { error: "account_changed" }, 409, identity); return; }
+    if (presenceClosed || presenceStreams.size >= MAX_VISITORS * 3 || [...presenceStreams].filter(stream => stream.identity.id === identity.id).length >= 3) {
+      response.setHeader("Retry-After", "5");
+      sendJson(response, { error: "presence_busy", message: "同修连接较多，正在等待重连。" }, 429, identity);
+      return;
+    }
+    const timestamp = now();
+    registerUser(identity, timestamp);
+    expireVisitors(timestamp);
+    if (!refresh(identity, timestamp)) { sendJson(response, { error: "room_full" }, 503, identity); return; }
+    response.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "private, no-cache, no-store, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+      "Vary": "Cookie",
+    });
+    response.flushHeaders();
+    const stream = { request, response, identity, blocked: false };
+    presenceStreams.add(stream);
+    const remove = () => presenceStreams.delete(stream);
+    response.once("close", remove);
+    response.once("error", remove);
+    request.once("aborted", remove);
+    response.write("retry: 1500\n\n");
+    writePresence(stream, "room", snapshot(identity, timestamp));
+  }
+
+  async function handleMove(request, response, identity) {
+    if (request.method !== "POST") {
+      response.setHeader("Allow", "POST");
+      sendJson(response, { error: "method_not_allowed" }, 405, identity);
+      return;
+    }
+    if (!sameOrigin(request, publicOrigin)) { request.resume(); sendJson(response, { error: "invalid_origin" }, 403, identity); return; }
+    let body;
+    try { body = await readJson(request); }
+    catch { sendJson(response, { error: "invalid_request" }, 400, identity); return; }
+    if (Object.keys(body).some(key => !["x", "z", "heading", "floor"].includes(key)) ||
+        !POSITION_KEYS.every(key => typeof body[key] === "number" && Number.isFinite(body[key])) ||
+        body.x < TEMPLE_BOUNDS.x[0] || body.x > TEMPLE_BOUNDS.x[1] || body.z < TEMPLE_BOUNDS.z[0] || body.z > TEMPLE_BOUNDS.z[1] ||
+        Math.abs(body.heading) > Math.PI * 2 || (Object.hasOwn(body, "floor") && body.floor !== 1)) {
+      sendJson(response, { error: "invalid_position", message: "请在寺庙范围内走动。" }, 400, identity);
+      return;
+    }
+    const timestamp = now();
+    registerUser(identity, timestamp);
+    expireVisitors(timestamp);
+    const visitor = refresh(identity, timestamp);
+    if (!visitor) { sendJson(response, { error: "room_full" }, 503, identity); return; }
+    for (const key of POSITION_KEYS) visitor[key] = body[key];
+    visitor.floor = 1;
+    markMotion(visitor, timestamp);
+    response.writeHead(204, { "Cache-Control": "private, no-store", "Vary": "Cookie" });
+    response.end();
   }
 
   async function handleRoom(request, response, identity) {
@@ -587,6 +717,9 @@ export function createTempleServer({
     expireVisitors(timestamp);
     if (body?.leave === true) {
       visitors.delete(identity.id);
+      dirtyMotion.delete(identity.id);
+      roomDirty = true;
+      closePresenceFor(identity.id, "left");
       sendJson(response, snapshot(identity, timestamp), 200, identity);
       return;
     }
@@ -596,6 +729,8 @@ export function createTempleServer({
       return;
     }
     if (body) {
+      const previousMotion = POSITION_KEYS.map(key => visitor[key]);
+      const previousState = JSON.stringify([visitor.name, visitor.seat, visitor.action, visitor.meditating, visitor.bowSpeed]);
       const requestedSeat = Object.hasOwn(body, "seat") ? body.seat : visitor.seat;
       if (body.action === "bow" && requestedSeat === null) {
         sendJson(response, { error: "bow_requires_seat", message: "请先坐稳蒲团，再开始礼拜。" }, 400, identity);
@@ -612,6 +747,8 @@ export function createTempleServer({
         return;
       }
       updateVisitor(visitor, body);
+      if (POSITION_KEYS.some((key, index) => visitor[key] !== previousMotion[index])) markMotion(visitor, timestamp);
+      if (previousState !== JSON.stringify([visitor.name, visitor.seat, visitor.action, visitor.meditating, visitor.bowSpeed])) roomDirty = true;
     }
     sendJson(response, snapshot(identity, timestamp), 200, identity);
   }
@@ -650,13 +787,13 @@ export function createTempleServer({
         }
         const result = await auth.act(request, body, requestIdentity(request));
         if (result.rotateGuest) result.cookies.push(requestIdentity(request, true).cookie);
-        if (result.signedOutId) visitors.delete(result.signedOutId);
-        if (result.identity && previousIdentity && result.identity.id !== previousIdentity.id) visitors.delete(previousIdentity.id);
+        if (result.signedOutId) { visitors.delete(result.signedOutId); dirtyMotion.delete(result.signedOutId); roomDirty = true; closePresenceFor(result.signedOutId); }
+        if (result.identity && previousIdentity && result.identity.id !== previousIdentity.id) { visitors.delete(previousIdentity.id); dirtyMotion.delete(previousIdentity.id); roomDirty = true; closePresenceFor(previousIdentity.id); }
         if (result.status === 429) response.setHeader("Retry-After", result.body.error === "auth_busy" ? "3" : "900");
         sendJson(response, result.body, result.status, { cookie: result.cookies });
         return;
       }
-      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond", "/api/abbot"].includes(pathname);
+      const requiresAuth = ["/api/room", "/api/move", "/api/presence", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond", "/api/abbot", "/api/practice-games"].includes(pathname);
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
@@ -672,8 +809,10 @@ export function createTempleServer({
         await handleRoom(request, response, identity);
         return;
       }
-      if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns" || pathname === "/api/pond" || pathname === "/api/abbot") {
-        const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : pathname === "/api/pond" ? pond : pathname === "/api/abbot" ? abbot : life;
+      if (pathname === "/api/presence") { openPresence(request, response, identity, new URL(request.url, "http://localhost")); return; }
+      if (pathname === "/api/move") { await handleMove(request, response, identity); return; }
+      if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns" || pathname === "/api/pond" || pathname === "/api/abbot" || pathname === "/api/practice-games") {
+        const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : pathname === "/api/pond" ? pond : pathname === "/api/abbot" ? abbot : pathname === "/api/practice-games" ? practiceGames : life;
         if (!["GET", "POST"].includes(request.method)) {
           response.setHeader("Allow", "GET, POST");
           sendJson(response, { error: "method_not_allowed" }, 405, identity);
@@ -700,7 +839,7 @@ export function createTempleServer({
           sendJson(response, error, status, identity);
           return;
         }
-        if (visitors.has(identity.id)) visitors.get(identity.id).name = identity.name;
+        if (visitors.has(identity.id) && visitors.get(identity.id).name !== identity.name) { visitors.get(identity.id).name = identity.name; roomDirty = true; }
         sendJson(response, feature.snapshot(identity, timestamp), 200, identity);
         return;
       }
@@ -726,6 +865,42 @@ export function createTempleServer({
   });
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
+  const socketRequests = new Map();
+  server.on("connection", socket => {
+    socketRequests.set(socket, 0);
+    socket.once("close", () => socketRequests.delete(socket));
+  });
+  server.on("request", (request, response) => {
+    const socket = request.socket;
+    socketRequests.set(socket, (socketRequests.get(socket) ?? 0) + 1);
+    let finished = false;
+    const release = () => {
+      if (finished) return;
+      finished = true;
+      if (!socketRequests.has(socket)) return;
+      const active = Math.max(0, (socketRequests.get(socket) ?? 1) - 1);
+      socketRequests.set(socket, active);
+      if (presenceClosed && active === 0) socket.end();
+    };
+    response.once("finish", release);
+    response.once("close", release);
+  });
+  const presenceTimer = setInterval(flushPresence, 100);
+  const heartbeatTimer = setInterval(heartbeatPresence, 15_000);
+  presenceTimer.unref();
+  heartbeatTimer.unref();
+  const closeServer = server.close.bind(server);
+  server.close = callback => {
+    presenceClosed = true;
+    clearInterval(presenceTimer);
+    clearInterval(heartbeatTimer);
+    for (const stream of presenceStreams) stream.response.end();
+    presenceStreams.clear();
+    dirtyMotion.clear();
+    const closing = closeServer(callback);
+    for (const [socket, active] of socketRequests) if (active === 0) socket.end();
+    return closing;
+  };
   server.once("close", () => database.close());
   return server;
 }

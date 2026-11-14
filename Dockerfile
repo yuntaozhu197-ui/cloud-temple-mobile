@@ -21,6 +21,7 @@ COPY --chown=node:node temple-lamps.mjs ./temple-lamps.mjs
 COPY --chown=node:node temple-lanterns.mjs ./temple-lanterns.mjs
 COPY --chown=node:node pond-game.mjs ./pond-game.mjs
 COPY --chown=node:node abbot-quest.mjs ./abbot-quest.mjs
+COPY --chown=node:node practice-games.mjs ./practice-games.mjs
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 3000
