@@ -131,7 +131,7 @@ export default function TemplePond({ selfId, open, onClose, onRelease, result, o
     <section className="pond-panel" ref={panel} role="dialog" aria-modal="true" aria-labelledby="pond-title">
       <header className="pond-heading"><div><h2 id="pond-title">放生池</h2><p>一次放生一只，成功后 +1 分</p></div><button className="pond-close" type="button" onClick={onClose} aria-label="关闭放生池"><X size={20} /></button></header>
       <div className="pond-score" role="status"><strong>{snapshot?.score ?? "—"}<small>分</small></strong><span>{next ? `再得 ${next.points - snapshot!.score} 分解锁${next.name}` : snapshot ? "六种生灵均已解锁" : "正在读取放生记录…"}</span></div>
-      {next && <progress className="pond-progress" value={snapshot!.score - Math.max(0, next.points - 10)} max={10} aria-label={`距离${next.name}的解锁进度`} />}
+      {next && <progress className="pond-progress" value={snapshot!.score - Math.max(0, next.points - 5)} max={5} aria-label={`距离${next.name}的解锁进度`} />}
       <div className="pond-species" role="group" aria-label="选择放生的生物">
         {POND_SPECIES.map(species => {
           const unlocked = Boolean(snapshot?.unlocked.includes(species.id));

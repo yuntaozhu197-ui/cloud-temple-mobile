@@ -2,11 +2,11 @@ export type PondSpecies = "fish" | "koi" | "goldfish" | "turtle" | "frog" | "but
 
 export const POND_SPECIES: readonly { id: PondSpecies; name: string; points: number }[] = [
   { id: "fish", name: "小鱼", points: 0 },
-  { id: "koi", name: "锦鲤", points: 10 },
-  { id: "goldfish", name: "金鱼", points: 20 },
-  { id: "turtle", name: "小乌龟", points: 30 },
-  { id: "frog", name: "青蛙", points: 40 },
-  { id: "butterfly", name: "彩蝶", points: 50 },
+  { id: "koi", name: "锦鲤", points: 5 },
+  { id: "goldfish", name: "金鱼", points: 10 },
+  { id: "turtle", name: "小乌龟", points: 15 },
+  { id: "frog", name: "青蛙", points: 20 },
+  { id: "butterfly", name: "彩蝶", points: 25 },
 ];
 
 export function isPondSpecies(value: unknown): value is PondSpecies {

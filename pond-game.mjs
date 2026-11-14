@@ -1,10 +1,10 @@
 const species = [
   { id: "fish", points: 0 },
-  { id: "koi", points: 10 },
-  { id: "goldfish", points: 20 },
-  { id: "turtle", points: 30 },
-  { id: "frog", points: 40 },
-  { id: "butterfly", points: 50 },
+  { id: "koi", points: 5 },
+  { id: "goldfish", points: 10 },
+  { id: "turtle", points: 15 },
+  { id: "frog", points: 20 },
+  { id: "butterfly", points: 25 },
 ];
 const validId = value => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const invalid = (message, status = 400) => ({ error: "invalid_pond_action", status, message });
