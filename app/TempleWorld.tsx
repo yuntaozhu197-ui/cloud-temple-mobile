@@ -1260,13 +1260,15 @@ export default function TempleWorld(props: WorldProps) {
           const martialView = sceneAction?.kind === "martial";
           const fishView = sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release";
           const skyLanternView = sceneAction?.kind === "skyLantern";
-          const practiceView = seated && ["prayer", "beads", "bow", "meditate"].includes(state.action);
+          const practiceView = seated && ["prayer", "beads", "meditate"].includes(state.action);
+          const firstPersonBow = seated && state.cameraMode === "first" && (state.action === "bow" || state.auto);
           const conversationView = Boolean(conversationPartner);
           const interactionView = Boolean(sceneAction && isTempleInteraction(sceneAction.kind));
           const ritualView = sceneAction?.kind === "ritual";
           const cinematicView = Boolean(martialView || fishView || practiceView || skyLanternView || conversationView || interactionView || incensePrayer || lampPrayer);
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
           if (cinematicView) { firstPerson = false; mapMode = false; }
+          if (firstPersonBow) firstPerson = false;
           if (conversationPartner) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationPartner.x - position.x, conversationPartner.z - position.z)) * Math.min(1, dt * 7);
           const schedulePose = lessonActive && state.action === "idle" ? seated ? "chantSit" : "chant" : state.action;
           const pose = abbotScene ? "salute" : walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction && isTempleInteraction(sceneAction.kind) ? TEMPLE_INTERACTIONS[sceneAction.kind].pose : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
@@ -1299,7 +1301,7 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Boolean(activeRoom);
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
-          const nextCameraMode = cinematicView ? "third" : state.cameraMode ?? "third";
+          const nextCameraMode = cinematicView || firstPersonBow ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode || ritualView !== ritualCameraActive;
           ritualCameraActive = ritualView;
           const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 34, 92) : mapMode || martialView ? 48 : 42;
@@ -1373,6 +1375,10 @@ export default function TempleWorld(props: WorldProps) {
               const lampZoom = clamp(zoomScale, 0.95, 1.35);
               const lampDistance = 32 * Math.max(1, 0.5 / camera.aspect) * lampZoom;
               cameraGoal.set(40, 8 * lampZoom, 28 + lampDistance);
+            } else if (firstPersonBow) {
+              const heading = actor.group.rotation.y;
+              const distance = 4.8 * zoomScale;
+              cameraGoal.set(position.x - Math.sin(heading) * distance, floorHeight + 2.4 * zoomScale, position.z - Math.cos(heading) * distance);
             } else if (activeRoom) {
               const indoorZoom = clamp(zoomScale, 0.65, 1.35);
               for (const turn of [0, Math.PI / 3, -Math.PI / 3, Math.PI * 2 / 3, -Math.PI * 2 / 3, Math.PI]) {
