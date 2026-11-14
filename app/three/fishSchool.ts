@@ -35,6 +35,66 @@ type Swimmer = {
   feedOriginZ: number;
 };
 
+/** A curved split fan, shared by the held fish and the instanced swimming fish. */
+export function createFishFinGeometry() {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const rings = 6;
+  const rays = 12;
+  for (let ring = 0; ring <= rings; ring++) for (let ray = 0; ray <= rays; ray++) {
+    const distance = ring / rings;
+    const across = ray / rays * 2 - 1;
+    positions.push(
+      across * Math.sin(distance * Math.PI / 2),
+      .06 * Math.sin(distance * Math.PI) * Math.sin(across * Math.PI * 2) + .07 * distance * distance * Math.sin(across * Math.PI * 3),
+      -distance * (.59 + .41 * Math.abs(across)),
+    );
+  }
+  for (let ring = 0; ring < rings; ring++) for (let ray = 0; ray < rays; ray++) {
+    const a = ring * (rays + 1) + ray;
+    const b = a + rays + 1;
+    indices.push(a, a + 1, b, a + 1, b + 1, b);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createBrocadeGeometry() {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  for (const [centerX, centerZ, width, length, shade] of [[-.2, .45, .49, .27, 1], [.14, -.3, .56, .31, 1], [.69, -.31, .2, .19, .19]]) {
+    const start = positions.length / 3;
+    function point(x: number, z: number) {
+      const y = Math.sqrt(Math.max(0, 1 - x * x - z * z));
+      const ridge = Math.exp(-(x * x / .025 + (z + .12) ** 2 / .2)) * y * .32;
+      positions.push(x * (1 - Math.max(0, z) * .12), y + ridge + .035, z);
+      colors.push(shade, shade, shade);
+    }
+    const rings = 4;
+    const rays = 16;
+    for (let ring = 0; ring <= rings; ring++) for (let ray = 0; ray <= rays; ray++) {
+      const angle = ray / rays * Math.PI * 2;
+      const edge = (1 + Math.sin(angle * 3) * .08) * ring / rings;
+      point(centerX + Math.cos(angle) * width * edge, centerZ + Math.sin(angle) * length * edge);
+    }
+    for (let ring = 0; ring < rings; ring++) for (let ray = 0; ray < rays; ray++) {
+      const a = start + ring * (rays + 1) + ray;
+      const b = a + rays + 1;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 /** Individually animated fish share five draw calls, including fins, markings and eyes. */
 export function createFishSchool(pond: FishPond) {
   const group = new THREE.Group();
@@ -45,13 +105,15 @@ export function createFishSchool(pond: FishPond) {
   const materials: THREE.Material[] = [];
   const batches: THREE.InstancedMesh[] = [];
   const material = (color: string) => {
-    const surface = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 });
+    const surface = new THREE.MeshStandardMaterial({ color, roughness: 0.48, metalness: 0.07, side: THREE.DoubleSide });
     materials.push(surface);
     return surface;
   };
   const skin = material("#ffffff");
+  skin.vertexColors = true;
   const eyesMaterial = material("#333b30");
   function batch(geometry: THREE.BufferGeometry, surface: THREE.Material, instances = capacity) {
+    if (surface === skin && !geometry.hasAttribute("color")) geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 3).fill(1), 3));
     geometries.push(geometry);
     const object = new THREE.InstancedMesh(geometry, surface, instances);
     object.count = 0;
@@ -63,10 +125,18 @@ export function createFishSchool(pond: FishPond) {
     group.add(object);
     return object;
   }
-  const bodies = batch(new THREE.SphereGeometry(1, 8, 5), skin);
-  const tails = batch(new THREE.ConeGeometry(1, 1, 3), skin);
-  const markings = batch(new THREE.SphereGeometry(1, 6, 4), skin);
-  const fins = batch(new THREE.ConeGeometry(1, 1, 3), skin, capacity * 2);
+  const bodyGeometry = new THREE.SphereGeometry(1, 12, 8);
+  const bodyVertices = bodyGeometry.getAttribute("position");
+  for (let index = 0; index < bodyVertices.count; index++) {
+    const x = bodyVertices.getX(index), y = bodyVertices.getY(index), z = bodyVertices.getZ(index);
+    const dorsalRidge = Math.exp(-(x * x / .025 + (z + .12) ** 2 / .2)) * Math.max(0, y) * .32;
+    bodyVertices.setXYZ(index, x * (1 - Math.max(0, z) * .12), y + dorsalRidge, z);
+  }
+  bodyGeometry.computeVertexNormals();
+  const bodies = batch(bodyGeometry, skin);
+  const tails = batch(createFishFinGeometry(), skin);
+  const markings = batch(createBrocadeGeometry(), skin);
+  const fins = batch(createFishFinGeometry(), skin, capacity * 2);
   const eyes = batch(new THREE.SphereGeometry(1, 4, 3), eyesMaterial, capacity * 2);
   bodies.name = "锦鲤鱼身";
   tails.name = "独立摆尾";
@@ -76,13 +146,13 @@ export function createFishSchool(pond: FishPond) {
   const transform = new THREE.Object3D();
   const color = new THREE.Color();
   const palettes = [
-    ["#dc8a48", "#fff0d3"],
-    ["#f5dfb0", "#ce6946"],
-    ["#c9593f", "#f7dfb5"],
-    ["#e9b956", "#aa653d"],
-    ["#6a7769", "#e6d0a6"],
-    ["#f2e9d4", "#4d6258"],
-    ["#c58854", "#ad4735"],
+    ["#f2e9d4", "#c6573c"],
+    ["#ede3ce", "#c97938"],
+    ["#f8e9cb", "#9e4736"],
+    ["#ddd5c4", "#5b6255"],
+    ["#ecd8aa", "#ad492f"],
+    ["#efe7d4", "#a24e33"],
+    ["#e5d9bd", "#c07045"],
   ];
   let sequence = 0;
   let totalReleased = 0;
@@ -98,7 +168,7 @@ export function createFishSchool(pond: FishPond) {
     return (seed >>> 0) / 0x100000000;
   }
   function setColors(index: number, species: FishSpecies) {
-    const palette = species === "fish" ? ["#8da99b", "#d2ddbf"] : species === "goldfish" ? ["#e6a04e", "#f0ca80"] : palettes[Math.floor(random() * palettes.length)];
+    const palette = species === "fish" ? ["#9bb5bc", "#63838c"] : species === "goldfish" ? ["#edaa3e", "#f6d075"] : palettes[Math.floor(random() * palettes.length)];
     color.set(palette[0]).multiplyScalar(0.9 + random() * 0.17);
     bodies.setColorAt(index, color);
     tails.setColorAt(index, color);
@@ -147,7 +217,7 @@ export function createFishSchool(pond: FishPond) {
   }
   for (let index = 0; index < pond.count; index++) addFish();
 
-  function place(object: THREE.InstancedMesh, index: number, fishState: Swimmer, dx: number, dy: number, dz: number, sx: number, sy: number, sz: number, turn = 0, tilt = 0) {
+  function place(object: THREE.InstancedMesh, index: number, fishState: Swimmer, dx: number, dy: number, dz: number, sx: number, sy: number, sz: number, turn = 0, tilt = 0, roll = 0) {
     const sine = Math.sin(fishState.heading), cosine = Math.cos(fishState.heading);
     const size = fishState.size;
     transform.position.set(
@@ -155,7 +225,7 @@ export function createFishSchool(pond: FishPond) {
       pond.waterY + dy * size,
       fishState.z + (-dx * sine + dz * cosine) * size,
     );
-    transform.rotation.set(tilt, fishState.heading + turn, 0, "YXZ");
+    transform.rotation.set(tilt, fishState.heading + turn, roll, "YXZ");
     transform.scale.set(sx * size, sy * size, sz * size);
     transform.updateMatrix();
     object.setMatrixAt(index, transform.matrix);
@@ -204,18 +274,20 @@ export function createFishSchool(pond: FishPond) {
         const difference = Math.atan2(Math.sin(direction - swimmer.heading), Math.cos(direction - swimmer.heading));
         swimmer.heading += difference * Math.min(1, dt * 5);
       }
-      const tailSwing = Math.sin(time * (5 + swimmer.speed * 12) + swimmer.phase) * 0.42;
       const small = swimmer.species === "fish";
       const goldfish = swimmer.species === "goldfish";
+      const tailSwing = Math.sin(time * (goldfish ? 4.2 : 5 + swimmer.speed * 12) + swimmer.phase) * (goldfish ? .24 : .38);
       const bob = Math.sin(time * 2.3 + swimmer.phase) * .008 + (goldfish ? .035 : 0);
-      const length = small ? .68 : 1;
-      place(bodies, index, swimmer, 0, bob, 0, goldfish ? .125 : .1 * length, goldfish ? .075 : .045 * length, goldfish ? .17 : .235 * length);
-      place(tails, index, swimmer, Math.sin(tailSwing) * .04 * length, bob, goldfish ? -.23 : -.28 * length, goldfish ? .18 : .115 * length, goldfish ? .22 : .19 * length, .055 * length, tailSwing, -Math.PI / 2);
-      place(markings, index, swimmer, .005, (goldfish ? .056 : .032 * length) + bob, -.045 * length, .077 * length, .019 * length, .105 * length);
+      const length = small ? .66 : 1;
+      place(bodies, index, swimmer, 0, bob, 0, goldfish ? .127 : small ? .053 : .088, goldfish ? .061 : small ? .022 : .031, goldfish ? .145 : .25 * length);
+      // River fish carry a short vertical fork. Koi have a longer folded fan,
+      // while the goldfish opens a broad, rippled butterfly tail across the water.
+      place(tails, index, swimmer, Math.sin(tailSwing) * .025, bob, goldfish ? -.11 : -.2 * length, goldfish ? .17 : .094 * length, goldfish ? .06 : .026, goldfish ? .22 : .16 * length, tailSwing, goldfish ? .12 + tailSwing * .3 : 0, goldfish ? .1 : small ? .4 : .18);
+      place(markings, index, swimmer, 0, bob, 0, small ? 0 : goldfish ? .127 : .088, small ? 0 : goldfish ? .061 : .031, small ? 0 : goldfish ? .145 : .25);
       for (const side of [-1, 1]) {
         const pairIndex = index * 2 + (side + 1) / 2;
-        place(fins, pairIndex, swimmer, side * (goldfish ? .13 : .105 * length), bob, .005, .07 * length, .11 * length, .018, side * (.9 + tailSwing * .2), Math.PI / 2);
-        place(eyes, pairIndex, swimmer, side * (goldfish ? .075 : .053 * length), (goldfish ? .052 : .032 * length) + bob, goldfish ? .115 : .16 * length, .015 * length, .016 * length, .018 * length);
+        place(fins, pairIndex, swimmer, side * (goldfish ? .098 : .078 * length), bob - .008, goldfish ? .05 : .065 * length, goldfish ? .068 : .05 * length, .028, goldfish ? .17 : .105 * length, side * (-.7 + tailSwing * .2), goldfish ? .3 : .08, side * (.13 + Math.sin(time * 3.6 + swimmer.phase) * .1));
+        place(eyes, pairIndex, swimmer, side * (goldfish ? .085 : .054 * length), (goldfish ? .053 : .028 * length) + bob, goldfish ? .095 : .18 * length, goldfish ? .02 : .013 * length, goldfish ? .022 : .014 * length, .016 * length);
       }
     }
     batches.forEach(object => { object.instanceMatrix.needsUpdate = true; });

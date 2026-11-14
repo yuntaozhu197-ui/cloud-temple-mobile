@@ -12,6 +12,7 @@ import { createTempleAuth } from "./temple-auth.mjs";
 import { createTempleLamps } from "./temple-lamps.mjs";
 import { createTempleLanterns } from "./temple-lanterns.mjs";
 import { createPondGame } from "./pond-game.mjs";
+import { createAbbotQuest } from "./abbot-quest.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
 const SESSION_AGE_MS = 45_000;
@@ -337,6 +338,7 @@ export function createTempleServer({
   const lamps = createTempleLamps(database, { trialMode });
   const lanterns = createTempleLanterns(database);
   const pond = createPondGame(database, { trialMode });
+  const abbot = createAbbotQuest(database, { trialMode });
   const auth = createTempleAuth(database, { now });
   const queries = {
     register: database.prepare("INSERT OR IGNORE INTO community_users (id, name, created_at) VALUES (?, ?, ?)"),
@@ -653,7 +655,7 @@ export function createTempleServer({
         sendJson(response, result.body, result.status, { cookie: result.cookies });
         return;
       }
-      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond"].includes(pathname);
+      const requiresAuth = ["/api/room", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond", "/api/abbot"].includes(pathname);
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
@@ -669,8 +671,8 @@ export function createTempleServer({
         await handleRoom(request, response, identity);
         return;
       }
-      if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns" || pathname === "/api/pond") {
-        const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : pathname === "/api/pond" ? pond : life;
+      if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns" || pathname === "/api/pond" || pathname === "/api/abbot") {
+        const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : pathname === "/api/pond" ? pond : pathname === "/api/abbot" ? abbot : life;
         if (!["GET", "POST"].includes(request.method)) {
           response.setHeader("Allow", "GET, POST");
           sendJson(response, { error: "method_not_allowed" }, 405, identity);

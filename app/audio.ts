@@ -18,10 +18,40 @@ export type TempleAudio = {
 
 type Mode = { frequency: number; amplitude: number; decay: number };
 type Voice = { source: AudioBufferSourceNode; gain: GainNode; sound: TempleSound };
-type AmbienceVoice = { source: AudioBufferSourceNode; gain: GainNode; endAt?: number };
+type AmbienceVoice = { source: AudioBufferSourceNode; gain: GainNode; nodes: AudioNode[]; endAt?: number };
 type SynthSound = Exclude<TempleSound, "wood" | "release" | "pagoda">;
 type AudioChannel = "game" | "temple";
 const MASTER_GAIN = 1.1;
+const CHANT_PLAYBACK_RATE = 0.91;
+
+/** A diffuse, dark room tail softens syllables without adding another spoken voice. */
+function createChantRoomBuffer(audioContext: AudioContext) {
+  const sampleRate = audioContext.sampleRate;
+  const duration = 2.8;
+  const buffer = audioContext.createBuffer(2, Math.ceil(sampleRate * duration), sampleRate);
+  const onset = .028;
+  const damping = 1 - Math.exp(-2 * Math.PI * 1100 / sampleRate);
+  for (let channel = 0; channel < 2; channel++) {
+    const samples = buffer.getChannelData(channel);
+    let random = 1709 + channel * 7919;
+    let softened = 0;
+    for (let index = Math.ceil(onset * sampleRate); index < samples.length; index++) {
+      random = (Math.imul(random, 1664525) + 1013904223) >>> 0;
+      softened += (random / 2147483648 - 1 - softened) * damping;
+      const time = index / sampleRate - onset;
+      const attack = 1 - Math.exp(-time / .045);
+      const decay = Math.exp(-time / .48);
+      const release = Math.min(1, (samples.length - index - 1) / (sampleRate * .15));
+      samples[index] = softened * attack * decay * release;
+    }
+    for (const [delay, level] of [[.047, .32], [.073, .23], [.113, .15]]) {
+      const index = Math.round((delay + channel * .007) * sampleRate);
+      samples[index] += level;
+    }
+    samples[samples.length - 1] = 0;
+  }
+  return buffer;
+}
 
 const soundProfiles: Record<SynthSound, { duration: number; peak: number; cutoff: number; room: number; fadeOut?: number }> = {
   prayer: { duration: 2.8, peak: 0.29, cutoff: 3200, room: 0.7 },
@@ -303,6 +333,7 @@ export function createTempleAudio(): TempleAudio {
   const ambienceLoads = new Map<TempleAmbienceRequest["kind"], Promise<AudioBuffer | null>>();
   const ambienceAborts = new Set<AbortController>();
   const ambienceVoices = new Set<AmbienceVoice>();
+  let chantRoomBuffer: AudioBuffer | null = null;
   let ambienceVoice: AmbienceVoice | null = null;
   let ambienceRequest: TempleAmbienceRequest | null = null;
   let ambienceGeneration = 0;
@@ -459,21 +490,58 @@ export function createTempleAudio(): TempleAudio {
       const gain = audioContext.createGain();
       source.buffer = buffer;
       source.loop = true;
+      // A small pitch reduction retains a human cadence while giving the male voice more body.
+      source.playbackRate.value = CHANT_PLAYBACK_RATE;
+      const highPass = audioContext.createBiquadFilter();
+      highPass.type = "highpass";
+      highPass.frequency.value = 72;
+      highPass.Q.value = .6;
+      const warmth = audioContext.createBiquadFilter();
+      warmth.type = "lowshelf";
+      warmth.frequency.value = 230;
+      warmth.gain.value = 1.2;
+      const softness = audioContext.createBiquadFilter();
+      softness.type = "lowpass";
+      softness.frequency.value = request.kind === "lesson" ? 1450 : 1300;
+      softness.Q.value = .45;
+      const room = audioContext.createConvolver();
+      chantRoomBuffer ??= createChantRoomBuffer(audioContext);
+      room.buffer = chantRoomBuffer;
+      const direct = audioContext.createGain();
+      direct.gain.value = .6;
+      const reverberant = audioContext.createGain();
+      reverberant.gain.value = request.kind === "lesson" ? .46 : .52;
+      source.connect(highPass);
+      highPass.connect(warmth);
+      warmth.connect(softness);
+      softness.connect(direct);
+      softness.connect(room);
+      room.connect(reverberant);
+      direct.connect(gain);
+      reverberant.connect(gain);
+      const startsAt = audioContext.currentTime + Math.min(.2, remaining / 2);
       gain.gain.value = 0;
-      gain.gain.setTargetAtTime(request.kind === "lesson" ? 0.8 : 0.24, audioContext.currentTime, 0.22);
-      source.connect(gain);
+      gain.gain.setTargetAtTime(request.kind === "lesson" ? 0.8 : 0.24, startsAt, 0.22);
       gain.connect(outputs.temple);
-      const voice: AmbienceVoice = { source, gain, endAt: request.kind === "lesson" ? audioContext.currentTime + remaining : undefined };
+      const voice: AmbienceVoice = {
+        source, gain,
+        nodes: [source, highPass, warmth, softness, room, direct, reverberant, gain],
+        endAt: request.kind === "lesson" ? audioContext.currentTime + remaining : undefined,
+      };
       ambienceVoice = voice;
       ambienceVoices.add(voice);
       source.onended = () => {
         ambienceVoices.delete(voice);
         if (ambienceVoice === voice) ambienceVoice = null;
-        source.disconnect();
-        gain.disconnect();
+        voice.nodes.forEach(node => node.disconnect());
       };
-      source.start(audioContext.currentTime + 0.2, (elapsed + 0.2) % buffer.duration);
-      if (voice.endAt !== undefined) source.stop(voice.endAt);
+      source.start(startsAt, ((elapsed + startsAt - audioContext.currentTime) * CHANT_PLAYBACK_RATE) % buffer.duration);
+      if (voice.endAt !== undefined) {
+        // The shared gain also silences the room tail at the scheduled five-minute boundary.
+        gain.gain.setTargetAtTime(0, Math.max(startsAt, voice.endAt - .18), .025);
+        gain.gain.setValueAtTime(0, voice.endAt);
+        source.stop(voice.endAt);
+      }
       return true;
     })().catch(() => false).finally(() => {
       if (ambiencePending === pending) ambiencePending = null;
@@ -620,11 +688,11 @@ export function createTempleAudio(): TempleAudio {
     ambienceVoices.forEach(voice => {
       voice.source.onended = null;
       voice.source.stop();
-      voice.source.disconnect();
-      voice.gain.disconnect();
+      voice.nodes.forEach(node => node.disconnect());
     });
     ambienceVoices.clear();
     ambienceBuffers.clear();
+    chantRoomBuffer = null;
     ambienceVoice = null;
     woodAbort?.abort();
     voices.forEach(voice => {

@@ -17,6 +17,8 @@ import TempleAmbience from "./TempleAmbience";
 import TempleLanterns from "./TempleLanterns";
 import TempleResidents from "./TempleResidents";
 import TemplePond from "./TemplePond";
+import TempleAbbot from "./TempleAbbot";
+import { useAbbotQuest } from "./useAbbotQuest";
 import { getPondSpecies, type PondSpecies } from "./pondGame";
 import type { NpcResidentId } from "./npcResidents";
 import TempleSoundSettings from "./TempleSoundSettings";
@@ -53,6 +55,12 @@ export default function Home() {
  return account ? <TempleGame account={account} onSignedOut={signedOut} /> : <AccountGate onAuthenticated={setAccount} />;
 }
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
+ const abbotQuest = useAbbotQuest(account.id);
+ const [abbotNearby, setAbbotNearby] = useState(false);
+ const [abbotTalking, setAbbotTalking] = useState(false);
+ const [abbotNavigatePulse, setAbbotNavigatePulse] = useState(0);
+ const [abbotCinematic, setAbbotCinematic] = useState<{ id: number; kind: "greeting" | "blessing" } | null>(null);
+ const abbotCinematicId = useRef(0);
  const [incensePulse, setIncensePulse] = useState(0);
  const [incenseShrine, setIncenseShrine] = useState<ShrineId>("rulai");
  const [lampOpen, setLampOpen] = useState(false);
@@ -309,10 +317,31 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
    tone(sounds[kind]);
   }
   if (stage === "complete") {
+   if (kind === "flower") void abbotQuest.record("flower");
    if (kind === "mural" || kind === "sutra" || kind === "breathe") setModal(kind);
    const messages: Partial<Record<TempleInteractionKind, string>> = { flower: "鲜花已敬放在香案前。", ritual: "合掌礼敬，一念安宁。", drum: "鼓声沉稳，余音慢慢散入山间。", towerBell: "铜钟已响，余韵悠长。", bell: "钟声已响，让这一念慢慢安定。", lamp: "莲灯已点亮。", pagoda: "礼塔圆满，留一念清宁。" };
    if (messages[kind]) notify(messages[kind]!);
   }
+ };
+ const navigateToAbbot = () => {
+  if (!abbotQuest.snapshot?.encounter.active) return;
+  if (autoRef.current) stopAuto();
+  if (meditatingRef.current) finishMeditation();
+  setMenuOpen(false);
+  setCameraMode("third");
+  setAbbotNavigatePulse(value => value + 1);
+  notify(`正沿小路前往${abbotQuest.snapshot.encounter.location.name}，寻找云隐住持。`);
+ };
+ const startAbbotCinematic = (kind: "greeting" | "blessing") => {
+  unlockAudio();
+  setAbbotTalking(false);
+  setTalkingNpcId(null);
+  if (actionTimer.current) clearTimeout(actionTimer.current);
+  setAction("idle");
+  void sync({ action: "idle" });
+  setCameraMode("third");
+  setAbbotCinematic({ id: ++abbotCinematicId.current, kind });
+  tone(kind === "blessing" ? "lamp" : "prayer");
  };
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
@@ -332,6 +361,13 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       onPondReleaseResult={setPondResult}
       talkingNpcId={talkingNpcId}
       onNpcEncounter={setResidentId}
+      abbot={abbotQuest.snapshot}
+      abbotTalking={abbotTalking}
+      abbotNavigatePulse={abbotNavigatePulse}
+      abbotCinematic={abbotCinematic}
+      onAbbotNearbyChange={setAbbotNearby}
+      onAbbotCinematicEnd={() => setAbbotCinematic(null)}
+      onPrayerComplete={() => void abbotQuest.record("prayer")}
       onInteractionStage={interactionStage}
       action={action}
       actionPulse={pulse}
@@ -426,7 +462,11 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
-   <TempleResidents residentId={menuOpen ? null : residentId} onConversationChange={setTalkingNpcId} />
+   <TempleResidents residentId={menuOpen || abbotNearby || abbotTalking || abbotCinematic ? null : residentId} onConversationChange={setTalkingNpcId} />
+   <TempleAbbot snapshot={abbotQuest.snapshot} nearby={abbotNearby && !auto && !meditating} cinematic={abbotCinematic?.kind ?? null}
+    onConversationChange={setAbbotTalking} onNavigate={navigateToAbbot}
+    onAccept={() => abbotQuest.act("accept")} onComplete={() => abbotQuest.act("complete")}
+    onCinematic={startAbbotCinematic} onSkipCinematic={() => setAbbotCinematic(null)} error={abbotQuest.error} />
    <TemplePond selfId={account.id} open={pondOpen} onClose={() => setPondOpen(false)} result={pondResult} onNotice={notify} onRelease={(species, requestId) => {
     unlockAudio();
     if (autoRef.current) stopAuto();

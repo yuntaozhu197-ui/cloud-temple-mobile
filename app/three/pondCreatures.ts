@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { PondSpecies } from "../pondGame";
+import { createFishFinGeometry } from "./fishSchool";
 
 type Shape = "round" | "cone" | "stem";
 type PondAnimal = "turtle" | "frog" | "butterfly";
@@ -10,20 +11,25 @@ function creatureResources(detail: number) {
     round: new THREE.SphereGeometry(1, detail, Math.max(5, Math.round(detail * .65))),
     cone: new THREE.ConeGeometry(1, 1, 6),
     stem: new THREE.CylinderGeometry(1, 1, 1, 6),
+    fin: createFishFinGeometry(),
   };
   const materials = new Map<string, THREE.MeshStandardMaterial>();
+  const extraGeometries = new Set<THREE.BufferGeometry>();
   return {
     geometries,
-    surface(color: string) {
-      let surface = materials.get(color);
+    keepGeometry(geometry: THREE.BufferGeometry) { extraGeometries.add(geometry); return geometry; },
+    surface(color: string, roughness = .76, metalness = 0, doubleSided = false) {
+      const key = `${color}:${roughness}:${metalness}:${doubleSided}`;
+      let surface = materials.get(key);
       if (!surface) {
-        surface = new THREE.MeshStandardMaterial({ color, roughness: .76 });
-        materials.set(color, surface);
+        surface = new THREE.MeshStandardMaterial({ color, roughness, metalness, side: doubleSided ? THREE.DoubleSide : THREE.FrontSide });
+        materials.set(key, surface);
       }
       return surface;
     },
     dispose() {
       Object.values(geometries).forEach(geometry => geometry.dispose());
+      extraGeometries.forEach(geometry => geometry.dispose());
       materials.forEach(material => material.dispose());
     },
   };
@@ -34,7 +40,8 @@ function creatureModel(species: PondSpecies, resources: Resources) {
   group.name = `放生生物 · ${species}`;
   const limbs: THREE.Group[] = [];
   const wings: THREE.Group[] = [];
-  let tail: THREE.Mesh | undefined;
+  let tail: THREE.Group | undefined;
+  const fishFins: { object: THREE.Object3D; rest: number; phase: number }[] = [];
   function part(shape: Shape, color: string, position: number[], size: number[], parent: THREE.Object3D = group) {
     const object = new THREE.Mesh(resources.geometries[shape], resources.surface(color));
     object.position.set(position[0], position[1], position[2]);
@@ -103,13 +110,94 @@ function creatureModel(species: PondSpecies, resources: Resources) {
   } else {
     const goldfish = species === "goldfish";
     const koi = species === "koi";
-    const body = goldfish ? "#e7a253" : koi ? "#efe0bd" : "#95afa1";
-    part("round", body, [0, .031, 0], [goldfish ? .047 : .034, goldfish ? .036 : .023, koi ? .104 : .086]);
-    tail = part("cone", goldfish ? "#df8750" : koi ? "#cc7753" : "#79998b", [0, .03, -.108], [goldfish ? .085 : .038, .065, .014]);
-    tail.rotation.x = -Math.PI / 2;
-    if (koi) for (const z of [-.045, .035]) part("round", "#cd7956", [.005, .05, z], [.027, .009, .025]);
-    for (const side of [-1, 1]) part("round", body, [side * .036, .022, -.015], [.022, .006, .028]).rotation.y = side * .55;
-    eyes(goldfish ? .032 : .022, .043, .062, .006);
+    const bodyColor = goldfish ? "#e99d35" : koi ? "#eee6d3" : "#a0b8b8";
+    const bodyY = goldfish ? .038 : .029;
+    const bodyWidth = goldfish ? .046 : koi ? .032 : .023;
+    const bodyHeight = goldfish ? .035 : koi ? .025 : .017;
+    const bodyLength = goldfish ? .06 : koi ? .094 : .072;
+    const body = part("round", bodyColor, [0, bodyY, 0], [bodyWidth, bodyHeight, bodyLength]);
+    body.name = goldfish ? "金鱼 · 圆润珍珠身" : koi ? "锦鲤 · 修长锦缎身" : "小鱼 · 银色流线身";
+    body.material = resources.surface(bodyColor, goldfish ? .37 : koi ? .43 : .5, goldfish ? .12 : .05);
+    part("round", goldfish ? "#f7cf78" : koi ? "#faf0d8" : "#dce5dd", [0, bodyY - bodyHeight * .45, .01], [bodyWidth * .83, bodyHeight * .64, bodyLength * .82]);
+
+    function brocadePatch(angle: number, z: number, spread: number, length: number, color: string) {
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const offset = color === "#4b5149" ? .0011 : .0005;
+      function point(theta: number, depth: number) {
+        const radius = Math.sqrt(Math.max(0, 1 - (depth / bodyLength) ** 2));
+        vertices.push(Math.sin(theta) * (bodyWidth + offset) * radius, bodyY + Math.cos(theta) * (bodyHeight + offset + .0001) * radius, depth);
+      }
+      const rings = 5;
+      const rays = 20;
+      for (let ring = 0; ring <= rings; ring++) for (let ray = 0; ray <= rays; ray++) {
+        const phase = ray / rays * Math.PI * 2;
+        const irregular = (1 + Math.sin(phase * 3) * .09 + Math.cos(phase * 5) * .06) * ring / rings;
+        point(angle + Math.cos(phase) * spread * irregular, z + Math.sin(phase) * length * irregular);
+      }
+      for (let ring = 0; ring < rings; ring++) for (let ray = 0; ray < rays; ray++) {
+        const a = ring * (rays + 1) + ray;
+        const b = a + rays + 1;
+        indices.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      group.add(new THREE.Mesh(resources.keepGeometry(geometry), resources.surface(color, .45, .04, true)));
+    }
+
+    function fin(parent: THREE.Object3D, color: string, position: number[], size: number[], rotation: number[]) {
+      const object = new THREE.Mesh(resources.geometries.fin, resources.surface(color, .48, .03, true));
+      object.position.set(position[0], position[1], position[2]);
+      object.scale.set(size[0], size[1], size[2]);
+      object.rotation.set(rotation[0], rotation[1], rotation[2], "YXZ");
+      parent.add(object);
+      return object;
+    }
+    tail = new THREE.Group();
+    tail.name = goldfish ? "金鱼 · 蝶形双飘尾" : koi ? "锦鲤 · 舒展燕尾" : "小鱼 · 短叉尾";
+    tail.position.set(0, bodyY, -bodyLength * .78);
+    group.add(tail);
+    if (goldfish) {
+      for (const side of [-1, 1]) {
+        fin(tail, side < 0 ? "#e9a148" : "#f0ba63", [side * .008, .004, 0], [.044, .035, .075], [side * .11, side * -.25, side * .2]);
+      }
+    } else {
+      fin(tail, koi ? "#d9d5c0" : "#819da1", [0, 0, 0], [koi ? .031 : .024, .022, koi ? .047 : .038], [0, 0, Math.PI / 2]);
+      if (koi) fin(tail, "#cb6947", [0, 0, -.025], [.023, .012, .019], [0, 0, Math.PI / 2]);
+    }
+    for (const side of [-1, 1]) {
+      const pectoral = fin(group, goldfish ? "#f1bc62" : koi ? "#e8dcc2" : "#b8c9c3", [side * bodyWidth * .78, bodyY - .007, bodyLength * .23], [goldfish ? .026 : koi ? .021 : .011, .015, goldfish ? .062 : koi ? .039 : .025], [0, side * -.56, side * -.17]);
+      fishFins.push({ object: pectoral, rest: side * -.17, phase: side });
+      if (goldfish) fin(group, "#e9ae50", [side * .022, .018, -.025], [.018, .015, .052], [0, side * -.25, side * -.2]);
+    }
+    const dorsal = fin(group, goldfish ? "#f3bc5f" : koi ? "#dacfad" : "#8da8ab", [0, bodyY + bodyHeight * .76, bodyLength * .2], [goldfish ? .026 : koi ? .018 : .009, .012, goldfish ? .066 : koi ? .06 : .037], [0, 0, Math.PI / 2]);
+    dorsal.name = "挺立背鳍";
+
+    if (koi) {
+      brocadePatch(-.28, .039, .82, .023, "#c85d3e");
+      brocadePatch(.18, -.027, .98, .026, "#ce6842");
+      brocadePatch(1.04, -.047, .46, .016, "#4b5149");
+      brocadePatch(-1.12, .005, .38, .015, "#bd563c");
+      for (const side of [-1, 1]) {
+        const barbel = part("stem", "#d8c493", [side * .015, .023, .092], [.0015, .021, .0015]);
+        barbel.rotation.set(Math.PI / 2, 0, side * -.42);
+      }
+    } else if (goldfish) {
+      brocadePatch(-.15, .025, .89, .025, "#df7629");
+      for (const side of [-1, 1]) {
+        part("round", "#f6c760", [side * .029, .046, .045], [.016, .018, .016]);
+      }
+    } else {
+      for (const side of [-1, 1]) part("round", "#647f85", [side * .021, .03, -.005], [.0025, .003, .055]);
+    }
+    const eyeX = goldfish ? .044 : koi ? .024 : .017;
+    const eyeZ = goldfish ? .05 : koi ? .066 : .052;
+    const eyeY = goldfish ? .05 : koi ? .036 : .033;
+    for (const side of [-1, 1]) part("round", goldfish ? "#f8d274" : "#dde3cd", [side * eyeX, eyeY, eyeZ], [goldfish ? .009 : .0065, goldfish ? .01 : .0065, .008]);
+    eyes(eyeX + .003, eyeY + .001, eyeZ + .007, goldfish ? .0065 : .0045);
+    part("round", goldfish ? "#ce762f" : koi ? "#ccb79b" : "#899f9d", [0, bodyY - .003, bodyLength * .99], [goldfish ? .012 : .007, goldfish ? .006 : .0035, .003]);
   }
   return {
     group,
@@ -120,7 +208,8 @@ function creatureModel(species: PondSpecies, resources: Resources) {
         limb.rotation.x = species === "frog" ? stroke * .2 : 0;
       });
       wings.forEach((wing, index) => { wing.rotation.z = (index === 0 ? -1 : 1) * (.22 + (Math.sin(time * 13) + 1) * .5); });
-      if (tail) tail.rotation.y = Math.sin(time * 8) * .17;
+      if (tail) tail.rotation.y = Math.sin(time * (species === "goldfish" ? 5 : species === "koi" ? 6.5 : 8)) * .18;
+      fishFins.forEach(({ object, rest, phase }) => { object.rotation.z = rest + Math.sin(time * 4 + phase) * .13; });
     },
   };
 }

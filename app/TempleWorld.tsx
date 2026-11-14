@@ -9,6 +9,7 @@ import type { NpcResidentId } from "./npcResidents";
 import { findNpcEncounter } from "./npcEncounters";
 import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
 import type { PondSpecies } from "./pondGame";
+import type { AbbotSnapshot } from "./abbotQuest";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -64,6 +65,13 @@ type WorldProps = {
   talkingNpcId?: NpcResidentId | null;
   onNpcEncounter?: (id: NpcResidentId | null) => void;
   onInteractionStage?: (kind: TempleInteractionKind, stage: "begin" | "impact" | "complete") => void;
+  abbot?: AbbotSnapshot | null;
+  abbotTalking?: boolean;
+  abbotNavigatePulse?: number;
+  abbotCinematic?: { id: number; kind: "greeting" | "blessing" } | null;
+  onAbbotNearbyChange?: (nearby: boolean) => void;
+  onAbbotCinematicEnd?: () => void;
+  onPrayerComplete?: () => void;
 };
 
 type MonkInstance = {
@@ -107,15 +115,18 @@ export default function TempleWorld(props: WorldProps) {
     setReady(false);
     setError(false);
     latest.current.onSeatedChange?.(false);
+    latest.current.onAbbotNearbyChange?.(false);
     latest.current.onContextChange?.({ nearCushion: false, nearAltar: false, nearFlowers: false, nearRitual: false });
 
     void (async () => {
       try {
-        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }] = await Promise.all([
+        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot, createAbbotReward }, { createCinematicCamera }] = await Promise.all([
           import("three"),
           import("./three/monk"),
           import("./three/environment"),
           import("./three/incense"),
+          import("./three/mysteriousAbbot"),
+          import("./three/cinematicCamera"),
         ]);
         const host = hostRef.current;
         const labels = labelsRef.current;
@@ -170,6 +181,8 @@ export default function TempleWorld(props: WorldProps) {
 
         let environment: ReturnType<typeof createTempleEnvironment> | undefined;
         let local: MonkInstance | undefined;
+        let abbot: ReturnType<typeof createMysteriousAbbot> | undefined;
+        let abbotReward: ReturnType<typeof createAbbotReward> | undefined;
         const offerings = new Map<ShrineId, ReturnType<typeof createIncenseOffering>>();
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
@@ -183,6 +196,13 @@ export default function TempleWorld(props: WorldProps) {
         selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:8px;background:rgba(244,234,213,.94);border:1px solid #b4925b66;color:#263f39;font:600 12px/16px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px #263f391f;will-change:transform";
         selfLabel.textContent = "● 你的小和尚";
         labels.appendChild(selfLabel);
+        const abbotLabel = document.createElement("div");
+        abbotLabel.style.cssText = selfLabel.style.cssText;
+        abbotLabel.style.background = "rgba(244,234,213,.97)";
+        abbotLabel.style.color = "#79532f";
+        abbotLabel.textContent = "云隐住持 · 奇遇";
+        abbotLabel.style.display = "none";
+        labels.appendChild(abbotLabel);
 
         disposeWorld = () => {
           cancelAnimationFrame(frame);
@@ -191,6 +211,8 @@ export default function TempleWorld(props: WorldProps) {
           cleanupListeners.forEach(remove => remove());
           remote.forEach(({ monk, label }) => { monk.dispose(); label.remove(); });
           local?.dispose();
+          abbot?.dispose();
+          abbotReward?.dispose();
           offerings.forEach(offering => offering.dispose());
           environment?.dispose();
           ownedGeometries.forEach(geometry => geometry.dispose());
@@ -201,18 +223,28 @@ export default function TempleWorld(props: WorldProps) {
           renderer.forceContextLoss();
           renderer.domElement.remove();
           selfLabel.remove();
+          abbotLabel.remove();
           hotspotButtons.forEach(button => button.remove());
           joystick.current = { x: 0, y: 0 };
           travel.current = () => {};
+          latest.current.onAbbotNearbyChange?.(false);
         };
 
         environment = createTempleEnvironment(scene);
+        abbot = createMysteriousAbbot();
+        abbot.group.visible = false;
+        scene.add(abbot.group);
+        abbotReward = createAbbotReward();
+        abbotReward.group.visible = false;
+        scene.add(abbotReward.group);
         local = createMonk(0xcc9365);
         scene.add(local.group);
         local.group.position.set(0, 0, 9);
         local.group.rotation.y = 0;
         const actor = local;
         const world = environment;
+        const master = abbot;
+        const rewardLantern = abbotReward;
         const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #b4925b99;border-radius:12px;background:rgba(244,234,213,.97);color:#284e4c;font:600 14px/20px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px #263f392e;pointer-events:auto;touch-action:manipulation;will-change:transform";
         const interactivePoints = world.interactions.map(point => {
           const button = document.createElement("button");
@@ -301,6 +333,13 @@ export default function TempleWorld(props: WorldProps) {
             if (bounds.min.z < -2 && bounds.max.z > -22 && bounds.max.x - bounds.min.x > 24 && Math.abs(bounds.min.x + bounds.max.x) < 1) hallRoofs.add(object);
           }
         });
+        const cinematicCamera = createCinematicCamera([world.ground.parent!], new Set(roofSurfaces));
+        cleanupListeners.push(() => cinematicCamera.dispose());
+        const cinematicGoal = new T.Vector3();
+        const cinematicFocus = [new T.Vector3(), new T.Vector3(), new T.Vector3(), new T.Vector3()];
+        let lastCinematicCheck = -Infinity;
+        let lastCinematicKey = "";
+        let cinematicAvoidedObstacle = false;
         setPlaces([...world.landmarks, { name: "回到庭院", x: 0, z: 7 }]);
 
         const ringGeometry = new T.RingGeometry(0.51, 0.58, 32);
@@ -353,6 +392,14 @@ export default function TempleWorld(props: WorldProps) {
         let actionPulse = latest.current.actionPulse;
         let localAction = latest.current.action;
         let actionStart = 0;
+        let prayerPending = false;
+        let abbotNearby = false;
+        let abbotWasTalking = false;
+        let abbotNavigatePulse = latest.current.abbotNavigatePulse ?? 0;
+        let abbotCinematicId = -1;
+        let abbotScene: { kind: "greeting" | "blessing"; start: number; duration: number; x: number; z: number } | null = null;
+        let abbotSnapshot: AbbotSnapshot | null | undefined;
+        let abbotClockOffset = 0;
         let incensePulse = latest.current.incensePulse ?? 0;
         let incenseTarget: ShrineId = "rulai";
         let lampPulse = latest.current.lampPulse ?? 0;
@@ -515,7 +562,7 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function walkTo(x: number, z: number) {
-          if (latest.current.auto || latest.current.meditating) return;
+          if (latest.current.auto || latest.current.meditating || abbotScene) return;
           cancelMartial();
           cancelFish();
           cancelSkyLantern();
@@ -824,6 +871,48 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          if (state.abbot !== abbotSnapshot) {
+            abbotSnapshot = state.abbot;
+            abbotClockOffset = (state.abbot?.now ?? Date.now()) - Date.now();
+          }
+          const encounter = state.abbot?.encounter;
+          const abbotPresent = Boolean(encounter?.active && Date.now() + abbotClockOffset < encounter.leavesAt);
+          if (abbotScene && (!state.abbotCinematic || lessonActive)) {
+            abbotScene = null;
+            state.onAbbotCinematicEnd?.();
+          }
+          if (state.abbotCinematic && state.abbotCinematic.id !== abbotCinematicId) {
+            abbotCinematicId = state.abbotCinematic.id;
+            if (abbotPresent && encounter && !lessonActive && !state.auto && !state.meditating && Math.hypot(position.x - encounter.location.x, position.z - encounter.location.z) <= 3.5) {
+              cancelMartial(); cancelFish(); cancelSkyLantern(); cancelInteraction();
+              approachingIncense = false; incensePrayerUntil = 0;
+              approachingLamp = false; lampPrayerUntil = 0;
+              leaveSeat();
+              route = [];
+              destination.visible = false;
+              keys.clear();
+              joystick.current = { x: 0, y: 0 };
+              setKnob({ x: 0, y: 0 });
+              abbotScene = { kind: state.abbotCinematic.kind, start: time, duration: state.abbotCinematic.kind === "blessing" ? 11 : 7, ...encounter.location };
+            } else state.onAbbotCinematicEnd?.();
+          }
+          if (abbotScene && time - abbotScene.start >= abbotScene.duration) {
+            abbotScene = null;
+            state.onAbbotCinematicEnd?.();
+          }
+          master.group.visible = abbotPresent || Boolean(abbotScene);
+          const abbotLocation = abbotScene ?? encounter?.location;
+          if (master.group.visible && abbotLocation) {
+            master.group.position.set(abbotLocation.x, world.floorHeightAt(abbotLocation.x, abbotLocation.z), abbotLocation.z);
+            const facingPlayer = state.abbotTalking || Boolean(abbotScene) || abbotNearby;
+            const heading = facingPlayer ? Math.atan2(position.x - abbotLocation.x, position.z - abbotLocation.z) : Math.PI * .15;
+            master.group.rotation.y += angleDelta(master.group.rotation.y, heading) * Math.min(1, dt * 4);
+            master.animate(time, lessonActive ? "chant" : abbotScene?.kind ?? "idle", abbotScene ? clamp((time - abbotScene.start) / abbotScene.duration, 0, 1) : 0);
+          }
+          if ((state.abbotNavigatePulse ?? 0) !== abbotNavigatePulse) {
+            abbotNavigatePulse = state.abbotNavigatePulse ?? 0;
+            if (abbotPresent && encounter) travel.current({ name: "云隐住持", x: encounter.location.x, z: encounter.location.z + 2.1 });
+          }
           if (state.pondRelease && state.pondRelease.requestId !== pondRequestId) {
             pondRequestId = state.pondRelease.requestId;
             if (state.auto || state.meditating) state.onPondReleaseResult?.({ ...state.pondRelease, stage: "cancelled" });
@@ -840,6 +929,16 @@ export default function TempleWorld(props: WorldProps) {
             }
           }
           const conversationResident = lessonActive ? undefined : world.residents.find(resident => resident.id === state.talkingNpcId);
+          const abbotConversation = master.group.visible && (Boolean(abbotScene) || (state.abbotTalking && Math.hypot(position.x - master.group.position.x, position.z - master.group.position.z) <= 3.5));
+          if (abbotConversation && !abbotWasTalking) {
+            route = [];
+            destination.visible = false;
+            keys.clear();
+            joystick.current = { x: 0, y: 0 };
+            setKnob({ x: 0, y: 0 });
+          }
+          abbotWasTalking = Boolean(abbotConversation);
+          const conversationPartner = abbotConversation ? master.group.position : conversationResident;
           const conversationId = conversationResident?.id ?? null;
           if (conversationId !== talkingNpc) {
             talkingNpc = conversationId;
@@ -941,7 +1040,7 @@ export default function TempleWorld(props: WorldProps) {
             route = [];
           }
 
-          const dialogOpen = Boolean(document.querySelector("[role='dialog']"));
+          const dialogOpen = Boolean(abbotScene || document.querySelector("[role='dialog']"));
           if (dialogOpen) keys.clear();
           let inputX = dialogOpen ? 0 : joystick.current.x;
           let inputY = dialogOpen ? 0 : joystick.current.y;
@@ -1143,7 +1242,13 @@ export default function TempleWorld(props: WorldProps) {
             actionPulse = state.actionPulse;
             localAction = state.action;
             actionStart = time;
+            prayerPending = localAction === "prayer";
           }
+          if (prayerPending && localAction === "prayer" && !walking && time - actionStart >= 2.6) {
+            prayerPending = false;
+            state.onPrayerComplete?.();
+          }
+          if (walking) prayerPending = false;
           const incenseAge = time - incensePrayerStart;
           if (sceneAction && time - sceneAction.start >= sceneAction.duration) {
             if (sceneAction.kind === "martial") state.onMartialStage?.("complete");
@@ -1156,14 +1261,15 @@ export default function TempleWorld(props: WorldProps) {
           const fishView = sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release";
           const skyLanternView = sceneAction?.kind === "skyLantern";
           const practiceView = seated && ["prayer", "beads", "bow", "meditate"].includes(state.action);
-          const conversationView = Boolean(conversationResident);
+          const conversationView = Boolean(conversationPartner);
           const interactionView = Boolean(sceneAction && isTempleInteraction(sceneAction.kind));
           const ritualView = sceneAction?.kind === "ritual";
+          const cinematicView = Boolean(martialView || fishView || practiceView || skyLanternView || conversationView || interactionView || incensePrayer || lampPrayer);
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
-          if (martialView || fishView || practiceView || skyLanternView || conversationView || interactionView) { firstPerson = false; mapMode = false; }
-          if (conversationResident) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationResident.x - position.x, conversationResident.z - position.z)) * Math.min(1, dt * 7);
+          if (cinematicView) { firstPerson = false; mapMode = false; }
+          if (conversationPartner) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationPartner.x - position.x, conversationPartner.z - position.z)) * Math.min(1, dt * 7);
           const schedulePose = lessonActive && state.action === "idle" ? seated ? "chantSit" : "chant" : state.action;
-          const pose = walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction && isTempleInteraction(sceneAction.kind) ? TEMPLE_INTERACTIONS[sceneAction.kind].pose : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
+          const pose = abbotScene ? "salute" : walking ? "idle" : incensePrayer ? "incense" : lampPrayer ? "light" : sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" ? "feed" : sceneAction?.kind === "release" ? "releaseFish" : sceneAction && isTempleInteraction(sceneAction.kind) ? TEMPLE_INTERACTIONS[sceneAction.kind].pose : sceneAction ? sceneAction.kind : schedulePose === "idle" && seated ? "sit" : schedulePose;
           const bowPhase = Math.min((time - actionStart) * (state.bowSpeed ?? 1), 1);
           const incensePhase = incensePrayer ? incenseAge / 8.4 : sceneAction ? (time - sceneAction.start) / sceneAction.duration : 0;
           actor.update(pose, time, walking, pose === "incense" ? incensePhase : pose === "light" ? (time - lampPrayerStart) / 24 : sceneAction ? incensePhase : pose === "bow" ? bowPhase : undefined);
@@ -1171,6 +1277,12 @@ export default function TempleWorld(props: WorldProps) {
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
           selfRing.visible = !seated && !firstPerson;
           actor.group.visible = !firstPerson;
+          rewardLantern.group.visible = Boolean(state.abbot?.progress.rewarded) && !firstPerson && (!abbotScene || abbotScene.kind !== "blessing" || time - abbotScene.start > abbotScene.duration * .8);
+          if (rewardLantern.group.visible) {
+            const side = actor.group.rotation.y + Math.PI / 2;
+            rewardLantern.group.position.set(position.x + Math.sin(side) * .72, position.y + 1.05, position.z + Math.cos(side) * .72);
+            rewardLantern.animate(time);
+          }
 
           if (time - lastRemoteSync > 0.3) { syncRemote(time); lastRemoteSync = time; }
           remote.forEach(person => {
@@ -1187,7 +1299,7 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Boolean(activeRoom);
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
-          const nextCameraMode = martialView || fishView || practiceView || skyLanternView || conversationView || interactionView ? "third" : state.cameraMode ?? "third";
+          const nextCameraMode = cinematicView ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode || ritualView !== ritualCameraActive;
           ritualCameraActive = ritualView;
           const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 34, 92) : mapMode || martialView ? 48 : 42;
@@ -1219,23 +1331,23 @@ export default function TempleWorld(props: WorldProps) {
             );
             cameraTarget.copy(cameraLook);
           } else {
-            if (conversationResident) cameraLook.set((position.x + conversationResident.x) / 2, floorHeight + 0.8, (position.z + conversationResident.z) / 2);
+            if (conversationPartner) cameraLook.set((position.x + conversationPartner.x) / 2, floorHeight + 0.9, (position.z + conversationPartner.z) / 2);
             else if (martialView) cameraLook.set(28, 1.1, 12);
             else if (skyLanternView) cameraLook.set(0, 1.4, 28);
             else if (practiceView) cameraLook.set(position.x, floorHeight + 0.65, position.z);
-            else if (interactionView) cameraLook.set(position.x + Math.sin(actor.group.rotation.y) * .35, floorHeight + .9, position.z + Math.cos(actor.group.rotation.y) * .35);
+            else if (interactionView || incensePrayer) cameraLook.set(position.x + Math.sin(actor.group.rotation.y) * .35, floorHeight + .9, position.z + Math.cos(actor.group.rotation.y) * .35);
             else if (fishView) cameraLook.set(position.x + (sceneAction?.kind === "fish" ? 0.5 : -0.5), floorHeight + 0.6, position.z);
             else if (lampPrayer) cameraLook.set(40, 3.8, 28);
             else cameraLook.set(position.x, floorHeight + (indoors ? 0.95 : 0.8), position.z - (indoors ? 0.2 : 0.8));
             if (cameraChanged) cameraTarget.copy(cameraLook);
             else cameraTarget.lerp(cameraLook, 1 - Math.exp(-dt * 4));
-            if (conversationResident) {
+            if (conversationPartner) {
               const distance = Math.max(4.2, 1.3 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, 0.85, 1.25);
-              const directionX = conversationResident.x - position.x;
-              const directionZ = conversationResident.z - position.z;
+              const directionX = conversationPartner.x - position.x;
+              const directionZ = conversationPartner.z - position.z;
               const length = Math.max(0.1, Math.hypot(directionX, directionZ));
               cameraGoal.set(cameraLook.x - directionZ / length * distance, floorHeight + 2.4, cameraLook.z + directionX / length * distance);
-            } else if (interactionView) {
+            } else if (interactionView || incensePrayer) {
               const heading = actor.group.rotation.y;
               const distance = Math.max(4.5, 1.1 / (Math.tan(Math.PI * 42 / 360) * camera.aspect)) * clamp(zoomScale, .85, 1.25);
               // The ritual platform's western side borders the solid wall of Guanyun Hall.
@@ -1268,9 +1380,27 @@ export default function TempleWorld(props: WorldProps) {
                 if (!blocked(cameraGoal.x, cameraGoal.z) && Math.hypot(cameraGoal.x - position.x, cameraGoal.z - position.z) > 1.8) break;
               }
             } else cameraGoal.set(position.x + Math.sin(yaw) * cameraRadius * zoomScale, floorHeight + cameraHeight * zoomScale, position.z + Math.cos(yaw) * cameraRadius * zoomScale);
-            if (cameraChanged) camera.position.copy(cameraGoal);
+            const cinematicKey = cinematicView ? `${conversationView ? abbotConversation ? "abbot" : conversationId : sceneAction?.kind ?? (incensePrayer ? "incense" : lampPrayer ? "longLamp" : pose)}` : "";
+            const cinematicChanged = cinematicKey !== lastCinematicKey;
+            if (cinematicView) {
+              if (cinematicChanged || time - lastCinematicCheck >= .25) {
+                cinematicFocus[0].set(position.x, floorHeight + (seated ? .65 : .95), position.z);
+                cinematicFocus[1].copy(cameraLook);
+                if (conversationPartner) cinematicFocus[1].set(conversationPartner.x, world.floorHeightAt(conversationPartner.x, conversationPartner.z) + 1.1, conversationPartner.z);
+                else if (lampPrayer) cinematicFocus[1].set(40, 3.8, 30.4);
+                cinematicFocus[2].set(position.x, floorHeight + (martialView ? 2.7 : seated ? .95 : 1.35), position.z);
+                cinematicFocus[3].set(position.x + Math.sin(actor.group.rotation.y) * .55, floorHeight + (fishView ? .65 : seated ? .65 : 1.05), position.z + Math.cos(actor.group.rotation.y) * .55);
+                const limits = activeRoom ? { minX: activeRoom.minX + .4, maxX: activeRoom.maxX - .4, minZ: activeRoom.minZ + .4, maxZ: activeRoom.maxZ - .4, minY: floorHeight + 1.5, maxY: floorHeight + 3.6 } : undefined;
+                cinematicGoal.copy(cinematicCamera.resolve(cameraGoal, cameraLook, cinematicFocus, limits));
+                cinematicAvoidedObstacle = cinematicGoal.distanceToSquared(cameraGoal) > .25;
+                lastCinematicCheck = time;
+              }
+              cameraGoal.copy(cinematicGoal);
+            }
+            lastCinematicKey = cinematicKey;
+            if (cameraChanged || cinematicChanged || (cinematicView && cinematicAvoidedObstacle)) camera.position.copy(cameraGoal);
             else camera.position.lerp(cameraGoal, 1 - Math.exp(-dt * 5));
-            if (activeRoom) camera.position.set(
+            if (activeRoom && !cinematicView) camera.position.set(
               clamp(camera.position.x, activeRoom.minX + 0.4, activeRoom.maxX - 0.4),
               clamp(camera.position.y, floorHeight + 1.5, floorHeight + 3.6),
               clamp(camera.position.z, activeRoom.minZ + 0.4, activeRoom.maxZ - 0.4),
@@ -1284,13 +1414,16 @@ export default function TempleWorld(props: WorldProps) {
           }
           if (firstPerson) obscuredRoofs.clear();
           else if (time - lastOcclusionCheck > 0.08) {
-            occlusionDirection.copy(position);
-            occlusionDirection.y += 0.85;
-            occlusionDirection.sub(camera.position);
-            occlusionRay.far = occlusionDirection.length() - 0.2;
-            occlusionRay.ray.set(camera.position, occlusionDirection.normalize());
             obscuredRoofs.clear();
-            occlusionRay.intersectObjects(roofSurfaces, false).forEach(hit => obscuredRoofs.add(hit.object));
+            const roofTargets = cinematicView ? cinematicFocus : [position];
+            roofTargets.forEach(target => {
+              occlusionDirection.copy(target);
+              if (!cinematicView) occlusionDirection.y += .85;
+              occlusionDirection.sub(camera.position);
+              occlusionRay.far = occlusionDirection.length() - .2;
+              occlusionRay.ray.set(camera.position, occlusionDirection.normalize());
+              occlusionRay.intersectObjects(roofSurfaces, false).forEach(hit => obscuredRoofs.add(hit.object));
+            });
             if (activeRoom && mapMode) {
               const roomRoofs = activeRoom.name === "大雄宝殿" ? hallRoofs : activeRoom.roofs;
               roomRoofs.forEach(roof => obscuredRoofs.add(roof));
@@ -1309,7 +1442,9 @@ export default function TempleWorld(props: WorldProps) {
             room.roofDetails?.forEach(details => { details.visible = !hidden; });
           });
           renderer.render(scene, camera);
-          const canEncounter = !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && !approachingIncense && !approachingLamp && !approachingFish && !approachingMartial && !approachingSkyLantern && !approachingInteraction && !incensePrayer && !lampPrayer && (!dialogOpen || conversationView);
+          const nearAbbot = master.group.visible && !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && Math.hypot(position.x - master.group.position.x, position.z - master.group.position.z) <= (abbotNearby ? 3.4 : 2.7) && clearLine(position.x, position.z, master.group.position.x, master.group.position.z);
+          if (nearAbbot !== abbotNearby) { abbotNearby = nearAbbot; state.onAbbotNearbyChange?.(nearAbbot); }
+          const canEncounter = !nearAbbot && !state.abbotTalking && !abbotScene && !lessonActive && !state.auto && !state.meditating && !seated && !sceneAction && !approachingIncense && !approachingLamp && !approachingFish && !approachingMartial && !approachingSkyLantern && !approachingInteraction && !incensePrayer && !lampPrayer && (!dialogOpen || conversationView);
           const nextEncounter = conversationId ?? (canEncounter ? findNpcEncounter(world.residents, encounteredNpc, position, resident => {
             if (!clearLine(position.x, position.z, resident.x, resident.z)) return false;
             projected.set(resident.x, world.floorHeightAt(resident.x, resident.z) + 0.9, resident.z).project(camera);
@@ -1325,9 +1460,13 @@ export default function TempleWorld(props: WorldProps) {
           });
           const availableCushion = world.cushions[nearestCushionIndex];
           positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
-          if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView) selfLabel.style.display = "none";
+          if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView || conversationView) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
+          const playerTitle = state.abbot?.progress.rewarded ? "照心行者 · 你的小和尚" : "● 你的小和尚";
+          if (selfLabel.textContent !== playerTitle) selfLabel.textContent = playerTitle;
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
+          if (master.group.visible) positionLabel(abbotLabel, master.group, 2.03);
+          else abbotLabel.style.display = "none";
 
           if (state.selfId && time - lastSent > 0.2 && (Math.hypot(position.x - lastPosition.x, position.z - lastPosition.z) > 0.035 || Math.abs(angleDelta(lastPosition.heading, actor.group.rotation.y)) > 0.05)) {
             lastSent = time;
