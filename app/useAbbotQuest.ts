@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { actAbbot, getAbbotSnapshot, type AbbotAction, type AbbotObjectiveKind, type AbbotSnapshot } from "./abbotQuest";
+import { actAbbot, equipAbbotAccessory, getAbbotSnapshot, type AbbotAction, type AbbotObjectiveKind, type AbbotSnapshot } from "./abbotQuest";
+import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
 
 /** Keep progress current while avoiding races between polling and ritual receipts. */
 export function useAbbotQuest(selfId: string) {
@@ -24,6 +25,12 @@ export function useAbbotQuest(selfId: string) {
   useEffect(() => {
     alive.current = true;
     const session = ++generation.current;
+    current.current = null;
+    pending.current = 0;
+    queue.current = Promise.resolve();
+    recording.current.clear();
+    setSnapshot(null);
+    setError("");
     let reading = false;
     const refresh = async () => {
       if (document.hidden || reading || pending.current) return;
@@ -58,7 +65,7 @@ export function useAbbotQuest(selfId: string) {
     };
   }, [selfId, receive]);
 
-  const act = useCallback((action: AbbotAction) => {
+  const act = useCallback((action: AbbotAction | "equipAccessory", accessoryId?: AbbotAccessoryId | null) => {
     pending.current++;
     revision.current++;
     const session = generation.current;
@@ -70,21 +77,25 @@ export function useAbbotQuest(selfId: string) {
       const timeout = window.setTimeout(() => controller.abort(), 15_000);
       try {
         if (!alive.current || session !== generation.current) throw new Error("这次奇遇已经结束，请重新进入寺庙。");
-        const next = await actAbbot(selfId, action, encounterId, controller.signal, questId);
+        const next = action === "equipAccessory"
+          ? await equipAbbotAccessory(selfId, accessoryId ?? null, controller.signal)
+          : await actAbbot(selfId, action, encounterId, controller.signal, questId);
         if (session === generation.current) receive(next);
       } catch (failure) {
-        const message = controller.signal.aborted ? "这次修行记录连接超时，请稍后重试。" : (failure as Error).message;
+        const message = controller.signal.aborted ? action === "equipAccessory" ? "饰品更换连接超时，请稍后重试。" : "这次修行记录连接超时，请稍后重试。" : (failure as Error).message;
         if (alive.current && session === generation.current) setError(message);
         throw new Error(message);
       } finally {
         window.clearTimeout(timeout);
         controllers.current.delete(controller);
-        pending.current--;
+        if (session === generation.current) pending.current--;
       }
     });
     queue.current = operation;
     return operation;
   }, [selfId, receive]);
+
+  const equipAccessory = useCallback((accessoryId: AbbotAccessoryId | null) => act("equipAccessory", accessoryId), [act]);
 
   const record = useCallback(async (action: AbbotObjectiveKind) => {
     const snapshot = current.current;
@@ -97,5 +108,5 @@ export function useAbbotQuest(selfId: string) {
     finally { recording.current.delete(key); }
   }, [act]);
 
-  return { snapshot, error, act, record };
+  return { snapshot, error, act, record, equipAccessory };
 }

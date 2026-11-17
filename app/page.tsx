@@ -18,6 +18,8 @@ import TempleLanterns from "./TempleLanterns";
 import TempleResidents from "./TempleResidents";
 import TemplePond from "./TemplePond";
 import TempleAbbot from "./TempleAbbot";
+import TempleAccessories from "./TempleAccessories";
+import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
 import { useAbbotQuest } from "./useAbbotQuest";
 import TemplePracticeGames from "./TemplePracticeGames";
 import { usePracticeGames } from "./usePracticeGames";
@@ -29,7 +31,7 @@ import TempleSoundSettings from "./TempleSoundSettings";
 import type { TempleInteractionKind } from "./templeInteractions";
 import { isTemplePrayerHall } from "./templeSchedule";
 import "./temple-theme.css";
-type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3; at?: number; bowSpeed?: 1 | 4 };
+type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3; at?: number; bowSpeed?: 1 | 4; accessoryId?: AbbotAccessoryId | null };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
 const seats = TEMPLE_SEATS;
@@ -74,6 +76,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [skyLanternPulse, setSkyLanternPulse] = useState(0);
  const [pondOpen, setPondOpen] = useState(false);
  const [practiceGamesOpen, setPracticeGamesOpen] = useState(false);
+ const [accessoriesOpen, setAccessoriesOpen] = useState(false);
  const [practiceTravelPulse, setPracticeTravelPulse] = useState(0);
  const [pondRelease, setPondRelease] = useState<{ requestId: string; species: PondSpecies } | null>(null);
  const [pondResult, setPondResult] = useState<{ requestId: string; species: PondSpecies; stage: "released" | "cancelled" } | null>(null);
@@ -494,6 +497,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
      <button onClick={() => { setMenuOpen(false); setPracticeGamesOpen(true); }}><Sparkles size={18} />修行小游戏</button>
+     <button onClick={() => { setMenuOpen(false); setAccessoriesOpen(true); }}><Sparkles size={18} />称号饰品</button>
      <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       setMenuOpen(false);
@@ -538,10 +542,11 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
 
    <TempleResidents residentId={menuOpen || abbotNearby || abbotTalking || abbotCinematic ? null : residentId} onConversationChange={setTalkingNpcId} />
    <TemplePracticeGames open={practiceGamesOpen} snapshot={practiceGames.snapshot} error={practiceGames.error} busy={practiceGames.busy} onClose={() => setPracticeGamesOpen(false)} onPlay={playPracticeGame} onRetry={practiceGames.retry} />
+   <TempleAccessories open={accessoriesOpen} snapshot={abbotQuest.snapshot} onClose={() => setAccessoriesOpen(false)} onEquip={abbotQuest.equipAccessory} />
    <TempleAbbot snapshot={abbotQuest.snapshot} nearby={abbotNearby && !auto && !meditating} cinematic={abbotCinematic?.kind ?? null} ceremony={abbotCinematic?.variant}
     onConversationChange={setAbbotTalking} onNavigate={navigateToAbbot}
     onAccept={() => abbotQuest.act("accept")} onComplete={() => abbotQuest.act("complete")}
-    onCinematic={startAbbotCinematic} onSkipCinematic={() => setAbbotCinematic(null)} error={abbotQuest.error} />
+    onCinematic={startAbbotCinematic} onSkipCinematic={() => setAbbotCinematic(null)} error={abbotQuest.error} onOpenAccessories={() => setAccessoriesOpen(true)} />
    <TemplePond selfId={account.id} open={pondOpen} onClose={() => setPondOpen(false)} result={pondResult} onNotice={notify} onRelease={(species, requestId) => {
     unlockAudio();
     if (autoRef.current) stopAuto();

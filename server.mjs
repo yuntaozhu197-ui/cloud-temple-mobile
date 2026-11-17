@@ -551,6 +551,7 @@ export function createTempleServer({
         z: 9,
         heading: 0,
         action: "idle",
+        accessoryId: abbot.wornAccessoryId(identity, timestamp),
         bowSpeed: 1,
         meditating: false,
         joinedAt: timestamp,
@@ -840,7 +841,13 @@ export function createTempleServer({
           return;
         }
         if (visitors.has(identity.id) && visitors.get(identity.id).name !== identity.name) { visitors.get(identity.id).name = identity.name; roomDirty = true; }
-        sendJson(response, feature.snapshot(identity, timestamp), 200, identity);
+        const featureSnapshot = feature.snapshot(identity, timestamp);
+        if (pathname === "/api/abbot") {
+          const visitor = visitors.get(identity.id);
+          const accessoryId = featureSnapshot.wardrobe.equipped;
+          if (visitor && visitor.accessoryId !== accessoryId) { visitor.accessoryId = accessoryId; roomDirty = true; }
+        }
+        sendJson(response, featureSnapshot, 200, identity);
         return;
       }
       if (pathname === "/api/social" || pathname === "/api/incense") {

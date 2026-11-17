@@ -3,6 +3,8 @@ import { MARTIAL_DURATION, sampleMartial } from "./martial";
 import { createHeldPondCreature } from "./pondCreatures";
 import type { PondSpecies } from "../pondGame";
 import { createPracticeProp, type PracticePropKind } from "./practiceModels";
+import { createAbbotAccessory } from "./abbotAccessories";
+import { getAbbotAccessory, type AbbotAccessoryId } from "../../abbot-accessories.mjs";
 
 /** A self-contained mesh character. Forward is +Z and the feet rest at y=0. */
 export function createMonk(color = 0xa87150): {
@@ -10,6 +12,7 @@ export function createMonk(color = 0xa87150): {
   update: (action: string, t: number, walking: boolean, phase?: number) => void;
   setReleaseSpecies: (species: PondSpecies) => void;
   setPracticeTiers: (tiers: Record<PracticePropKind, number>) => void;
+  setAccessory: (id: AbbotAccessoryId | null) => void;
   dispose: () => void;
 } {
   const group = new THREE.Group();
@@ -445,8 +448,26 @@ export function createMonk(color = 0xa87150): {
     }
   }
   let disposed = false;
+  let accessoryId: AbbotAccessoryId | null = null;
+  let accessory: ReturnType<typeof createAbbotAccessory> | null = null;
+  let accessoryAtWaist = false;
+  function setAccessory(id: AbbotAccessoryId | null) {
+    if (disposed || accessoryId === id) return;
+    accessory?.dispose();
+    accessory = null;
+    accessoryId = getAbbotAccessory(id)?.id ?? null;
+    if (!accessoryId) return;
+    const metadata = getAbbotAccessory(accessoryId)!;
+    accessoryAtWaist = metadata.placement === "waist";
+    accessory = createAbbotAccessory(accessoryId);
+    if (metadata.placement === "chest") accessory.group.position.set(.115, .3, .205);
+    else accessory.group.position.set(.265, .025, .19);
+    accessory.group.name = "monk-worn-accessory";
+    torso.add(accessory.group);
+  }
 
   function update(action: string, t: number, walking: boolean, phase?: number) {
+    accessory?.animate(t);
     const scenePose = ["offerFlower", "drum", "towerBell", "bell", "ritual", "pagoda", "mural", "sutra", "breathe", "lotusLamp"].includes(action);
     if (walking && (scenePose || ["light", "strike", "martial", "feed", "releaseFish", "chant", "skyLantern"].includes(action))) action = "walk";
     const seated = !walking && !scenePose && !["idle", "walk", "incense", "salute", "martial", "light", "strike", "feed", "releaseFish", "chant", "skyLantern"].includes(action);
@@ -817,6 +838,11 @@ export function createMonk(color = 0xa87150): {
       elbowPoint.set(side * .125, .108, .14);
       sleeveBetween(thigh, shoulderPoint, elbowPoint, .09);
     });
+    if (accessory && accessoryAtWaist) {
+      // A waist charm settles onto the outside of the robe when the body bows low.
+      const bend = Math.max(0, Math.sin(torso.rotation.x));
+      accessory.group.position.set(.265 + bend * .04, .025, .19 - bend * .045);
+    }
   }
 
   update("idle", 0, false);
@@ -825,9 +851,11 @@ export function createMonk(color = 0xa87150): {
     update,
     setReleaseSpecies(species) { heldCreature.setSpecies(species); },
     setPracticeTiers,
+    setAccessory,
     dispose() {
       if (disposed) return;
       disposed = true;
+      accessory?.dispose();
       Object.values(practiceProps).forEach(prop => prop.dispose());
       heldCreature.dispose();
       thrownFood.dispose();

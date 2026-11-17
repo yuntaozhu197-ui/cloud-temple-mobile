@@ -1,5 +1,9 @@
+import { getAbbotAccessory, getAccessoryForTitle, type AbbotAccessoryId } from "../abbot-accessories.mjs";
+
 export type AbbotObjectiveKind = "prayer" | "flower" | "beads" | "wood" | "incense" | "fish" | "bell" | "sutra" | "martial" | "skyLantern";
 export type AbbotAction = "accept" | "complete" | AbbotObjectiveKind;
+export type AbbotAppearance = { accessoryId: AbbotAccessoryId | null; updatedAt: number };
+export type AbbotWardrobe = { unlocked: AbbotAccessoryId[]; equipped: AbbotAccessoryId | null; configured: boolean; updatedAt: number };
 export type AbbotJourney = {
   questId: string;
   acceptedAt: number;
@@ -14,6 +18,7 @@ export type AbbotArchive = {
   rewardedAt: number | null;
   version?: 2;
   journeys?: AbbotJourney[];
+  appearance?: AbbotAppearance;
 };
 export type AbbotQuest = {
   id: string;
@@ -38,6 +43,7 @@ export type AbbotSnapshot = {
   quest: AbbotQuest;
   progress: { accepted: boolean; prayer: boolean; flower: boolean; rewarded: boolean; objectives: Record<string, boolean> };
   rewards: { hasLantern: boolean; titles: string[]; activeTitle: string };
+  wardrobe: AbbotWardrobe;
   archive: AbbotArchive;
   trial: { temporaryRecords: boolean };
 };
@@ -46,9 +52,14 @@ const archiveKey = (selfId: string) => `cloud-temple-abbot-archive:${selfId}`;
 const fields = ["acceptedAt", "prayerAt", "flowerAt", "rewardedAt"] as const;
 const memoryArchives = new Map<string, AbbotArchive>();
 const snapshots = new Map<string, AbbotSnapshot>();
+const requestOrders = new WeakMap<AbbotSnapshot, number>();
+let nextRequestOrder = 0;
 const validTime = (value: unknown): value is number | null => value === null || (Number.isSafeInteger(value) && (value as number) >= 0);
 const earliest = (...values: (number | null | undefined)[]) => { const times = values.filter((value): value is number => typeof value === "number"); return times.length ? Math.min(...times) : null; };
 const emptyLegacy = () => ({ acceptedAt: null, prayerAt: null, flowerAt: null, rewardedAt: null });
+const validAppearance = (value: AbbotAppearance | undefined): value is AbbotAppearance => Boolean(value
+  && Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0
+  && (value.accessoryId === null || getAbbotAccessory(value.accessoryId)));
 
 function archiveJourneys(archive: AbbotArchive | null): AbbotJourney[] {
   if (!archive) return [];
@@ -62,6 +73,8 @@ function archiveJourneys(archive: AbbotArchive | null): AbbotJourney[] {
 }
 function mergeArchives(...archives: (AbbotArchive | null | undefined)[]): AbbotArchive {
   const merged = new Map<string, AbbotJourney>();
+  let appearance: AbbotAppearance | undefined;
+  for (const archive of archives) if (validAppearance(archive?.appearance) && (!appearance || archive.appearance.updatedAt >= appearance.updatedAt)) appearance = archive.appearance;
   for (const archive of archives) for (const journey of archiveJourneys(archive ?? null)) {
     const previous = merged.get(journey.questId);
     merged.set(journey.questId, {
@@ -76,7 +89,7 @@ function mergeArchives(...archives: (AbbotArchive | null | undefined)[]): AbbotA
   const legacy = merged.get("legacy");
   const certificates = [...new Map(journeys.filter(journey => journey.rewardedAt !== null).map(journey => [journey.rewardTitle, journey])).values()];
   const retained = [...new Map([...journeys.slice(-32), ...certificates, ...journeys.filter(journey => journey.rewardedAt === null), ...(legacy ? [legacy] : [])].map(journey => [journey.questId, journey])).values()];
-  return { ...(legacy ? { acceptedAt: legacy.acceptedAt, prayerAt: legacy.objectives["legacy-prayer"], flowerAt: legacy.objectives["legacy-flower"], rewardedAt: legacy.rewardedAt } : emptyLegacy()), version: 2, journeys: retained };
+  return { ...(legacy ? { acceptedAt: legacy.acceptedAt, prayerAt: legacy.objectives["legacy-prayer"], flowerAt: legacy.objectives["legacy-flower"], rewardedAt: legacy.rewardedAt } : emptyLegacy()), version: 2, journeys: retained, ...(appearance ? { appearance } : {}) };
 }
 function readArchive(selfId: string): AbbotArchive {
   let disk: AbbotArchive | null = null;
@@ -84,22 +97,30 @@ function readArchive(selfId: string): AbbotArchive {
   return mergeArchives(memoryArchives.get(selfId), disk);
 }
 function rememberSnapshot(selfId: string, incoming: AbbotSnapshot): AbbotSnapshot {
-  const archive = mergeArchives(readArchive(selfId), incoming.archive);
+  const previous = snapshots.get(selfId);
+  const olderReply = previous && (previous.now > incoming.now || (previous.now === incoming.now && (requestOrders.get(previous) ?? 0) > (requestOrders.get(incoming) ?? 0)));
+  const snapshot = olderReply ? previous! : incoming;
+  const archive = mergeArchives(readArchive(selfId), incoming.archive, snapshot.archive);
   memoryArchives.set(selfId, archive);
   try { localStorage.setItem(archiveKey(selfId), JSON.stringify(archive)); } catch { /* Confirmed server progress remains available for this account. */ }
-  const previous = snapshots.get(selfId);
-  const snapshot = previous && previous.now > incoming.now ? previous : incoming;
   const journey = archive.journeys?.find(item => item.questId === snapshot.quest.id);
   const objectiveProgress = Object.fromEntries(snapshot.quest.objectives.map(item => [item.id, journey?.objectives[item.id] !== null && journey?.objectives[item.id] !== undefined]));
   const completed = archive.journeys?.filter(item => item.rewardedAt !== null).sort((left, right) => left.rewardedAt! - right.rewardedAt!) ?? [];
+  const titles = [...new Set([...snapshot.rewards.titles, ...completed.map(item => item.rewardTitle)])];
+  const unlocked = titles.flatMap(title => { const accessory = getAccessoryForTitle(title); return accessory ? [accessory.id] : []; });
+  const appearance = archive.appearance;
+  const equipped = appearance ? (appearance.accessoryId !== null && unlocked.includes(appearance.accessoryId) ? appearance.accessoryId : null) : getAccessoryForTitle(completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle)?.id ?? null;
   const result: AbbotSnapshot = { ...snapshot, archive,
     progress: { accepted: Boolean(journey), prayer: snapshot.quest.objectives.some(item => item.kind === "prayer" && objectiveProgress[item.id]), flower: snapshot.quest.objectives.some(item => item.kind === "flower" && objectiveProgress[item.id]), rewarded: journey?.rewardedAt !== null && journey?.rewardedAt !== undefined, objectives: objectiveProgress },
-    rewards: { hasLantern: snapshot.rewards.hasLantern || completed.length > 0, titles: [...new Set([...snapshot.rewards.titles, ...completed.map(item => item.rewardTitle)])], activeTitle: completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle },
+    rewards: { hasLantern: snapshot.rewards.hasLantern || completed.length > 0, titles, activeTitle: completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle },
+    wardrobe: { unlocked, equipped, configured: Boolean(appearance), updatedAt: appearance?.updatedAt ?? 0 },
   };
+  requestOrders.set(result, requestOrders.get(snapshot) ?? 0);
   snapshots.set(selfId, result);
   return result;
 }
 async function requestAbbot(selfId: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<AbbotSnapshot> {
+  const order = ++nextRequestOrder;
   const response = await fetch("/api/abbot", {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store", signal,
     headers: { "X-Temple-User": selfId, ...(body ? { "Content-Type": "application/json" } : {}) },
@@ -111,6 +132,7 @@ async function requestAbbot(selfId: string, body?: Record<string, unknown>, sign
     error.status = response.status;
     throw error;
   }
+  requestOrders.set(data, order);
   return data;
 }
 function needsRestore(saved: AbbotJourney, cloud: AbbotJourney | undefined) {
@@ -125,10 +147,18 @@ export async function getAbbotSnapshot(selfId: string, signal?: AbortSignal): Pr
   const cloud = new Map((snapshot.archive.journeys ?? []).map(journey => [journey.questId, journey]));
   const missing = (saved.journeys ?? []).filter(journey => needsRestore(journey, cloud.get(journey.questId)));
   for (let offset = 0; offset < missing.length; offset += 20) snapshot = await requestAbbot(selfId, { action: "restore", archive: { version: 2, journeys: missing.slice(offset, offset + 20) } }, signal);
+  if (saved.appearance && (!snapshot.wardrobe?.configured || saved.appearance.updatedAt > snapshot.wardrobe.updatedAt)) {
+    snapshot = await requestAbbot(selfId, { action: "restore", archive: { version: 2, journeys: [], appearance: saved.appearance } }, signal);
+  }
   return rememberSnapshot(selfId, snapshot);
 }
 export async function actAbbot(selfId: string, action: AbbotAction, encounterId?: string, signal?: AbortSignal, requestedQuestId?: string): Promise<AbbotSnapshot> {
   const questId = requestedQuestId ?? snapshots.get(selfId)?.quest.id;
   const snapshot = await requestAbbot(selfId, { action, ...(encounterId ? { encounterId } : {}), ...(questId ? { questId } : {}) }, signal);
+  return rememberSnapshot(selfId, snapshot);
+}
+
+export async function equipAbbotAccessory(selfId: string, accessoryId: AbbotAccessoryId | null, signal?: AbortSignal): Promise<AbbotSnapshot> {
+  const snapshot = await requestAbbot(selfId, { action: "equipAccessory", accessoryId }, signal);
   return rememberSnapshot(selfId, snapshot);
 }

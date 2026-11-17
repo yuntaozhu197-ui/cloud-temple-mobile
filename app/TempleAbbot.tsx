@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronRight, Flame, MapPin, MessageCircle, X } from "lucide-react";
+import { getAccessoryForTitle } from "../abbot-accessories.mjs";
 import type { AbbotSnapshot } from "./abbotQuest";
 import "./abbot.css";
 
@@ -15,6 +16,7 @@ type Props = {
   onComplete: () => Promise<void>;
   onCinematic: (kind: Cinematic) => void;
   onSkipCinematic?: () => void;
+  onOpenAccessories?: () => void;
   error?: string;
   ceremony?: number;
 };
@@ -38,6 +40,7 @@ export default function TempleAbbot(props: Props) {
   const encounter = snapshot?.encounter;
   const progress = snapshot?.progress;
   const quest = snapshot?.quest;
+  const rewardAccessory = quest ? getAccessoryForTitle(quest.reward.title) : undefined;
   const canTalk = Boolean(encounter?.active && nearby);
   const ready = Boolean(quest?.objectives.every(item => progress?.objectives[item.id]));
   const taskCount = quest?.objectives.filter(item => progress?.objectives[item.id]).length ?? 0;
@@ -113,6 +116,12 @@ export default function TempleAbbot(props: Props) {
     callbacks.current.onNavigate();
   }
 
+  function openAccessories() {
+    setOpen(false);
+    callbacks.current.onConversationChange(false);
+    callbacks.current.onOpenAccessories?.();
+  }
+
   function listen() {
     if (!canTalk || pending.current) return;
     setHeard(true);
@@ -166,7 +175,7 @@ export default function TempleAbbot(props: Props) {
 
     {cinematic && <aside className="abbot-cinematic" aria-live="polite">
       <div><span className="abbot-caption">{cinematic === "greeting" ? greetingNames[ceremony] : blessingNames[ceremony]}</span>
-        <p>{cinematic === "greeting" ? quest.teaching : `住持将${quest.reward.lanternName}赠予你，授号「${quest.reward.title}」。`}</p>
+        <p>{cinematic === "greeting" ? quest.teaching : `住持授号「${quest.reward.title}」，赠予${rewardAccessory?.name ?? quest.reward.lanternName}${rewardAccessory ? `与${quest.reward.lanternName}` : ""}。`}</p>
       </div>
       {props.onSkipCinematic && <button type="button" onClick={props.onSkipCinematic}>跳过动画</button>}
     </aside>}
@@ -180,11 +189,11 @@ export default function TempleAbbot(props: Props) {
 
         {progress?.rewarded ? <>
           <p className="abbot-speech">{quest.completion}</p>
-          <div className="abbot-reward"><Flame size={24} aria-hidden="true" /><div><strong>已获{quest.reward.lanternName}</strong><span>称号「{quest.reward.title}」已收入收藏。</span></div></div>
+          <div className="abbot-reward"><Flame size={24} aria-hidden="true" /><div><strong>已获{rewardAccessory?.name ?? quest.reward.lanternName}</strong><span>称号「{quest.reward.title}」{rewardAccessory ? `与${quest.reward.lanternName}` : ""}已收入收藏。</span></div></div>
           <p className="abbot-body-small">下一次住持现身时，会带来新的嘱托、称号与仪式。</p>
         </> : !progress?.accepted ? <>
           <p className="abbot-speech">{heard ? quest.teaching : quest.intro}</p>
-          <p className="abbot-body-small">这一轮有{quest.objectives.length}项嘱托，完成后可得称号「{quest.reward.title}」。</p>
+          <p className="abbot-body-small">这一轮有{quest.objectives.length}项嘱托，完成后可得称号「{quest.reward.title}」{rewardAccessory ? `与专属饰品${rewardAccessory.name}` : ""}。</p>
           {canTalk ? <button type="button" className="abbot-primary" disabled={busy} onClick={heard ? () => void submit("accept") : listen}>{busy ? "正在记下这段缘分…" : heard ? "接下住持的嘱托" : "聆听住持"}</button> : <p className="abbot-body-small">找到住持，走近后与他交谈，会开启一段山中故事。</p>}
         </> : <>
           <p className="abbot-speech">{ready ? "“你已将嘱托一一完成。回来吧，山里的这段缘分，等你来圆满。”" : quest.teaching}</p>
@@ -201,7 +210,10 @@ export default function TempleAbbot(props: Props) {
           {encounter?.active && <button type="button" className="abbot-secondary" onClick={navigate}>循着行踪前往<ChevronRight size={14} aria-hidden="true" /></button>}
         </div>}
         {(failure || error) && <p className="abbot-error" role="alert">{failure || error}</p>}
-        {snapshot.rewards.titles.length > 0 && <details className="abbot-title-collection"><summary>已收集称号 · {snapshot.rewards.titles.length}</summary><p>{snapshot.rewards.titles.join(" · ")}</p></details>}
+        {snapshot.rewards.titles.length > 0 && <div className="abbot-collection">
+          <details className="abbot-title-collection"><summary>已收集称号 · {snapshot.rewards.titles.length}</summary><p>{snapshot.rewards.titles.join(" · ")}</p></details>
+          {props.onOpenAccessories && <button type="button" className="abbot-wardrobe-link" onClick={openAccessories}>称号饰品<ChevronRight size={14} aria-hidden="true" /></button>}
+        </div>}
       </section>
     </div>, document.body)}
   </>;

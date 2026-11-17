@@ -10,6 +10,7 @@ import { findNpcEncounter } from "./npcEncounters";
 import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
 import type { PondSpecies } from "./pondGame";
 import type { AbbotSnapshot } from "./abbotQuest";
+import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
 import { createRemoteMotion } from "./three/remoteMotion";
 type TempleFloor = 1 | 2 | 3;
 
@@ -25,6 +26,7 @@ type Participant = {
   bowSpeed?: 1 | 4;
   floor?: TempleFloor;
   at?: number;
+  accessoryId?: AbbotAccessoryId | null;
 };
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
@@ -84,6 +86,7 @@ type MonkInstance = {
   update: (action: string, time: number, walking: boolean, phase?: number) => void;
   setReleaseSpecies: (species: PondSpecies) => void;
   setPracticeTiers: (tiers: { wood: number; beads: number; flower: number }) => void;
+  setAccessory: (id: AbbotAccessoryId | null) => void;
   dispose: () => void;
 };
 
@@ -126,7 +129,7 @@ export default function TempleWorld(props: WorldProps) {
 
     void (async () => {
       try {
-        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot, createAbbotReward }, { createCinematicCamera }, { RoomEnvironment }] = await Promise.all([
+        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot }, { createCinematicCamera }, { RoomEnvironment }] = await Promise.all([
           import("three"),
           import("./three/monk"),
           import("./three/environment"),
@@ -189,7 +192,6 @@ export default function TempleWorld(props: WorldProps) {
         let environment: ReturnType<typeof createTempleEnvironment> | undefined;
         let local: MonkInstance | undefined;
         let abbot: ReturnType<typeof createMysteriousAbbot> | undefined;
-        let abbotReward: ReturnType<typeof createAbbotReward> | undefined;
         const offerings = new Map<ShrineId, ReturnType<typeof createIncenseOffering>>();
         let frame = 0;
         let holdTimer: ReturnType<typeof setTimeout> | undefined;
@@ -219,7 +221,6 @@ export default function TempleWorld(props: WorldProps) {
           remote.forEach(({ monk, label }) => { monk.dispose(); label.remove(); });
           local?.dispose();
           abbot?.dispose();
-          abbotReward?.dispose();
           offerings.forEach(offering => offering.dispose());
           environment?.dispose();
           ownedGeometries.forEach(geometry => geometry.dispose());
@@ -249,9 +250,6 @@ export default function TempleWorld(props: WorldProps) {
         abbot = createMysteriousAbbot();
         abbot.group.visible = false;
         scene.add(abbot.group);
-        abbotReward = createAbbotReward();
-        abbotReward.group.visible = false;
-        scene.add(abbotReward.group);
         local = createMonk(0xcc9365);
         scene.add(local.group);
         local.group.position.set(0, 0, 9);
@@ -259,7 +257,6 @@ export default function TempleWorld(props: WorldProps) {
         const actor = local;
         const world = environment;
         const master = abbot;
-        const rewardLantern = abbotReward;
         const hotspotStyle = "position:absolute;top:0;left:0;display:none;height:44px;max-height:44px;padding:0 12px;border:1px solid #b4925b99;border-radius:12px;background:rgba(244,234,213,.97);color:#284e4c;font:600 14px/20px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px #263f392e;pointer-events:auto;touch-action:manipulation;will-change:transform";
         const interactivePoints = world.interactions.map(point => {
           const button = document.createElement("button");
@@ -874,6 +871,7 @@ export default function TempleWorld(props: WorldProps) {
               existing.lastSampleAt = -Infinity;
             }
             existing.seat = person.seat;
+            existing.monk.setAccessory(person.accessoryId ?? null);
             existing.floor = person.floor ?? 1;
             const sampleAt = person.at ?? Date.now();
             if (sampleAt > existing.lastSampleAt) {
@@ -901,6 +899,7 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          actor.setAccessory(state.abbot?.wardrobe?.equipped ?? null);
           const practiceTiers = state.practiceTiers ?? { wood: 0, beads: 0, flower: 0 };
           const nextPracticeTierKey = `${practiceTiers.wood}:${practiceTiers.beads}:${practiceTiers.flower}`;
           if (nextPracticeTierKey !== practiceTierKey) {
@@ -1325,12 +1324,6 @@ export default function TempleWorld(props: WorldProps) {
           selfRing.scale.setScalar(1 + Math.sin(time * 2) * 0.035);
           selfRing.visible = !seated && !firstPerson && !abbotConversation;
           actor.group.visible = !firstPerson && !abbotConversation;
-          rewardLantern.group.visible = Boolean(state.abbot?.rewards.hasLantern) && !firstPerson && !abbotConversation;
-          if (rewardLantern.group.visible) {
-            const side = actor.group.rotation.y + Math.PI / 2;
-            rewardLantern.group.position.set(position.x + Math.sin(side) * .72, position.y + 1.05, position.z + Math.cos(side) * .72);
-            rewardLantern.animate(time);
-          }
 
           if (state.participants !== lastParticipantSnapshot || time - lastRemoteSync > .3) {
             syncRemote(time);

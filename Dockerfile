@@ -5,6 +5,7 @@ RUN npm ci --no-audit --no-fund
 COPY app ./app
 COPY public ./public
 COPY index.html tsconfig.json vite.config.ts ./
+COPY abbot-accessories.mjs abbot-accessories.d.mts ./
 RUN npm run build
 
 FROM node:22-alpine AS runtime
@@ -21,6 +22,7 @@ COPY --chown=node:node temple-lamps.mjs ./temple-lamps.mjs
 COPY --chown=node:node temple-lanterns.mjs ./temple-lanterns.mjs
 COPY --chown=node:node pond-game.mjs ./pond-game.mjs
 COPY --chown=node:node abbot-quest.mjs ./abbot-quest.mjs
+COPY --chown=node:node abbot-accessories.mjs ./abbot-accessories.mjs
 COPY --chown=node:node practice-games.mjs ./practice-games.mjs
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
