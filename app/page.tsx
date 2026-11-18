@@ -337,7 +337,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   }
  }, [sync]);
  const activeParticipants=connection==="online"?(room?.participants??[]):[];
- const others=activeParticipants.filter(v=>v.id!==room?.selfId),selfName=room?.participants.find(v=>v.id===room.selfId)?.name??"小知";
+ const others=activeParticipants.filter(v=>v.id!==room?.selfId),selfName=room?.participants.find(v=>v.id===room.selfId)?.name??account.name;
  const share=async()=>{try{const data={title:"云间寺 · 给心放个假",text:"来云间寺，和我一起静坐一会儿。",url:window.location.href};if(navigator.share)await navigator.share(data);else{await navigator.clipboard.writeText(data.url);notify("寺庙链接已复制，邀朋友来坐坐吧")}}catch(e){if((e as Error).name!=="AbortError")notify("可复制浏览器地址，邀朋友一起静坐")}};
  const leaveTemple = () => {
   autoRef.current = false;
@@ -452,6 +452,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       meditating={meditating}
       seat={seat}
       selfId={room?.selfId}
+      selfName={selfName}
       participants={activeParticipants}
       onSeatSelect={n => void chooseSeat(n)}
       onLeaveSeat={leaveSeat}

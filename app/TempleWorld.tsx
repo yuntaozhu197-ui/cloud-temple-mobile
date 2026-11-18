@@ -49,6 +49,7 @@ type WorldProps = {
   meditating: boolean;
   seat: number | null;
   selfId?: string;
+  selfName?: string;
   participants: Participant[];
   onSeatSelect: (index: number) => void;
   onLeaveSeat: () => void;
@@ -203,7 +204,12 @@ export default function TempleWorld(props: WorldProps) {
         const ownedMaterials: THREE.Material[] = [];
         const selfLabel = document.createElement("div");
         selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:8px;background:rgba(244,234,213,.94);border:1px solid #b4925b66;color:#263f39;font:600 12px/16px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px #263f391f;will-change:transform";
-        selfLabel.textContent = "● 你的小和尚";
+        const selfNameLabel = document.createElement("span");
+        selfNameLabel.style.cssText = "display:block;overflow:hidden;text-overflow:ellipsis";
+        selfNameLabel.textContent = latest.current.selfName || "你的小和尚";
+        const selfTitleLabel = document.createElement("span");
+        selfTitleLabel.style.cssText = "display:none;color:#79532f;font-weight:500;overflow:hidden;text-overflow:ellipsis";
+        selfLabel.append(selfNameLabel, selfTitleLabel);
         labels.appendChild(selfLabel);
         const abbotLabel = document.createElement("div");
         abbotLabel.style.cssText = selfLabel.style.cssText;
@@ -833,8 +839,6 @@ export default function TempleWorld(props: WorldProps) {
 
         function syncRemote(time: number) {
           const state = latest.current;
-          const ownName = state.participants.find(person => person.id === state.selfId)?.name;
-          if (ownName && selfLabel.textContent !== `● ${ownName}`) { selfLabel.textContent = `● ${ownName}`; selfLabel.title = ownName; }
           // Keep the nearest real visitors visible on crowded mobile devices.
           const visitors = state.participants.filter(person => person.id !== state.selfId).sort((a, b) => {
             if (a.seat !== null && b.seat === null) return -1;
@@ -1527,8 +1531,12 @@ export default function TempleWorld(props: WorldProps) {
           positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
           if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView || conversationView) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
-          const playerTitle = state.abbot?.rewards.activeTitle ? `${state.abbot.rewards.activeTitle} · 你的小和尚` : "● 你的小和尚";
-          if (selfLabel.textContent !== playerTitle) selfLabel.textContent = playerTitle;
+          const playerName = state.participants.find(person => person.id === state.selfId)?.name || state.selfName || "你的小和尚";
+          const playerTitle = state.abbot?.rewards.activeTitle || "";
+          if (selfNameLabel.textContent !== playerName) selfNameLabel.textContent = playerName;
+          if (selfTitleLabel.textContent !== playerTitle) selfTitleLabel.textContent = playerTitle;
+          selfTitleLabel.style.display = playerTitle ? "block" : "none";
+          selfLabel.title = playerTitle ? `${playerName} · ${playerTitle}` : playerName;
           remote.forEach(person => positionLabel(person.label, person.monk.group, person.action === "sit" || person.action === "meditate" ? 1.4 : 1.65));
           if (master.group.visible) positionLabel(abbotLabel, master.group, 2.03);
           else abbotLabel.style.display = "none";
