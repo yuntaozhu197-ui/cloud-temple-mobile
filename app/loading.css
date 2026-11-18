@@ -1,0 +1,59 @@
+.temple-loading {
+  --loading-jade: #365f53;
+  --loading-gold: #b4925b;
+  --loading-curve: cubic-bezier(.22, 1, .36, 1);
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  background: #f4eedf;
+  color: #263f39;
+  font-family: var(--temple-font, "Geist", "PingFang SC", sans-serif);
+  text-align: center;
+  isolation: isolate;
+  pointer-events: auto;
+}
+.temple-loading *, .temple-loading *::before, .temple-loading *::after { box-sizing: border-box; }
+.temple-loading-composition { position: relative; flex: 0 0 auto; width: 240px; height: 240px; margin-bottom: 24px; }
+.temple-loading-halo { position: absolute; inset: 16px; border: 1px solid #b4925b33; border-radius: 50%; background: #f6f1e5; box-shadow: 0 0 64px 16px #d7c69824, inset 0 0 32px #faf7ee; }
+.temple-loading-halo::before { content: ""; position: absolute; inset: 12px; border: 1px solid #b4925b1f; border-radius: 50%; }
+.temple-loading-orbit { position: absolute; inset: 16px; }
+.temple-loading-orbit i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #c6a571; box-shadow: 0 0 8px #c6a57188; animation: temple-loading-mote 4.8s var(--loading-curve) infinite; }
+.temple-loading-orbit i:first-child { top: 32px; left: 32px; }
+.temple-loading-orbit i:nth-child(2) { top: 64px; right: 12px; animation-delay: -1.6s; }
+.temple-loading-orbit i:last-child { bottom: 40px; left: 12px; animation-delay: -3.2s; }
+.temple-loading-flower { position: absolute; left: 40px; bottom: 64px; width: 160px; height: 128px; transform-origin: 50% 100%; animation: temple-loading-float 4.8s var(--loading-curve) infinite; }
+.temple-loading-petal { position: absolute; left: 48px; bottom: 0; width: 64px; height: 104px; border: 1px solid #7a9b813f; border-radius: 80% 20% 72% 28%; background: #b7c8ab; box-shadow: inset 8px 4px 16px #ecf2de9e, inset -8px -8px 16px #597c6438, 2px 6px 8px #365f5314; transform-origin: 50% 95%; }
+.petal-back-left { height: 96px; background: #8eac92; transform: translate(-12px, 8px) rotate(-64deg); }
+.petal-back-right { height: 96px; background: #8eac92; transform: translate(12px, 8px) rotate(64deg) scaleX(-1); }
+.petal-middle-left { transform: translate(-4px, 2px) rotate(-34deg); }
+.petal-middle-right { transform: translate(4px, 2px) rotate(34deg) scaleX(-1); }
+.petal-heart { left: 52px; bottom: 8px; width: 56px; height: 112px; border-radius: 64% 36% 58% 42%; background: #d8e1c5; transform: rotate(-5deg); box-shadow: inset 8px 4px 16px #f4f5e5b3, inset -8px -8px 16px #8ca37d52; }
+.petal-front-left { left: 40px; width: 72px; height: 80px; background: #a6bea0; transform: translate(-4px, 12px) rotate(-64deg); }
+.petal-front-right { left: 48px; width: 72px; height: 80px; background: #a6bea0; transform: translate(4px, 12px) rotate(64deg) scaleX(-1); }
+.temple-loading-seed { position: absolute; left: 68px; bottom: 0; width: 24px; height: 12px; border: 1px solid #b4925b88; border-radius: 50%; background: #d0bd84; box-shadow: inset 0 2px 4px #f6e5af, 0 2px 8px #365f5324; }
+.temple-loading-water { position: absolute; left: 24px; right: 24px; bottom: 32px; height: 32px; }
+.temple-loading-water span { position: absolute; inset: 0; border: 1px solid #83987a52; border-radius: 50%; transform: scale(.45); opacity: 0; animation: temple-loading-ripple 4.8s var(--loading-curve) infinite; }
+.temple-loading-water span:nth-child(2) { animation-delay: -1.6s; }
+.temple-loading-water span:last-child { animation-delay: -3.2s; }
+.temple-loading-brand.heading-4 { margin: 0 0 16px; color: #36594c; font-family: inherit; font-size: 30px; line-height: 36px; font-weight: 600; letter-spacing: .24em; text-indent: .24em; text-wrap: balance; }
+.temple-loading-message.body-5 { margin: 0; max-width: 100%; color: #6b7762; font-family: inherit; font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: .04em; text-wrap: pretty; }
+.temple-loading-breath { display: flex; align-items: center; gap: 8px; height: 24px; margin-top: 16px; }
+.temple-loading-breath span { width: 4px; height: 4px; border-radius: 50%; background: #b4925b; animation: temple-loading-breathe 2.4s var(--loading-curve) infinite; }
+.temple-loading-breath span:nth-child(2) { animation-delay: .25s; }
+.temple-loading-breath span:last-child { animation-delay: .5s; }
+@keyframes temple-loading-float { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-8px) rotate(1deg); } }
+@keyframes temple-loading-ripple { 0% { transform: scale(.4); opacity: 0; } 20% { opacity: .65; } 100% { transform: scale(1.15); opacity: 0; } }
+@keyframes temple-loading-mote { 0%, 100% { transform: translateY(4px); opacity: .25; } 50% { transform: translateY(-8px); opacity: .85; } }
+@keyframes temple-loading-breathe { 0%, 100% { transform: scale(.75); opacity: .35; } 50% { transform: scale(1); opacity: .9; } }
+@media (max-height: 600px) { .temple-loading .temple-loading-composition { margin-bottom: 8px; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) {
+  .temple-loading-flower, .temple-loading-water span, .temple-loading-orbit i, .temple-loading-breath span { animation: none; }
+  .temple-loading-water span:first-child { opacity: .45; transform: scale(.8); }
+  .temple-loading-orbit i, .temple-loading-breath span { opacity: .65; }
+}

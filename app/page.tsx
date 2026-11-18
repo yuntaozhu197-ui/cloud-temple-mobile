@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Volume2, VolumeX, CircleHelp, X, Leaf, Pause, Play, Wind, Share2, Sparkles, Camera, MoreHorizontal } from "lucide-react";
 import TempleWorld from "./TempleWorld";
+import TempleLoading from "./TempleLoading";
 import SocialTemple from "./SocialTemple";
 import TempleLife from "./TempleLife";
 import AccountGate, { type AccountUser } from "./AccountGate";
@@ -61,6 +62,7 @@ export default function Home() {
  return account ? <TempleGame account={account} onSignedOut={signedOut} /> : <AccountGate onAuthenticated={setAccount} />;
 }
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
+ const [worldLoading, setWorldLoading] = useState(true);
  const abbotQuest = useAbbotQuest(account.id);
  const [abbotNearby, setAbbotNearby] = useState(false);
  const [abbotTalking, setAbbotTalking] = useState(false);
@@ -420,8 +422,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  return (
   <div className="site-shell temple-game" onKeyDownCapture={unlockAudio} onPointerDownCapture={unlockAudio}>
    <main className="temple-stage" aria-label="云间寺三维庭院">
+    {worldLoading && <TempleLoading stage="world" />}
     <div className="courtyard world-courtyard">
      <TempleWorld
+      onLoadingChange={setWorldLoading}
       cameraMode={cameraMode}
       flowerPulse={flowerPulse}
       ritualPulse={ritualPulse}

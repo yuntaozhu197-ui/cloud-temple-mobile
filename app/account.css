@@ -59,13 +59,6 @@
 .account-trial { margin: 24px 0 0; color: #73694e; font-size: 12px; line-height: 16px; text-wrap: pretty; }
 .account-retry { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; width: 100%; padding: 8px 12px; margin-top: 8px; border: 1px solid var(--account-line); border-radius: 8px; background: transparent; color: #365f53; font-size: 14px; font-weight: 700; line-height: 20px; }
 .account-retry:hover:not(:disabled) { background: #e5dbc3; }
-.account-checking { display: grid; gap: 16px; min-height: 144px; align-content: center; color: #536654; }
-.account-checking p { margin: 0; font-size: 14px; line-height: 20px; }
-.account-skeleton { display: grid; gap: 12px; }
-.account-skeleton span { display: block; height: 16px; border-radius: 4px; background: #d9d3bb; }
-.account-skeleton span:first-child { width: 32%; }
-.account-skeleton span:nth-child(2) { height: 48px; border-radius: 8px; background: #e5dec7; }
-.account-skeleton span:last-child { height: 48px; border-radius: 8px; background: #c6d1b9; }
 @media (min-width: 1200px) { .account-gate { grid-template-columns: minmax(0, 640px) 370px; justify-content: center; gap: 48px; } }
 @media (max-width: 760px) {
   .account-gate { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 0; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }

@@ -12,6 +12,7 @@ import type { PondSpecies } from "./pondGame";
 import type { AbbotSnapshot } from "./abbotQuest";
 import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
 import { createRemoteMotion } from "./three/remoteMotion";
+import TempleLoading from "./TempleLoading";
 type TempleFloor = 1 | 2 | 3;
 
 type Participant = {
@@ -50,6 +51,7 @@ type WorldProps = {
   seat: number | null;
   selfId?: string;
   selfName?: string;
+  onLoadingChange?: (loading: boolean) => void;
   participants: Participant[];
   onSeatSelect: (index: number) => void;
   onLeaveSeat: () => void;
@@ -115,6 +117,9 @@ export default function TempleWorld(props: WorldProps) {
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
+  useEffect(() => {
+    props.onLoadingChange?.(!ready && !error);
+  }, [ready, error, props.onLoadingChange]);
   const [retry, setRetry] = useState(0);
   const [places, setPlaces] = useState<Landmark[]>([]);
   const [placeMenu, setPlaceMenu] = useState(false);
@@ -1592,7 +1597,7 @@ export default function TempleWorld(props: WorldProps) {
   return <div ref={hostRef} className="temple-world" style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#d9e9eb", touchAction: "none" }}>
     <div ref={labelsRef} aria-hidden="true" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
     <div ref={hotspotsRef} role="group" aria-label="附近可互动的地点" style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }} />
-    {!ready && !error && <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, gap: 12 }}><span style={{ fontSize: 28 }}>✳</span><span>正在推开三维寺庙的门…</span></div>}
+    {!ready && !error && !props.onLoadingChange && <TempleLoading stage="world" />}
     {error && <div role="alert" style={{ position: "absolute", inset: 0, display: "grid", placeContent: "center", padding: 28, textAlign: "center", color: "#526347", fontSize: 16, fontWeight: 700, background: "#e4eadc", gap: 14 }}><span style={{ fontSize: 32 }}>✳</span><strong>三维庭院暂时没有打开</strong><span style={{ fontSize: 14, lineHeight: 1.8 }}>请使用手机 Safari 或 Chrome 重新打开，再试一次。</span><button onClick={() => setRetry(value => value + 1)} style={{ border: 0, padding: "11px 22px", borderRadius: 24, background: "#778d62", color: "#fff", cursor: "pointer" }}>重新入寺</button></div>}
     {ready && <>
       <div className="world-joystick" style={{ position: "absolute", left: 18, bottom: 39, display: "grid", justifyItems: "center", gap: 7, opacity: controlsDisabled ? 0.45 : 1 }}>

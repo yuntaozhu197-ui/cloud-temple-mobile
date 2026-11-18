@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import type * as THREE from "three";
+import TempleLoading from "./TempleLoading";
 import "./account.css";
 
 export type AccountUser = { id: string; name: string; username?: string };
@@ -276,6 +277,10 @@ export default function AccountGate({ onAuthenticated }: Props) {
     }
   }
 
+  if (checking || busy) return <main className="account-gate" aria-label="进入云间寺">
+    <TempleLoading stage={checking ? "session" : "enter"} />
+  </main>;
+
   return <main className="account-gate" aria-label="进入云间寺">
     <AccountTemplePreview />
     <section className="account-card" aria-labelledby="account-title">
@@ -283,17 +288,15 @@ export default function AccountGate({ onAuthenticated }: Props) {
         <h1 id="account-title">云间寺</h1>
         <p>取个名字，来寺里坐坐</p>
       </header>
-      {checking ? <div className="account-checking" role="status"><div className="account-skeleton" aria-hidden="true"><span /><span /><span /></div><p>正在轻轻推开寺门…</p></div> : <>
-        <form className="account-form" onSubmit={event => { event.preventDefault(); void enterTemple(); }}>
-          <label htmlFor="temple-name">你的名字
-            <input id="temple-name" name="nickname" autoComplete="nickname" autoCapitalize="none" spellCheck={false} required disabled={busy} value={name} onChange={event => setName(event.target.value)} placeholder="中文、英文、数字都可以" />
-          </label>
-          {error && <p className="account-error" role="alert">{error}</p>}
-          <button className="account-submit" type="submit" disabled={busy}>{busy ? "正在入寺…" : "进入寺院"}<ArrowRight size={18} aria-hidden="true" /></button>
-        </form>
-        <p className="account-note">这个浏览器会记住你的小和尚。同名的寺友也有各自的日记。</p>
-        {error && <button className="account-retry" disabled={busy} onClick={() => void checkSession()}><RefreshCw size={16} />重新连接</button>}
-      </>}
+      <form className="account-form" onSubmit={event => { event.preventDefault(); void enterTemple(); }}>
+        <label htmlFor="temple-name">你的名字
+          <input id="temple-name" name="nickname" autoComplete="nickname" autoCapitalize="none" spellCheck={false} required disabled={busy} value={name} onChange={event => setName(event.target.value)} placeholder="中文、英文、数字都可以" />
+        </label>
+        {error && <p className="account-error" role="alert">{error}</p>}
+        <button className="account-submit" type="submit" disabled={busy}>{busy ? "正在入寺…" : "进入寺院"}<ArrowRight size={18} aria-hidden="true" /></button>
+      </form>
+      <p className="account-note">这个浏览器会记住你的小和尚。同名的寺友也有各自的日记。</p>
+      {error && <button className="account-retry" disabled={busy} onClick={() => void checkSession()}><RefreshCw size={16} />重新连接</button>}
       <p className="account-trial">免费体验期间，名字和日记记录可能随服务休眠或重启重置。</p>
     </section>
   </main>;
