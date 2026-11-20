@@ -1,9 +1,9 @@
-import { getAbbotAccessory, getAccessoryForTitle, type AbbotAccessoryId } from "../abbot-accessories.mjs";
+import { getAbbotAccessory, getAccessoryForTitle, normalizeAbbotOutfit, type AbbotAccessoryId, type AbbotAccessorySlot, type AbbotOutfit } from "../abbot-accessories.mjs";
 
 export type AbbotObjectiveKind = "prayer" | "flower" | "beads" | "wood" | "incense" | "fish" | "bell" | "sutra" | "martial" | "skyLantern";
 export type AbbotAction = "accept" | "complete" | AbbotObjectiveKind;
-export type AbbotAppearance = { accessoryId: AbbotAccessoryId | null; updatedAt: number };
-export type AbbotWardrobe = { unlocked: AbbotAccessoryId[]; equipped: AbbotAccessoryId | null; configured: boolean; updatedAt: number };
+export type AbbotAppearance = { accessoryId: AbbotAccessoryId | null; updatedAt: number; equippedBySlot?: AbbotOutfit; revision?: number };
+export type AbbotWardrobe = { unlocked: AbbotAccessoryId[]; equipped: AbbotAccessoryId | null; equippedBySlot: AbbotOutfit; configured: boolean; updatedAt: number; revision: number };
 export type AbbotJourney = {
   questId: string;
   acceptedAt: number;
@@ -57,9 +57,31 @@ let nextRequestOrder = 0;
 const validTime = (value: unknown): value is number | null => value === null || (Number.isSafeInteger(value) && (value as number) >= 0);
 const earliest = (...values: (number | null | undefined)[]) => { const times = values.filter((value): value is number => typeof value === "number"); return times.length ? Math.min(...times) : null; };
 const emptyLegacy = () => ({ acceptedAt: null, prayerAt: null, flowerAt: null, rewardedAt: null });
-const validAppearance = (value: AbbotAppearance | undefined): value is AbbotAppearance => Boolean(value
-  && Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0
-  && (value.accessoryId === null || getAbbotAccessory(value.accessoryId)));
+
+function singleAccessoryOutfit(accessoryId: AbbotAccessoryId | null): AbbotOutfit {
+  const accessory = getAbbotAccessory(accessoryId);
+  return accessory ? { [accessory.slot]: accessory.id } : {};
+}
+
+function normalizeAppearance(value: AbbotAppearance | undefined): AbbotAppearance | undefined {
+  if (!value || !Number.isSafeInteger(value.updatedAt) || value.updatedAt < 0) return undefined;
+  const { updatedAt, revision = 0, equippedBySlot } = value;
+  if (!Number.isSafeInteger(revision) || revision < 0) return undefined;
+  if (equippedBySlot === undefined) {
+    if (value.accessoryId !== null && !getAbbotAccessory(value.accessoryId)) return undefined;
+    return { accessoryId: value.accessoryId, updatedAt, revision, equippedBySlot: singleAccessoryOutfit(value.accessoryId) };
+  }
+  if (!equippedBySlot || typeof equippedBySlot !== "object" || Array.isArray(equippedBySlot)) return undefined;
+  const outfit = normalizeAbbotOutfit(equippedBySlot);
+  if (Object.keys(outfit).length !== Object.keys(equippedBySlot).length) return undefined;
+  const equipped = Object.values(outfit);
+  const accessoryId = value.accessoryId !== null && equipped.includes(value.accessoryId) ? value.accessoryId : equipped[0] ?? null;
+  return { accessoryId, updatedAt, revision, equippedBySlot: outfit };
+}
+
+function compareAppearance(left: AbbotAppearance, right: { updatedAt: number; revision?: number }) {
+  return left.updatedAt - right.updatedAt || (left.revision ?? 0) - (right.revision ?? 0);
+}
 
 function archiveJourneys(archive: AbbotArchive | null): AbbotJourney[] {
   if (!archive) return [];
@@ -74,7 +96,10 @@ function archiveJourneys(archive: AbbotArchive | null): AbbotJourney[] {
 function mergeArchives(...archives: (AbbotArchive | null | undefined)[]): AbbotArchive {
   const merged = new Map<string, AbbotJourney>();
   let appearance: AbbotAppearance | undefined;
-  for (const archive of archives) if (validAppearance(archive?.appearance) && (!appearance || archive.appearance.updatedAt >= appearance.updatedAt)) appearance = archive.appearance;
+  for (const archive of archives) {
+    const next = normalizeAppearance(archive?.appearance);
+    if (next && (!appearance || compareAppearance(next, appearance) >= 0)) appearance = next;
+  }
   for (const archive of archives) for (const journey of archiveJourneys(archive ?? null)) {
     const previous = merged.get(journey.questId);
     merged.set(journey.questId, {
@@ -109,11 +134,16 @@ function rememberSnapshot(selfId: string, incoming: AbbotSnapshot): AbbotSnapsho
   const titles = [...new Set([...snapshot.rewards.titles, ...completed.map(item => item.rewardTitle)])];
   const unlocked = titles.flatMap(title => { const accessory = getAccessoryForTitle(title); return accessory ? [accessory.id] : []; });
   const appearance = archive.appearance;
-  const equipped = appearance ? (appearance.accessoryId !== null && unlocked.includes(appearance.accessoryId) ? appearance.accessoryId : null) : getAccessoryForTitle(completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle)?.id ?? null;
+  const latestAccessory = getAccessoryForTitle(completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle)?.id ?? null;
+  const outfit = appearance?.equippedBySlot ?? singleAccessoryOutfit(latestAccessory);
+  const equippedBySlot: AbbotOutfit = Object.fromEntries(Object.entries(outfit).filter(([, id]) => unlocked.includes(id)));
+  const equippedIds = Object.values(equippedBySlot);
+  const preferred = appearance?.accessoryId;
+  const equipped = preferred && equippedIds.includes(preferred) ? preferred : equippedIds[0] ?? null;
   const result: AbbotSnapshot = { ...snapshot, archive,
     progress: { accepted: Boolean(journey), prayer: snapshot.quest.objectives.some(item => item.kind === "prayer" && objectiveProgress[item.id]), flower: snapshot.quest.objectives.some(item => item.kind === "flower" && objectiveProgress[item.id]), rewarded: journey?.rewardedAt !== null && journey?.rewardedAt !== undefined, objectives: objectiveProgress },
     rewards: { hasLantern: snapshot.rewards.hasLantern || completed.length > 0, titles, activeTitle: completed[completed.length - 1]?.rewardTitle ?? snapshot.rewards.activeTitle },
-    wardrobe: { unlocked, equipped, configured: Boolean(appearance), updatedAt: appearance?.updatedAt ?? 0 },
+    wardrobe: { unlocked, equipped, equippedBySlot, configured: Boolean(appearance), updatedAt: appearance?.updatedAt ?? 0, revision: appearance?.revision ?? 0 },
   };
   requestOrders.set(result, requestOrders.get(snapshot) ?? 0);
   snapshots.set(selfId, result);
@@ -147,7 +177,7 @@ export async function getAbbotSnapshot(selfId: string, signal?: AbortSignal): Pr
   const cloud = new Map((snapshot.archive.journeys ?? []).map(journey => [journey.questId, journey]));
   const missing = (saved.journeys ?? []).filter(journey => needsRestore(journey, cloud.get(journey.questId)));
   for (let offset = 0; offset < missing.length; offset += 20) snapshot = await requestAbbot(selfId, { action: "restore", archive: { version: 2, journeys: missing.slice(offset, offset + 20) } }, signal);
-  if (saved.appearance && (!snapshot.wardrobe?.configured || saved.appearance.updatedAt > snapshot.wardrobe.updatedAt)) {
+  if (saved.appearance && (!snapshot.wardrobe?.configured || compareAppearance(saved.appearance, snapshot.wardrobe) > 0)) {
     snapshot = await requestAbbot(selfId, { action: "restore", archive: { version: 2, journeys: [], appearance: saved.appearance } }, signal);
   }
   return rememberSnapshot(selfId, snapshot);
@@ -158,7 +188,7 @@ export async function actAbbot(selfId: string, action: AbbotAction, encounterId?
   return rememberSnapshot(selfId, snapshot);
 }
 
-export async function equipAbbotAccessory(selfId: string, accessoryId: AbbotAccessoryId | null, signal?: AbortSignal): Promise<AbbotSnapshot> {
-  const snapshot = await requestAbbot(selfId, { action: "equipAccessory", accessoryId }, signal);
+export async function equipAbbotAccessory(selfId: string, accessoryId: AbbotAccessoryId | null, signal?: AbortSignal, slot?: AbbotAccessorySlot): Promise<AbbotSnapshot> {
+  const snapshot = await requestAbbot(selfId, { action: "equipAccessory", accessoryId, ...(slot === undefined ? {} : { slot }) }, signal);
   return rememberSnapshot(selfId, snapshot);
 }

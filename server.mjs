@@ -13,6 +13,7 @@ import { createTempleLamps } from "./temple-lamps.mjs";
 import { createTempleLanterns } from "./temple-lanterns.mjs";
 import { createPondGame } from "./pond-game.mjs";
 import { createAbbotQuest } from "./abbot-quest.mjs";
+import { ABBOT_ACCESSORY_SLOTS } from "./abbot-accessories.mjs";
 import { createPracticeGames } from "./practice-games.mjs";
 
 const COOKIE_NAME = "yunjian_guest";
@@ -542,6 +543,7 @@ export function createTempleServer({
   function refresh(identity, timestamp) {
     let visitor = visitors.get(identity.id);
     if (!visitor && visitors.size < MAX_VISITORS) {
+      const { accessoryId, accessoryIdsBySlot: accessories } = abbot.wornOutfit(identity);
       visitor = {
         id: identity.id,
         name: identity.name,
@@ -551,7 +553,8 @@ export function createTempleServer({
         z: 9,
         heading: 0,
         action: "idle",
-        accessoryId: abbot.wornAccessoryId(identity, timestamp),
+        accessories,
+        accessoryId,
         bowSpeed: 1,
         meditating: false,
         joinedAt: timestamp,
@@ -844,8 +847,12 @@ export function createTempleServer({
         const featureSnapshot = feature.snapshot(identity, timestamp);
         if (pathname === "/api/abbot") {
           const visitor = visitors.get(identity.id);
-          const accessoryId = featureSnapshot.wardrobe.equipped;
-          if (visitor && visitor.accessoryId !== accessoryId) { visitor.accessoryId = accessoryId; roomDirty = true; }
+          const { equipped: accessoryId, equippedBySlot: accessories } = featureSnapshot.wardrobe;
+          if (visitor && (visitor.accessoryId !== accessoryId || ABBOT_ACCESSORY_SLOTS.some(slot => visitor.accessories[slot] !== accessories[slot]))) {
+            visitor.accessories = accessories;
+            visitor.accessoryId = accessoryId;
+            roomDirty = true;
+          }
         }
         sendJson(response, featureSnapshot, 200, identity);
         return;

@@ -1,10 +1,10 @@
-import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
+import type { AbbotAccessoryId, AbbotOutfit } from "../abbot-accessories.mjs";
 
 export type TempleMotion = { id: string; x: number; z: number; heading: number; floor?: 1 | 2 | 3; at: number };
 export type TemplePosition = { x: number; z: number; heading: number; floor: 1 | 2 | 3 };
 export type PresenceParticipant = TempleMotion & {
   name: string; seat: number | null; action: string; meditating: boolean;
-  joinedAt: number; bowSpeed?: 1 | 4; accessoryId?: AbbotAccessoryId | null;
+  joinedAt: number; bowSpeed?: 1 | 4; accessoryId?: AbbotAccessoryId | null; accessories?: AbbotOutfit;
 };
 export type PresenceRoom = {
   selfId: string; now: number; participants: PresenceParticipant[]; total: number; meditatingCount: number;

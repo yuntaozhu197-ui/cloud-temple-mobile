@@ -10,7 +10,7 @@ import { findNpcEncounter } from "./npcEncounters";
 import { TEMPLE_INTERACTIONS, isTempleInteraction, type TempleInteractionKind } from "./templeInteractions";
 import type { PondSpecies } from "./pondGame";
 import type { AbbotSnapshot } from "./abbotQuest";
-import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
+import type { AbbotAccessoryId, AbbotOutfit } from "../abbot-accessories.mjs";
 import { createRemoteMotion } from "./three/remoteMotion";
 import TempleLoading from "./TempleLoading";
 type TempleFloor = 1 | 2 | 3;
@@ -28,6 +28,7 @@ type Participant = {
   floor?: TempleFloor;
   at?: number;
   accessoryId?: AbbotAccessoryId | null;
+  accessories?: AbbotOutfit;
 };
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
@@ -90,6 +91,7 @@ type MonkInstance = {
   setReleaseSpecies: (species: PondSpecies) => void;
   setPracticeTiers: (tiers: { wood: number; beads: number; flower: number }) => void;
   setAccessory: (id: AbbotAccessoryId | null) => void;
+  setAccessories: (outfit: AbbotOutfit) => void;
   dispose: () => void;
 };
 
@@ -880,7 +882,8 @@ export default function TempleWorld(props: WorldProps) {
               existing.lastSampleAt = -Infinity;
             }
             existing.seat = person.seat;
-            existing.monk.setAccessory(person.accessoryId ?? null);
+            if (person.accessories) existing.monk.setAccessories(person.accessories);
+            else existing.monk.setAccessory(person.accessoryId ?? null);
             existing.floor = person.floor ?? 1;
             const sampleAt = person.at ?? Date.now();
             if (sampleAt > existing.lastSampleAt) {
@@ -908,7 +911,9 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
-          actor.setAccessory(state.abbot?.wardrobe?.equipped ?? null);
+          const wardrobe = state.abbot?.wardrobe;
+          if (wardrobe?.equippedBySlot) actor.setAccessories(wardrobe.equippedBySlot);
+          else actor.setAccessory(wardrobe?.equipped ?? null);
           const practiceTiers = state.practiceTiers ?? { wood: 0, beads: 0, flower: 0 };
           const nextPracticeTierKey = `${practiceTiers.wood}:${practiceTiers.beads}:${practiceTiers.flower}`;
           if (nextPracticeTierKey !== practiceTierKey) {

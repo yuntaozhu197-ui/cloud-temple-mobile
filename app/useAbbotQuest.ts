@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { actAbbot, equipAbbotAccessory, getAbbotSnapshot, type AbbotAction, type AbbotObjectiveKind, type AbbotSnapshot } from "./abbotQuest";
-import type { AbbotAccessoryId } from "../abbot-accessories.mjs";
+import type { AbbotAccessoryId, AbbotAccessorySlot } from "../abbot-accessories.mjs";
 
 /** Keep progress current while avoiding races between polling and ritual receipts. */
 export function useAbbotQuest(selfId: string) {
@@ -65,7 +65,7 @@ export function useAbbotQuest(selfId: string) {
     };
   }, [selfId, receive]);
 
-  const act = useCallback((action: AbbotAction | "equipAccessory", accessoryId?: AbbotAccessoryId | null) => {
+  const act = useCallback((action: AbbotAction | "equipAccessory", accessoryId?: AbbotAccessoryId | null, slot?: AbbotAccessorySlot) => {
     pending.current++;
     revision.current++;
     const session = generation.current;
@@ -78,7 +78,7 @@ export function useAbbotQuest(selfId: string) {
       try {
         if (!alive.current || session !== generation.current) throw new Error("这次奇遇已经结束，请重新进入寺庙。");
         const next = action === "equipAccessory"
-          ? await equipAbbotAccessory(selfId, accessoryId ?? null, controller.signal)
+          ? await equipAbbotAccessory(selfId, accessoryId ?? null, controller.signal, slot)
           : await actAbbot(selfId, action, encounterId, controller.signal, questId);
         if (session === generation.current) receive(next);
       } catch (failure) {
@@ -95,7 +95,7 @@ export function useAbbotQuest(selfId: string) {
     return operation;
   }, [selfId, receive]);
 
-  const equipAccessory = useCallback((accessoryId: AbbotAccessoryId | null) => act("equipAccessory", accessoryId), [act]);
+  const equipAccessory = useCallback((accessoryId: AbbotAccessoryId | null, slot?: AbbotAccessorySlot) => act("equipAccessory", accessoryId, slot), [act]);
 
   const record = useCallback(async (action: AbbotObjectiveKind) => {
     const snapshot = current.current;

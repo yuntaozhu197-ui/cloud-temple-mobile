@@ -1,4 +1,4 @@
-import { getAbbotAccessory, getAccessoryForTitle } from "./abbot-accessories.mjs";
+import { ABBOT_ACCESSORY_SLOTS, getAbbotAccessory, getAccessoryForTitle, normalizeAbbotOutfit } from "./abbot-accessories.mjs";
 
 const CYCLE_MS = 12 * 60_000;
 const VISIBLE_MS = 8 * 60_000;
@@ -86,6 +86,30 @@ function validLegacy(archive, timestamp) {
 }
 const earliest = (...values) => { const times = values.filter(value => value !== null && value !== undefined); return times.length ? Math.min(...times) : null; };
 
+function singleAccessoryOutfit(accessoryId) {
+  const accessory = getAbbotAccessory(accessoryId);
+  return accessory ? { [accessory.slot]: accessory.id } : {};
+}
+
+function representativeAccessory(outfit, preferred) {
+  const equipped = Object.values(outfit);
+  return equipped.includes(preferred) ? preferred : equipped[0] ?? null;
+}
+
+function parseSavedAppearance(value, timestamp) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { accessoryId, updatedAt, revision = 0, equippedBySlot } = value;
+  if (!Number.isSafeInteger(updatedAt) || updatedAt < 0 || updatedAt > timestamp || !Number.isSafeInteger(revision) || revision < 0) return null;
+  if (equippedBySlot === undefined) {
+    if (accessoryId !== null && !getAbbotAccessory(accessoryId)) return null;
+    return { accessoryId, updatedAt, revision, equippedBySlot: singleAccessoryOutfit(accessoryId) };
+  }
+  if (!equippedBySlot || typeof equippedBySlot !== "object" || Array.isArray(equippedBySlot)) return null;
+  const outfit = normalizeAbbotOutfit(equippedBySlot);
+  if (Object.keys(outfit).length !== Object.keys(equippedBySlot).length) return null;
+  return { accessoryId: representativeAccessory(outfit, accessoryId), updatedAt, revision, equippedBySlot: outfit };
+}
+
 export function createAbbotQuest(database, { trialMode = false } = {}) {
   database.exec(`
     CREATE TABLE IF NOT EXISTS temple_abbot_quests (
@@ -98,9 +122,12 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
     );
     CREATE INDEX IF NOT EXISTS temple_abbot_journey_user ON temple_abbot_journeys(user_id, accepted_at);
     CREATE TABLE IF NOT EXISTS temple_abbot_appearance (
-      user_id TEXT PRIMARY KEY REFERENCES community_users(id), accessory_id TEXT, updated_at INTEGER NOT NULL
+      user_id TEXT PRIMARY KEY REFERENCES community_users(id), accessory_id TEXT, updated_at INTEGER NOT NULL, outfit_json TEXT
     );
   `);
+  if (!database.prepare("PRAGMA table_info(temple_abbot_appearance)").all().some(column => column.name === "outfit_json")) {
+    database.exec("ALTER TABLE temple_abbot_appearance ADD COLUMN outfit_json TEXT");
+  }
   const query = {
     legacy: database.prepare("SELECT accepted_at AS acceptedAt, prayer_at AS prayerAt, flower_at AS flowerAt, rewarded_at AS rewardedAt FROM temple_abbot_quests WHERE user_id = ?"),
     saveLegacy: database.prepare(`INSERT INTO temple_abbot_quests (user_id, accepted_at, prayer_at, flower_at, rewarded_at) VALUES (?, ?, ?, ?, ?)
@@ -108,10 +135,21 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
     journeys: database.prepare("SELECT quest_id AS questId, accepted_at AS acceptedAt, objectives_json AS objectivesJson, rewarded_at AS rewardedAt FROM temple_abbot_journeys WHERE user_id = ? ORDER BY accepted_at, quest_id"),
     save: database.prepare(`INSERT INTO temple_abbot_journeys (user_id, quest_id, accepted_at, objectives_json, rewarded_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(user_id, quest_id) DO UPDATE SET accepted_at = excluded.accepted_at, objectives_json = excluded.objectives_json, rewarded_at = excluded.rewarded_at`),
-    appearance: database.prepare("SELECT accessory_id AS accessoryId, updated_at AS updatedAt FROM temple_abbot_appearance WHERE user_id = ?"),
-    saveAppearance: database.prepare(`INSERT INTO temple_abbot_appearance (user_id, accessory_id, updated_at) VALUES (?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET accessory_id = excluded.accessory_id, updated_at = excluded.updated_at`),
+    appearance: database.prepare("SELECT accessory_id AS accessoryId, updated_at AS updatedAt, outfit_json AS outfitJson FROM temple_abbot_appearance WHERE user_id = ?"),
+    saveAppearance: database.prepare(`INSERT INTO temple_abbot_appearance (user_id, accessory_id, updated_at, outfit_json) VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET accessory_id = excluded.accessory_id, updated_at = excluded.updated_at, outfit_json = excluded.outfit_json`),
   };
+  function appearanceFor(identity) {
+    const row = query.appearance.get(identity.id);
+    if (!row) return undefined;
+    const stored = row.outfitJson === null ? {} : JSON.parse(row.outfitJson);
+    const equippedBySlot = stored.equippedBySlot === undefined ? singleAccessoryOutfit(row.accessoryId) : normalizeAbbotOutfit(stored.equippedBySlot);
+    return { accessoryId: representativeAccessory(equippedBySlot, row.accessoryId), equippedBySlot, updatedAt: row.updatedAt, revision: stored.revision ?? 0 };
+  }
+  function saveAppearance(identity, equippedBySlot, preferred, updatedAt, revision) {
+    const outfit = normalizeAbbotOutfit(equippedBySlot);
+    query.saveAppearance.run(identity.id, representativeAccessory(outfit, preferred), updatedAt, JSON.stringify({ equippedBySlot: outfit, revision }));
+  }
   function rows(identity) {
     return query.journeys.all(identity.id).map(row => ({ questId: row.questId, acceptedAt: row.acceptedAt, objectives: JSON.parse(row.objectivesJson), rewardedAt: row.rewardedAt, rewardTitle: getAbbotQuest(row.questId).reward.title }));
   }
@@ -131,17 +169,22 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
     if (completed && Math.floor(completed.rewardedAt / CYCLE_MS) >= Math.floor(timestamp / CYCLE_MS)) return completed;
     return journeys.find(journey => journey.questId === getAbbotEncounter(timestamp).id);
   }
-  function wardrobe(identity, journeys) {
-    const completed = journeys.filter(item => item.rewardedAt !== null).sort((left, right) => left.rewardedAt - right.rewardedAt);
+  function wardrobe(completed, appearance) {
     const unlocked = [...new Set(completed.map(item => getAccessoryForTitle(item.rewardTitle)?.id).filter(Boolean))];
-    const appearance = query.appearance.get(identity.id);
     const latestAccessory = getAccessoryForTitle(completed[completed.length - 1]?.rewardTitle)?.id ?? null;
-    const equipped = appearance ? (unlocked.includes(appearance.accessoryId) ? appearance.accessoryId : null) : latestAccessory;
-    return { unlocked, equipped, configured: Boolean(appearance), updatedAt: appearance?.updatedAt ?? 0 };
+    const outfit = appearance?.equippedBySlot ?? singleAccessoryOutfit(latestAccessory);
+    const equippedBySlot = Object.fromEntries(Object.entries(outfit).filter(([, id]) => unlocked.includes(id)));
+    const equipped = representativeAccessory(equippedBySlot, appearance?.accessoryId);
+    return { unlocked, equipped, equippedBySlot, configured: Boolean(appearance), updatedAt: appearance?.updatedAt ?? 0, revision: appearance?.revision ?? 0 };
   }
-  function wornAccessoryId(identity) {
+  function getWardrobe(identity) {
     migrate(identity);
-    return wardrobe(identity, rows(identity)).equipped;
+    const completed = rows(identity).filter(item => item.rewardedAt !== null).sort((left, right) => left.rewardedAt - right.rewardedAt);
+    return wardrobe(completed, appearanceFor(identity));
+  }
+  function wornOutfit(identity) {
+    const { equipped, equippedBySlot } = getWardrobe(identity);
+    return { accessoryId: equipped, accessoryIdsBySlot: equippedBySlot };
   }
   function snapshot(identity, timestamp = Date.now()) {
     migrate(identity);
@@ -154,12 +197,12 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
     const certificates = [...new Map(completed.map(item => [item.rewardTitle, item])).values()];
     const archived = [...new Map([...journeys.slice(-32), ...certificates, ...journeys.filter(item => item.rewardedAt === null), ...(legacy ? [legacy] : [])].map(item => [item.questId, item])).values()];
     const completedObjectives = Object.fromEntries(quest.objectives.map(item => [item.id, journey?.objectives[item.id] !== null && journey?.objectives[item.id] !== undefined]));
-    const appearance = query.appearance.get(identity.id);
+    const appearance = appearanceFor(identity);
     return {
       now: timestamp, encounter: getAbbotEncounter(timestamp), quest,
       progress: { accepted: Boolean(journey), prayer: quest.objectives.some(item => item.kind === "prayer" && completedObjectives[item.id]), flower: quest.objectives.some(item => item.kind === "flower" && completedObjectives[item.id]), rewarded: journey?.rewardedAt !== null && journey?.rewardedAt !== undefined, objectives: completedObjectives },
       rewards: { hasLantern: completed.length > 0, titles, activeTitle: completed[completed.length - 1]?.rewardTitle ?? "" },
-      wardrobe: wardrobe(identity, journeys),
+      wardrobe: wardrobe(completed, appearance),
       archive: { ...(legacy ? { acceptedAt: legacy.acceptedAt, prayerAt: legacy.objectives["legacy-prayer"], flowerAt: legacy.objectives["legacy-flower"], rewardedAt: legacy.rewardedAt } : emptyLegacy()), version: 2, journeys: archived, ...(appearance ? { appearance } : {}) },
       trial: { temporaryRecords: trialMode },
     };
@@ -186,10 +229,9 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
       const archive = body.archive;
       incoming = archive.acceptedAt === null ? [] : [{ questId: "legacy", acceptedAt: archive.acceptedAt, objectives: { "legacy-prayer": archive.prayerAt, "legacy-flower": archive.flowerAt }, rewardedAt: archive.rewardedAt }];
     }
-    const appearance = body.archive.appearance;
-    if (appearance !== undefined && (!appearance || typeof appearance !== "object" || Array.isArray(appearance)
-      || !Number.isSafeInteger(appearance.updatedAt) || appearance.updatedAt < 0 || appearance.updatedAt > timestamp
-      || (appearance.accessoryId !== null && !getAbbotAccessory(appearance.accessoryId)))) return invalid("饰品存档格式无效，请重新打开饰品收藏。");
+    const savedAppearance = body.archive.appearance;
+    const appearance = savedAppearance === undefined ? null : parseSavedAppearance(savedAppearance, timestamp);
+    if (savedAppearance !== undefined && !appearance) return invalid("饰品存档格式无效，请重新打开饰品收藏。");
     const saved = new Map(rows(identity).map(journey => [journey.questId, journey]));
     for (const item of incoming) {
       const old = saved.get(item.questId);
@@ -197,21 +239,29 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
       save(identity, merged);
       saved.set(item.questId, merged);
     }
-    if (appearance !== undefined) {
-      const current = query.appearance.get(identity.id);
-      const unlocked = wardrobe(identity, rows(identity)).unlocked;
-      if (appearance.accessoryId !== null && !unlocked.includes(appearance.accessoryId)) return invalid("完成对应的住持任务后，即可佩戴这件饰品。", 409);
-      if (!current || appearance.updatedAt > current.updatedAt) query.saveAppearance.run(identity.id, appearance.accessoryId, appearance.updatedAt);
+    if (appearance) {
+      const { configured, updatedAt, revision, unlocked } = getWardrobe(identity);
+      if (Object.values(appearance.equippedBySlot).some(id => !unlocked.includes(id))) return invalid("完成对应的住持任务后，即可佩戴这件饰品。", 409);
+      const newer = appearance.updatedAt > updatedAt || (appearance.updatedAt === updatedAt && appearance.revision > revision);
+      if (!configured || newer) saveAppearance(identity, appearance.equippedBySlot, appearance.accessoryId, appearance.updatedAt, appearance.revision);
     }
     return null;
   }
   function perform(identity, body, timestamp) {
     if (body.action === "restore") return restore(identity, body, timestamp);
     if (body.action === "equipAccessory") {
-      if (body.accessoryId !== null && !getAbbotAccessory(body.accessoryId)) return invalid("请选择一件已获得的饰品，或选择不佩戴。");
-      const unlocked = wardrobe(identity, rows(identity)).unlocked;
-      if (body.accessoryId !== null && !unlocked.includes(body.accessoryId)) return invalid("完成对应的住持任务后，即可佩戴这件饰品。", 409);
-      query.saveAppearance.run(identity.id, body.accessoryId, timestamp);
+      const { accessoryId, slot } = body;
+      const accessory = getAbbotAccessory(accessoryId);
+      if (accessoryId !== null && !accessory) return invalid("请选择一件已获得的饰品，或选择不佩戴。");
+      if (slot !== undefined && (!ABBOT_ACCESSORY_SLOTS.includes(slot) || (accessory && accessory.slot !== slot))) return invalid("这件饰品不能佩戴在这个位置。");
+      const { unlocked, equipped, equippedBySlot, updatedAt, revision } = getWardrobe(identity);
+      if (accessory && !unlocked.includes(accessory.id)) return invalid("完成对应的住持任务后，即可佩戴这件饰品。", 409);
+      const outfit = accessory || slot ? { ...equippedBySlot } : {};
+      if (accessory) outfit[accessory.slot] = accessory.id;
+      else if (slot) delete outfit[slot];
+      // Distinguish writes made in the same millisecond without advancing the timestamp held in browser backups.
+      const nextTime = Math.max(timestamp, updatedAt);
+      saveAppearance(identity, outfit, accessory?.id ?? equipped, nextTime, nextTime === updatedAt ? revision + 1 : 0);
       return null;
     }
     if (!["accept", "complete", ...objectives.map(item => item.kind)].includes(body.action)) return invalid("请选择当前因缘中的修行，或与住持交谈。");
@@ -257,5 +307,5 @@ export function createAbbotQuest(database, { trialMode = false } = {}) {
       throw failure;
     }
   }
-  return { snapshot, act, wornAccessoryId };
+  return { snapshot, act, wornOutfit, wornAccessories: identity => wornOutfit(identity).accessoryIdsBySlot, wornAccessoryId: identity => wornOutfit(identity).accessoryId };
 }

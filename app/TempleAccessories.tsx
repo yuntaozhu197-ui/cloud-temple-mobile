@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, LockKeyhole, X } from "lucide-react";
-import { ABBOT_ACCESSORIES, getAbbotAccessory, type AbbotAccessoryId } from "../abbot-accessories.mjs";
+import {
+  ABBOT_ACCESSORIES,
+  ABBOT_ACCESSORY_SLOTS,
+  ABBOT_ACCESSORY_SLOT_LABELS,
+  getAbbotAccessory,
+  type AbbotAccessoryId,
+  type AbbotAccessorySlot,
+} from "../abbot-accessories.mjs";
 import type { AbbotSnapshot } from "./abbotQuest";
 import "./accessories.css";
 
@@ -96,7 +103,7 @@ type Props = {
   open: boolean;
   snapshot: AbbotSnapshot | null;
   onClose: () => void;
-  onEquip: (id: AbbotAccessoryId | null) => Promise<void>;
+  onEquip: (id: AbbotAccessoryId | null, slot?: AbbotAccessorySlot) => Promise<void>;
 };
 
 export default function TempleAccessories({ open, snapshot, onClose, onEquip }: Props) {
@@ -105,16 +112,22 @@ export default function TempleAccessories({ open, snapshot, onClose, onEquip }: 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const panel = useRef<HTMLElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const current = useRef({ onClose, onEquip });
   current.current = { onClose, onEquip };
   const pending = useRef(false);
   const selectionStarted = useRef(false);
   const mounted = useRef(true);
-  const equipped = snapshot?.wardrobe?.equipped ?? null;
-  const unlocked = snapshot?.wardrobe?.unlocked ?? [];
+  const equipped = snapshot?.wardrobe.equippedBySlot;
+  const unlocked = snapshot?.wardrobe.unlocked ?? [];
+  const firstWorn = ABBOT_ACCESSORY_SLOTS.map(slot => equipped?.[slot]).find(Boolean);
+  const initialSelection = firstWorn ?? unlocked[0] ?? ABBOT_ACCESSORIES[0].id;
   const item = getAbbotAccessory(selected)!;
+  const slotLabel = ABBOT_ACCESSORY_SLOT_LABELS[item.slot];
+  const wornInSlot = getAbbotAccessory(equipped?.[item.slot]);
   const ownsSelected = unlocked.includes(selected);
-  const wearingSelected = equipped === selected;
+  const wearingSelected = wornInSlot?.id === selected;
+  const replacing = ownsSelected && wornInSlot && !wearingSelected;
 
   useEffect(() => {
     mounted.current = true;
@@ -124,7 +137,7 @@ export default function TempleAccessories({ open, snapshot, onClose, onEquip }: 
   useEffect(() => {
     if (!open) return;
     selectionStarted.current = false;
-    setSelected(equipped ?? unlocked[0] ?? ABBOT_ACCESSORIES[0].id);
+    setSelected(initialSelection);
     setError("");
     setNotice("");
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -150,18 +163,26 @@ export default function TempleAccessories({ open, snapshot, onClose, onEquip }: 
   useEffect(() => {
     if (!open || !snapshot || selectionStarted.current) return;
     selectionStarted.current = true;
-    setSelected(equipped ?? unlocked[0] ?? ABBOT_ACCESSORIES[0].id);
-  }, [open, snapshot, equipped, unlocked]);
+    setSelected(initialSelection);
+  }, [open, snapshot, initialSelection]);
 
-  async function equip(id: AbbotAccessoryId | null) {
+  function preview(id: AbbotAccessoryId, scrollToPreview = false) {
+    selectionStarted.current = true;
+    setSelected(id);
+    setError("");
+    setNotice("");
+    if (scrollToPreview && content.current) content.current.scrollTop = 0;
+  }
+
+  async function equip(id: AbbotAccessoryId | null, slot: AbbotAccessorySlot) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await current.current.onEquip(id);
-      if (mounted.current) setNotice(id ? `已佩戴${getAbbotAccessory(id)!.name}` : "已卸下饰品");
+      await current.current.onEquip(id, slot);
+      if (mounted.current) setNotice(id ? `已佩戴${getAbbotAccessory(id)!.name}` : `已卸下${ABBOT_ACCESSORY_SLOT_LABELS[slot]}饰品`);
     } catch (failure) {
       if (mounted.current) setError(failure instanceof Error ? failure.message : "饰品没有保存成功，请重新操作。");
     } finally {
@@ -173,21 +194,35 @@ export default function TempleAccessories({ open, snapshot, onClose, onEquip }: 
   if (!open) return null;
   return createPortal(<div className="accessories-overlay" onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={panel} className="accessories-panel" role="dialog" aria-modal="true" aria-labelledby="accessories-title">
-      <header className="accessories-heading">
-        <div><p className="accessory-caption">住持赠礼 · 已收藏{unlocked.length}件</p><h2 id="accessories-title">称号饰品</h2></div>
-        <button className="accessory-close" type="button" onClick={onClose} aria-label="关闭称号饰品"><X size={20} aria-hidden="true" /></button>
+      <header>
+        <div className="accessories-heading">
+          <div><p className="accessory-caption">住持赠礼 · 已收藏{unlocked.length}件</p><h2 id="accessories-title">称号饰品</h2></div>
+          <button className="accessory-close" type="button" onClick={onClose} aria-label="关闭称号饰品"><X size={20} aria-hidden="true" /></button>
+        </div>
+        <div className="accessory-outfit" role="group" aria-label="当前佩戴">
+          {ABBOT_ACCESSORY_SLOTS.map(slot => {
+            const worn = getAbbotAccessory(equipped?.[slot]);
+            const label = ABBOT_ACCESSORY_SLOT_LABELS[slot];
+            if (!worn) return <div className="accessory-slot" key={slot}><span>{label}</span><strong>{snapshot ? "未佩戴" : "加载中"}</strong></div>;
+            const active = selected === worn.id;
+            return <button key={slot} className={`accessory-slot is-worn${active ? " is-selected" : ""}`} type="button" aria-pressed={active} onClick={() => preview(worn.id, true)}>
+              <span>{label}</span>
+              <strong>{worn.name}</strong>
+            </button>;
+          })}
+        </div>
       </header>
-      <div className="accessories-content">
+      <div className="accessories-content" ref={content}>
         <AccessoryPreview id={selected} name={item.name} />
-        <div className="accessory-name"><h3>{item.name}</h3><span className="accessory-caption">{wearingSelected ? "正在佩戴" : ownsSelected ? "已收藏" : "尚未获得"}</span></div>
+        <div className="accessory-name"><h3>{item.name}</h3><span className="accessory-caption">{slotLabel} · {wearingSelected ? "佩戴中" : ownsSelected ? "已收藏" : "待解锁"}</span></div>
         <p className="accessory-description">{item.description}</p>
         <p className="accessory-unlock">{ownsSelected ? `「${item.title}」专属赠礼` : `获得称号「${item.title}」后解锁`}</p>
         {!snapshot && <p className="accessory-caption" role="status">正在查看你的称号收藏…</p>}
         <div className="accessory-collection" role="group" aria-label="九款称号饰品收藏">
           {ABBOT_ACCESSORIES.map(accessory => {
             const owned = unlocked.includes(accessory.id);
-            const wearing = equipped === accessory.id;
-            return <button key={accessory.id} type="button" className={selected === accessory.id ? "is-selected" : ""} aria-pressed={selected === accessory.id} onClick={() => { selectionStarted.current = true; setSelected(accessory.id); setError(""); setNotice(""); }}>
+            const wearing = equipped?.[accessory.slot] === accessory.id;
+            return <button key={accessory.id} type="button" className={selected === accessory.id ? "is-selected" : ""} aria-pressed={selected === accessory.id} onClick={() => preview(accessory.id)}>
               <span className="accessory-collection-state"><span className="accessory-color" style={{ backgroundColor: accessory.color }} aria-hidden="true" />{wearing ? <Check size={12} aria-hidden="true" /> : !owned ? <LockKeyhole size={12} aria-hidden="true" /> : null}<span>{wearing ? "佩戴中" : owned ? "已收藏" : "待解锁"}</span></span>
               <strong>{accessory.name}</strong><span className="accessory-collection-title">{accessory.title}</span>
             </button>;
@@ -198,10 +233,10 @@ export default function TempleAccessories({ open, snapshot, onClose, onEquip }: 
       <footer className="accessories-footer">
         {(error || notice) && <p className={error ? "accessory-error" : "accessory-notice"} role={error ? "alert" : "status"}>{error || notice}</p>}
         <div className="accessory-actions">
-          <button type="button" className="accessory-remove" disabled={busy || !equipped} onClick={() => void equip(null)}>卸下饰品</button>
-          <button type="button" className="accessory-equip" disabled={busy || !ownsSelected || wearingSelected || !snapshot} onClick={() => void equip(selected)}>{busy ? "正在保存…" : wearingSelected ? "已佩戴" : ownsSelected ? "佩戴这件" : "待称号解锁"}</button>
+          <button type="button" className="accessory-remove" disabled={busy || !wearingSelected} onClick={() => void equip(null, item.slot)}>卸下这件</button>
+          <button type="button" className="accessory-equip" disabled={busy || !ownsSelected || wearingSelected || !snapshot} onClick={() => void equip(selected, item.slot)}>{busy ? "正在保存…" : wearingSelected ? "已佩戴" : replacing ? `更换${slotLabel}饰品` : ownsSelected ? "佩戴这件" : "待称号解锁"}</button>
         </div>
-        <p className="accessory-caption accessory-current">{equipped ? `当前佩戴${getAbbotAccessory(equipped)?.name ?? "称号饰品"}` : "当前未佩戴饰品"}</p>
+        <p className="accessory-caption accessory-current">{replacing ? `将替换${slotLabel}的${wornInSlot.name}` : "每个位置可佩戴一件饰品"}</p>
       </footer>
     </section>
   </div>, document.body);
