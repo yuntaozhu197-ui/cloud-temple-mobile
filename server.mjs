@@ -8,6 +8,7 @@ import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { createTempleLife } from "./temple-life.mjs";
+import { createTempleAdmin } from "./temple-admin.mjs";
 import { createTempleAuth } from "./temple-auth.mjs";
 import { createTempleLamps } from "./temple-lamps.mjs";
 import { createTempleLanterns } from "./temple-lanterns.mjs";
@@ -333,11 +334,13 @@ export function createTempleServer({
   publicOrigin = process.env.PUBLIC_ORIGIN,
   dataDir = process.env.TEMPLE_DATA_DIR || resolve(dirname(fileURLToPath(import.meta.url)), "data"),
   trialMode = process.env.TEMPLE_TRIAL_MODE === "true",
+  adminCredentialHash = process.env.TEMPLE_ADMIN_CREDENTIAL_HASH,
 } = {}) {
   const visitors = new Map();
   const staticRoot = resolve(distDirectory);
   const database = openCommunityDatabase(dataDir);
   const life = createTempleLife(database, { trialMode });
+  const admin = createTempleAdmin(database, { credentialHash: adminCredentialHash, now, trialMode });
   const lamps = createTempleLamps(database, { trialMode });
   const lanterns = createTempleLanterns(database);
   const pond = createPondGame(database, { trialMode });
@@ -567,6 +570,7 @@ export function createTempleServer({
     }
     if (visitor) {
       visitor.lastSeen = timestamp;
+      admin.recordVisit(identity, timestamp);
       if (visitor.name !== identity.name) { visitor.name = identity.name; roomDirty = true; }
     }
     return visitor;
@@ -764,6 +768,27 @@ export function createTempleServer({
         pathname = new URL(request.url || "/", "http://localhost").pathname;
       } catch {
         response.writeHead(400).end("Bad request");
+        return;
+      }
+      if (pathname === "/api/admin/session") {
+        await admin.handleSession(request, response, readJson, incoming => sameOrigin(incoming, publicOrigin));
+        return;
+      }
+      if (pathname === "/api/admin/dashboard" || pathname === "/api/admin/export") {
+        expireVisitors(now());
+        await admin.handleApi(request, response, pathname, visitors.size);
+        return;
+      }
+      if (pathname === "/admin" || pathname === "/admin/") {
+        if (request.method !== "GET" && request.method !== "HEAD") {
+          request.resume();
+          response.writeHead(405, { Allow: "GET, HEAD" }).end("Method not allowed");
+          return;
+        }
+        response.setHeader("X-Robots-Tag", "noindex, nofollow");
+        response.setHeader("X-Frame-Options", "DENY");
+        response.setHeader("Referrer-Policy", "no-referrer");
+        await serveFile(request, response, "/index.html", staticRoot);
         return;
       }
       if (pathname === "/api/auth") {

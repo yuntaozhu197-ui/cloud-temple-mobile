@@ -108,6 +108,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const [flowerPulse, setFlowerPulse] = useState(0);
  const [ritualPulse, setRitualPulse] = useState(0);
  const [exitRequest, setExitRequest] = useState(0);
+ const [feedbackRequest, setFeedbackRequest] = useState(0);
  const [bowSpeed, setBowSpeed] = useState<1 | 4>(1);
  const bowSpeedRef = useRef(bowSpeed);
  bowSpeedRef.current = bowSpeed;
@@ -503,7 +504,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
      <button onClick={() => { setMenuOpen(false); setPracticeGamesOpen(true); }}><Sparkles size={18} />修行小游戏</button>
      <button onClick={() => { setMenuOpen(false); setAccessoriesOpen(true); }}><Sparkles size={18} />称号饰品</button>
-     <TempleLife selfId={account.id} exitRequest={exitRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
+     <TempleLife selfId={account.id} exitRequest={exitRequest} feedbackRequest={feedbackRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
       setMenuOpen(false);
       if (autoRef.current) stopAuto();
@@ -515,6 +516,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <button onClick={() => { setMenuOpen(false); setModal("practice"); }}><Sparkles size={18} />我的修行</button>
      <button onClick={() => { setMenuOpen(false); void share(); }}><Share2 size={18} />邀请朋友</button>
      <button onClick={() => { setMenuOpen(false); setModal("help"); }}><CircleHelp size={18} />玩法帮助</button>
+     <button onClick={() => { setMenuOpen(false); setFeedbackRequest(value => value + 1); }}><Leaf size={18} />留言与建议</button>
      <button onClick={() => { setMenuOpen(false); setExitRequest(value => value + 1); }}><Leaf size={18} />离寺 · 留个建议</button>
     </nav>
 

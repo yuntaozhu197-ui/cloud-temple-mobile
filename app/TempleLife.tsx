@@ -29,6 +29,7 @@ type LifeSnapshot = {
 type Props = {
   selfId?: string;
   exitRequest?: number;
+  feedbackRequest?: number;
   flowerRequest?: number;
   ritualRequest?: number;
   onNotice: (message: string) => void;
@@ -36,13 +37,14 @@ type Props = {
   onOffering: (kind: "flower" | "ritual" | "sponsor") => void;
   onLeave: () => void;
 };
-type Tab = "diary" | "offerings" | "profile" | "leave";
+type Tab = "diary" | "offerings" | "profile" | "feedback" | "leave";
 type RitualKind = "平安祈愿" | "追思祝福" | "感恩回向";
 const ritualKinds: RitualKind[] = ["平安祈愿", "追思祝福", "感恩回向"];
 const tabs: { key: Tab; label: string }[] = [
   { key: "diary", label: "日记" },
   { key: "offerings", label: "随喜" },
   { key: "profile", label: "我的" },
+  { key: "feedback", label: "留言" },
   { key: "leave", label: "离寺" },
 ];
 
@@ -76,7 +78,7 @@ function validLength(value: string, minimum: number, maximum: number) {
   return length >= minimum && length <= maximum;
 }
 
-export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0, ritualRequest = 0, onNotice, onProfileChange, onOffering, onLeave }: Props) {
+export default function TempleLife({ selfId, exitRequest = 0, feedbackRequest = 0, flowerRequest = 0, ritualRequest = 0, onNotice, onProfileChange, onOffering, onLeave }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("diary");
   const [ritualOnly, setRitualOnly] = useState(false);
@@ -143,6 +145,14 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
     setOpen(true);
     setError("");
   }, [exitRequest]);
+
+  useEffect(() => {
+    if (!feedbackRequest) return;
+    setRitualOnly(false);
+    setTab("feedback");
+    setOpen(true);
+    setError("");
+  }, [feedbackRequest]);
 
   useEffect(() => { if (flowerRequest) void offerFlower(); }, [flowerRequest]);
   useEffect(() => { if (ritualRequest) { setRitualOnly(true); setTab("offerings"); setOpen(true); } }, [ritualRequest]);
@@ -289,9 +299,9 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
     }
   }
 
-  async function submitAndLeave() {
+  async function submitFeedback(leaveAfterSending: boolean) {
     if (!validLength(feedback, 1, 1000)) {
-      setError("请填写1–1000字的感受，也可以选择直接离寺。");
+      setError(leaveAfterSending ? "请填写1至1000字的感受，也可以选择直接离寺。" : "请填写1至1000字的留言或建议。");
       return;
     }
     const message = feedback.trim();
@@ -300,7 +310,8 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
       feedbackAttempt.current = null;
       setFeedback("");
       setOpen(false);
-      callbacks.current.onLeave();
+      if (leaveAfterSending) callbacks.current.onLeave();
+      else callbacks.current.onNotice("留言已送到，谢谢你的建议。");
     }
   }
 
@@ -356,8 +367,19 @@ export default function TempleLife({ selfId, exitRequest = 0, flowerRequest = 0,
           {ready && tab === "profile" && <>
             <h3>给小和尚起个名字</h3><form className="life-form" onSubmit={event => { event.preventDefault(); void changeName(); }}><label>寺友们会看到这个名字<input value={name} onChange={event => setName(event.target.value)} required autoComplete="nickname" /></label><p className="life-hint">中文、英文和数字都可以，名字会同步到庭院和公开心语。</p><button className="life-button" type="submit" disabled={Boolean(busy)}><Save size={18} />保存名字</button></form><section className="life-offering"><h3>我的心意</h3><p>献花 {offerings?.mineFlowers ?? 0} 朵</p><p>随喜值 {offerings?.mineSponsor ?? 0}</p><p>仪式 {offerings?.mineRituals ?? 0} 次</p></section><p className="life-hint">这个浏览器会记住你的小和尚、日记和寺友。同名访客各有独立记录。</p>
           </>}
-          {tab === "leave" && <>
-            <h3>带着安静，回到生活</h3><p>离寺前，可以留下一点感受或建议。</p><form className="life-form" onSubmit={event => { event.preventDefault(); void submitAndLeave(); }}><label>给云间寺的话，选填<textarea value={feedback} onChange={event => setFeedback(event.target.value)} maxLength={2000} rows={5} placeholder="今天的体验、想增加的功能，或一句问候…" /></label><button className="life-button" type="submit" disabled={Boolean(busy) || !ready}><Send size={18} />{busy === "feedback" ? "正在提交…" : "提交并离寺"}</button></form><button className="life-button secondary life-leave-button" disabled={Boolean(busy)} onClick={() => { setOpen(false); callbacks.current.onLeave(); }}><LogOut size={18} />直接离寺</button><p className="life-hint">愿你归去时，心里多一份自在。</p>
+          {(tab === "feedback" || tab === "leave") && <>
+            <h3>{tab === "leave" ? "带着安静，回到生活" : "留言与建议"}</h3>
+            <p>{tab === "leave" ? "离寺前，可以留下一点感受或建议。" : "遇到问题，或有想加的玩法，可以直接告诉云间寺。"}</p>
+            <form className="life-form" onSubmit={event => { event.preventDefault(); void submitFeedback(tab === "leave"); }}>
+              <label>{tab === "leave" ? "给云间寺的话，选填" : "给云间寺的话"}
+                <textarea value={feedback} onChange={event => setFeedback(event.target.value)} maxLength={2000} rows={5} disabled={Boolean(busy)} placeholder="今天的体验、想增加的功能，或一句问候…" />
+              </label>
+              <p className="life-hint">留言和你的昵称仅管理员可见。</p>
+              <button className="life-button" type="submit" disabled={Boolean(busy) || !ready}>
+                <Send size={18} />{busy === "feedback" ? "正在提交…" : tab === "leave" ? "提交并离寺" : "发送留言"}
+              </button>
+            </form>
+            {tab === "leave" && <button className="life-button secondary life-leave-button" disabled={Boolean(busy)} onClick={() => { setOpen(false); callbacks.current.onLeave(); }}><LogOut size={18} />直接离寺</button>}
           </>}
           {snapshot?.trial.temporaryRecords && <p className="life-trial">免费体验服务的日记、名字和心意记录可能在休眠或重启后重置。私人日记可点击“导出备份”保存到自己的设备。</p>}
         </div>
