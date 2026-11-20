@@ -6,7 +6,7 @@ import "./account.css";
 
 export type AccountUser = { id: string; name: string; username?: string };
 type AuthResult = { authenticated: boolean; user?: AccountUser; message?: string };
-type Props = { onAuthenticated: (user: AccountUser) => void };
+type Props = { onAuthenticated: (user: AccountUser) => void; catInvitation?: boolean };
 
 function AccountTemplePreview() {
   const host = useRef<HTMLDivElement>(null);
@@ -181,7 +181,7 @@ function AccountTemplePreview() {
   return <div className={`account-scene ${ready ? "is-ready" : ""}`} ref={host} aria-hidden="true" />;
 }
 
-export default function AccountGate({ onAuthenticated }: Props) {
+export default function AccountGate({ onAuthenticated, catInvitation = false }: Props) {
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
@@ -286,7 +286,7 @@ export default function AccountGate({ onAuthenticated }: Props) {
     <section className="account-card" aria-labelledby="account-title">
       <header className="account-heading">
         <h1 id="account-title">云间寺</h1>
-        <p>取个名字，来寺里坐坐</p>
+        <p>{catInvitation ? "取个名字，一起找回住持的金铃" : "取个名字，来寺里坐坐"}</p>
       </header>
       <form className="account-form" onSubmit={event => { event.preventDefault(); void enterTemple(); }}>
         <label htmlFor="temple-name">你的名字

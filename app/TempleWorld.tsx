@@ -52,6 +52,7 @@ type WorldProps = {
   seat: number | null;
   selfId?: string;
   selfName?: string;
+  paused?: boolean;
   onLoadingChange?: (loading: boolean) => void;
   participants: Participant[];
   onSeatSelect: (index: number) => void;
@@ -906,6 +907,10 @@ export default function TempleWorld(props: WorldProps) {
           lastTime = now;
           const time = (now - started) / 1000;
           const state = latest.current;
+          if (state.paused) {
+            if (keys.size || joystick.current.x || joystick.current.y || pointerState.id >= 0) releaseControls();
+            return;
+          }
           if (now - lastScheduleCheck >= 1000) {
             lastScheduleCheck = now;
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);

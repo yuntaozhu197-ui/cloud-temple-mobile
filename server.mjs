@@ -822,7 +822,7 @@ export function createTempleServer({
         sendJson(response, result.body, result.status, { cookie: result.cookies });
         return;
       }
-      const requiresAuth = ["/api/room", "/api/move", "/api/presence", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond", "/api/abbot", "/api/practice-games"].includes(pathname);
+      const requiresAuth = ["/api/room", "/api/move", "/api/presence", "/api/social", "/api/incense", "/api/life", "/api/lamps", "/api/lanterns", "/api/pond", "/api/abbot", "/api/practice-games", "/api/cat-game"].includes(pathname);
       const identity = requiresAuth ? auth.resolve(request) : undefined;
       if (requiresAuth && !identity) {
         request.resume();
@@ -840,6 +840,38 @@ export function createTempleServer({
       }
       if (pathname === "/api/presence") { openPresence(request, response, identity, new URL(request.url, "http://localhost")); return; }
       if (pathname === "/api/move") { await handleMove(request, response, identity); return; }
+      if (pathname === "/api/cat-game") {
+        if (request.method !== "POST") {
+          request.resume();
+          response.setHeader("Allow", "POST");
+          sendJson(response, { error: "method_not_allowed" }, 405, identity);
+          return;
+        }
+        if (!sameOrigin(request, publicOrigin) || request.headers["sec-fetch-site"] === "cross-site") {
+          request.resume();
+          sendJson(response, { error: "invalid_origin" }, 403, identity);
+          return;
+        }
+        if (request.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") {
+          request.resume();
+          sendJson(response, { error: "invalid_content_type" }, 415, identity);
+          return;
+        }
+        let body;
+        try { body = await readJson(request); }
+        catch {
+          sendJson(response, { error: "invalid_request" }, 400, identity);
+          return;
+        }
+        const failure = admin.recordCatGame(identity, body, now());
+        if (failure) {
+          if (failure.retryAfter) response.setHeader("Retry-After", String(failure.retryAfter));
+          sendJson(response, { error: failure.error }, failure.status, identity);
+          return;
+        }
+        sendJson(response, { ok: true }, 200, identity);
+        return;
+      }
       if (pathname === "/api/life" || pathname === "/api/lamps" || pathname === "/api/lanterns" || pathname === "/api/pond" || pathname === "/api/abbot" || pathname === "/api/practice-games") {
         const feature = pathname === "/api/lamps" ? lamps : pathname === "/api/lanterns" ? lanterns : pathname === "/api/pond" ? pond : pathname === "/api/abbot" ? abbot : pathname === "/api/practice-games" ? practiceGames : life;
         if (!["GET", "POST"].includes(request.method)) {

@@ -422,6 +422,28 @@ svg { vertical-align: middle; }
 .temple-game .auto-bow-control strong { font-size: 16px; }
 .temple-game .bow-speed-control { font-size: 14px; padding: 8px 11px; }
 .practice-toggle { position: absolute; right: var(--hud-right); bottom: var(--hud-bottom); z-index: 9; min-width: 76px; min-height: 44px; padding: 9px 15px; border: 1px solid #ffffffdc; border-radius: 24px; background: #f7faedeb; color: #405b39; font-size: 15px; font-weight: 750; box-shadow: 0 3px 12px #344e2518; }
+.temple-cat-launcher {
+  position: absolute;
+  z-index: 10;
+  right: var(--hud-right);
+  bottom: calc(var(--hud-bottom) + 112px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #9f8154;
+  border-radius: 12px;
+  background: #365f53;
+  color: #fff6e3;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 16px #203b3530;
+}
+.temple-cat-launcher:hover { background: #294c42; }
+.temple-cat-launcher:focus-visible { outline: 2px solid #8b493a; outline-offset: 4px; }
+.temple-cat-pending { position: fixed; inset: 0; z-index: 150; display: grid; place-content: center; background: #f4ead5; color: #263f39; }
 .woodfish-shortcut {
  position: absolute;
  z-index: 9;

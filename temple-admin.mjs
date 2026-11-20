@@ -15,6 +15,10 @@ const BEIJING_OFFSET = 8 * 60 * 60 * 1000;
 const VISIT_RETENTION_DAYS = 90;
 const FEEDBACK_PAGE_SIZE = 20;
 const EXPORT_BATCH_SIZE = 100;
+const CAT_GAME_HISTORY_DAYS = 30;
+const CAT_GAME_RATE_WINDOW = 60_000;
+const CAT_GAME_RATE_LIMIT = 24;
+const CAT_GAME_EVENTS = ["start", "complete", "share"];
 const PRIVATE_JSON = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "private, no-store, max-age=0",
@@ -57,6 +61,14 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
     CREATE TABLE IF NOT EXISTS temple_player_days (
       day INTEGER NOT NULL, player_key TEXT NOT NULL, PRIMARY KEY (day, player_key)
     ) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS temple_cat_events (
+      player_key TEXT NOT NULL,
+      challenge_day INTEGER NOT NULL,
+      event TEXT NOT NULL CHECK (event IN ('start', 'complete', 'share')),
+      activity_day INTEGER NOT NULL,
+      PRIMARY KEY (player_key, challenge_day, event, activity_day)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS temple_cat_event_activity ON temple_cat_events(activity_day, event, player_key);
     CREATE TABLE IF NOT EXISTS temple_admin_sessions (
       token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL
     );
@@ -70,6 +82,11 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
     pruneVisits: database.prepare("DELETE FROM temple_player_days WHERE day < ?"),
     playerCount: database.prepare("SELECT COUNT(DISTINCT player_key) AS count FROM temple_player_days WHERE day BETWEEN ? AND ?"),
     dailyCount: database.prepare("SELECT day, COUNT(*) AS players FROM temple_player_days WHERE day BETWEEN ? AND ? GROUP BY day"),
+    catEvent: database.prepare("INSERT OR IGNORE INTO temple_cat_events (player_key, challenge_day, event, activity_day) VALUES (?, ?, ?, ?)"),
+    catPriorEvent: database.prepare("SELECT 1 FROM temple_cat_events WHERE player_key = ? AND challenge_day = ? AND event = ? AND activity_day <= ? LIMIT 1"),
+    catCounts: database.prepare(`SELECT event, COUNT(DISTINCT player_key) AS count FROM temple_cat_events
+      WHERE activity_day BETWEEN ? AND ? GROUP BY event`),
+    pruneCatEvents: database.prepare("DELETE FROM temple_cat_events WHERE activity_day < ?"),
     feedbackTotal: database.prepare("SELECT COUNT(*) AS count FROM temple_feedback"),
     feedback: database.prepare(`SELECT f.id, u.name AS authorName, f.message, f.created_at AS createdAt
       FROM temple_feedback AS f JOIN community_users AS u ON u.id = f.user_id
@@ -85,7 +102,9 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
   };
   const loginAttempts = new Map();
   const seenPlayers = new Set();
+  const catGameRequests = new Map();
   let seenDay;
+  let catPrunedDay;
 
   function recordVisit(identity, timestamp = now()) {
     if (typeof identity?.id !== "string" || !identity.id || !Number.isFinite(timestamp)) return;
@@ -100,6 +119,44 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
     query.visit.run(day, playerKey);
     if (seenPlayers.size >= MAX_SEEN_PLAYERS) seenPlayers.delete(seenPlayers.values().next().value);
     seenPlayers.add(identity.id);
+  }
+
+  function recordCatGame(identity, { day, event }, timestamp = now()) {
+    const phase = CAT_GAME_EVENTS.indexOf(event);
+    if (phase < 0) return { status: 400, error: "invalid_cat_game_event" };
+
+    const today = dayNumber(timestamp);
+    const challengeDay = typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day) ? Date.parse(day) / DAY_MS : NaN;
+    if (!Number.isInteger(challengeDay) || challengeDay < today - CAT_GAME_HISTORY_DAYS + 1 || challengeDay > today || dayLabel(challengeDay) !== day) {
+      return { status: 400, error: "invalid_cat_game_day" };
+    }
+
+    let bucket = catGameRequests.get(identity.id);
+    if (!bucket || bucket.until <= timestamp) {
+      if (!bucket && catGameRequests.size >= MAX_SEEN_PLAYERS) catGameRequests.delete(catGameRequests.keys().next().value);
+      bucket = { count: 0, until: timestamp + CAT_GAME_RATE_WINDOW };
+      catGameRequests.set(identity.id, bucket);
+    }
+    if (bucket.count >= CAT_GAME_RATE_LIMIT) {
+      return { status: 429, error: "cat_game_rate_limited", retryAfter: Math.ceil((bucket.until - timestamp) / 1000) };
+    }
+    bucket.count += 1;
+
+    if (catPrunedDay !== today) {
+      query.pruneCatEvents.run(today - VISIT_RETENTION_DAYS + 1);
+      catPrunedDay = today;
+    }
+    const playerKey = digest(`cloud-temple-cat-game:${identity.id}`).toString("hex");
+    if (phase > 0 && !query.catPriorEvent.get(playerKey, challengeDay, CAT_GAME_EVENTS[phase - 1], today)) {
+      return { status: 409, error: "cat_game_sequence" };
+    }
+    query.catEvent.run(playerKey, challengeDay, event, today);
+    return null;
+  }
+
+  function catGameCounts(firstDay, lastDay) {
+    const counts = new Map(query.catCounts.all(firstDay, lastDay).map(row => [row.event, row.count]));
+    return { started: counts.get("start") ?? 0, completed: counts.get("complete") ?? 0, shared: counts.get("share") ?? 0 };
   }
 
   function metricsAt(timestamp, onlineCount) {
@@ -117,6 +174,7 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
       last30Days: query.playerCount.get(today - 29, today).count,
       daily,
       trackingSince,
+      catGame: { today: catGameCounts(today, today), last7Days: catGameCounts(firstDay, today) },
     };
   }
 
@@ -276,5 +334,5 @@ export function createTempleAdmin(database, { credentialHash, now = Date.now, tr
     sendJson(response, 200, snapshot(timestamp, onlineCount, offset));
   }
 
-  return { enabled, recordVisit, snapshot, handleSession, handleApi };
+  return { enabled, recordVisit, recordCatGame, snapshot, handleSession, handleApi };
 }

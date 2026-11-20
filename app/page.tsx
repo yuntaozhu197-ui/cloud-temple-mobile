@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Volume2, VolumeX, CircleHelp, X, Leaf, Pause, Play, Wind, Share2, Sparkles, Camera, MoreHorizontal } from "lucide-react";
+import { Volume2, VolumeX, CircleHelp, X, Leaf, Pause, Play, Wind, Share2, Sparkles, Camera, MoreHorizontal, PawPrint } from "lucide-react";
 import TempleWorld from "./TempleWorld";
 import TempleLoading from "./TempleLoading";
 import SocialTemple from "./SocialTemple";
@@ -31,11 +31,13 @@ import type { NpcResidentId } from "./npcResidents";
 import TempleSoundSettings from "./TempleSoundSettings";
 import type { TempleInteractionKind } from "./templeInteractions";
 import { isTemplePrayerHall } from "./templeSchedule";
+import { createTempleCatReporter, sharedTempleCatDay, templeCatDay, templeCatHideout, type TempleCatEvent } from "./templeCat";
 import "./temple-theme.css";
 type Visitor = { id: string; name: string; seat: number | null; action: string; meditating: boolean; joinedAt: number; x: number; z: number; heading: number; floor?: 1 | 2 | 3; at?: number; bowSpeed?: 1 | 4; accessoryId?: AbbotAccessoryId | null; accessories?: AbbotOutfit };
 type Room = { selfId: string; now: number; participants: Visitor[]; total: number; meditatingCount: number };
 type Stats = { date: string; bows: number; wood: number; beads: number; prayer: number; seconds: number };
 const seats = TEMPLE_SEATS;
+const TempleCatGame = lazy(() => import("./TempleCatGame"));
 function savedVolume(key: string) {
  try {
   const saved = localStorage.getItem(key);
@@ -59,9 +61,16 @@ function ActionIcon({kind}:{kind:string}) {return <svg viewBox="0 0 64 58" fill=
 export default function Home() {
  const [account, setAccount] = useState<AccountUser | null>(null);
  const signedOut = useCallback(() => setAccount(null), []);
- return account ? <TempleGame account={account} onSignedOut={signedOut} /> : <AccountGate onAuthenticated={setAccount} />;
+ return account ? <TempleGame account={account} onSignedOut={signedOut} /> : <AccountGate onAuthenticated={setAccount} catInvitation={Boolean(sharedTempleCatDay(window.location.search))} />;
 }
 function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOut: () => void }) {
+ const [catDay, setCatDay] = useState(() => sharedTempleCatDay(window.location.search));
+ const [worldRequested, setWorldRequested] = useState(!catDay);
+ const catReporter = useMemo(() => createTempleCatReporter(account.id), [account.id]);
+ const closeCatGame = useCallback(() => {
+  setCatDay(null);
+  setWorldRequested(true);
+ }, []);
  const [worldLoading, setWorldLoading] = useState(true);
  const abbotQuest = useAbbotQuest(account.id);
  const [abbotNearby, setAbbotNearby] = useState(false);
@@ -134,6 +143,14 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
   return next;
  }, []);
  const notify=useCallback((text:string)=>{setToast(text);if(toastTimer.current)clearTimeout(toastTimer.current);toastTimer.current=setTimeout(()=>setToast(""),3200)},[]);
+ const openCatGame = () => {
+  if (autoRef.current || meditatingRef.current) return;
+  setMenuOpen(false);
+  setCatDay(templeCatDay());
+ };
+ const onCatEvent = useCallback((event: TempleCatEvent) => {
+  if (catDay) catReporter(catDay, event);
+ }, [catDay, catReporter]);
  const add=useCallback((key:keyof Omit<Stats,"date">,amount=1)=>setStats(s=>{const base=s.date===day()?s:freshStats();return {...base,[key]:base[key]+amount}}),[]);
  const practiceGames = usePracticeGames(account.id, { onUpgrade: (kind, tier) => {
   const game = PRACTICE_GAMES.find(item => item.id === kind)!;
@@ -422,10 +439,11 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  if (departed) return <div className="site-shell temple-game temple-departure"><Lotus /><h1>愿你带着平静，回到生活</h1><p>谢谢你来坐坐，我们下次再见。</p><button className="primary-button" onClick={() => window.location.reload()}>再回寺里走走</button></div>;
  return (
   <div className="site-shell temple-game" onKeyDownCapture={unlockAudio} onPointerDownCapture={unlockAudio}>
-   <main className="temple-stage" aria-label="云间寺三维庭院">
+   <main className="temple-stage" aria-label="云间寺三维庭院" inert={Boolean(catDay)}>
     {worldLoading && <TempleLoading stage="world" />}
     <div className="courtyard world-courtyard">
-     <TempleWorld
+     {worldRequested && <TempleWorld
+      paused={Boolean(catDay)}
       onLoadingChange={setWorldLoading}
       cameraMode={cameraMode}
       flowerPulse={flowerPulse}
@@ -485,7 +503,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       } }}
       onSkyLanternStage={stage => { if (stage === "complete") void abbotQuest.record("skyLantern"); if (stage === "release") { tone("incense"); notify("愿这一盏灯，载着你的心愿慢慢升起。"); } }}
       onSeatedChange={value => { seatedRef.current = value; setIsSeated(value); if (!value) setPracticeOpen(false); }}
-     />
+     />}
     </div>
 
     <header className="game-header">
@@ -503,6 +521,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
      <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
      <button onClick={() => { setMenuOpen(false); setPracticeGamesOpen(true); }}><Sparkles size={18} />修行小游戏</button>
+     <button onClick={openCatGame} disabled={auto || meditating}><PawPrint size={18} />今日寻猫</button>
      <button onClick={() => { setMenuOpen(false); setAccessoriesOpen(true); }}><Sparkles size={18} />称号饰品</button>
      <TempleLife selfId={account.id} exitRequest={exitRequest} feedbackRequest={feedbackRequest} flowerRequest={flowerRequest} ritualRequest={ritualRequest} onNotice={notify} onProfileChange={() => void sync()} onOffering={kind => {
       unlockAudio();
@@ -523,6 +542,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     <button className={`woodfish-shortcut ${action === "wood" ? "is-active" : ""}`} onClick={() => doAction("wood")} disabled={auto || meditating} aria-label="敲木鱼">
      <ActionIcon kind="wood" /><span>敲木鱼</span>
     </button>
+    {!worldLoading && !auto && !meditating && !practiceOpen && !menuOpen && !abbotTalking && !abbotCinematic && <button className="temple-cat-launcher" onClick={openCatGame}><PawPrint size={17} aria-hidden="true" />今日寻猫</button>}
     {isSeated && !auto && <button className="practice-toggle" onClick={() => meditating ? finishMeditation() : setPracticeOpen(value => !value)}>{meditating ? "结束静坐" : practiceOpen ? "收起动作" : "修行"}</button>}
     {isSeated && <section className="game-action-dock" hidden={meditating || (!practiceOpen && !auto)} aria-label="蒲团上的修行动作">
      <button className={`bow-speed-control ${bowSpeed === 4 ? "is-active" : ""}`} disabled={meditating} aria-pressed={bowSpeed === 4} aria-label={bowSpeed === 1 ? "一键切换4倍速自动礼拜" : "恢复正常速度自动礼拜"} onClick={() => { setBowSpeed(value => value === 1 ? 4 : 1); notify(bowSpeed === 1 ? "自动礼拜已切换为4倍速，仍会完成108拜" : "已恢复正常礼拜速度"); }}>{bowSpeed === 1 ? "加速 ×4" : "恢复 ×1"}</button>
@@ -547,7 +567,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
    </main>
 
-   <TempleResidents residentId={menuOpen || abbotNearby || abbotTalking || abbotCinematic ? null : residentId} onConversationChange={setTalkingNpcId} />
+   {catDay && <Suspense fallback={createPortal(<div className="temple-cat-pending" role="status">正在寻找寺猫…</div>, document.body)}>
+    <TempleCatGame key={catDay} day={catDay} hideout={templeCatHideout(catDay)} playerId={account.id} onClose={closeCatGame} onEvent={onCatEvent} />
+   </Suspense>}
+   <TempleResidents residentId={catDay || menuOpen || abbotNearby || abbotTalking || abbotCinematic ? null : residentId} onConversationChange={setTalkingNpcId} />
    <TemplePracticeGames open={practiceGamesOpen} snapshot={practiceGames.snapshot} error={practiceGames.error} busy={practiceGames.busy} onClose={() => setPracticeGamesOpen(false)} onPlay={playPracticeGame} onRetry={practiceGames.retry} />
    <TempleAccessories open={accessoriesOpen} snapshot={abbotQuest.snapshot} onClose={() => setAccessoriesOpen(false)} onEquip={abbotQuest.equipAccessory} />
    <TempleAbbot snapshot={abbotQuest.snapshot} nearby={abbotNearby && !auto && !meditating} cinematic={abbotCinematic?.kind ?? null} ceremony={abbotCinematic?.variant}

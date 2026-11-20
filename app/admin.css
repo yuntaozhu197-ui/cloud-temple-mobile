@@ -66,6 +66,12 @@
 .admin-chart-count { color: var(--admin-ink); font-weight: 600; text-align: center; overflow-wrap: anywhere; max-width: 100%; }
 .admin-chart-track { display: flex; align-items: end; width: min(100%, 20px); border-radius: 4px; background: #ebe8d6; overflow: hidden; }
 .admin-chart-track > span { display: block; width: 100%; border-radius: 4px 4px 0 0; background: var(--admin-jade); }
+.admin-cat-funnel { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.admin-cat-funnel :is(th, td) { padding: 8px; text-align: right; }
+.admin-cat-funnel th:first-child { text-align: left; }
+.admin-cat-funnel thead { color: var(--admin-muted); }
+.admin-cat-funnel tbody tr { border-top: 1px solid var(--admin-line); }
+.admin-cat-funnel tbody td { color: var(--admin-jade); font-weight: 700; }
 .admin-feedback { display: grid; gap: 8px; }
 .admin-feedback li { min-width: 0; border: 1px solid #e0d1b5; border-radius: 8px; padding: 12px; background: #fffbef; }
 .admin-feedback-meta { display: flex; align-items: baseline; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }

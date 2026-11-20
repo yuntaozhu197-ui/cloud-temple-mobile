@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, LockKeyhole, LogOut, MessageCircle, RefreshCw } from "lucide-react";
 import "./admin.css";
 
+type CatGameCounts = { started: number; completed: number; shared: number };
+
 type DashboardData = {
   metrics: {
     online: number;
@@ -10,6 +12,7 @@ type DashboardData = {
     last30Days: number;
     daily: { date: string; players: number }[];
     trackingSince: number;
+    catGame?: { today: CatGameCounts; last7Days: CatGameCounts };
   };
   feedback: {
     entries: { id: string; authorName: string; message: string; createdAt: number }[];
@@ -28,6 +31,11 @@ const date = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year:
 const dateTime = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
+const catGamePhases: { key: keyof CatGameCounts; label: string }[] = [
+  { key: "started", label: "开始寻猫" },
+  { key: "completed", label: "找到寺猫" },
+  { key: "shared", label: "保存或分享" },
+];
 
 async function adminRequest<T = unknown>(path: string, signal: AbortSignal, body?: Record<string, string>, read = (response: Response): Promise<T> => response.json()): Promise<AdminResult<T>> {
   const timeout = new AbortController();
@@ -201,6 +209,7 @@ export default function TempleAdmin() {
   );
 
   const { metrics, feedback, trial } = dashboard;
+  const { catGame } = metrics;
   const peak = Math.max(1, ...metrics.daily.map(day => day.players));
   const hasPrevious = feedback.offset > 0;
   const hasNext = feedback.offset + feedback.limit < feedback.total;
@@ -242,6 +251,19 @@ export default function TempleAdmin() {
           })}
         </ol>
       </section>
+
+      {catGame && <section className="admin-section" aria-labelledby="admin-cat-game-title">
+        <h2 id="admin-cat-game-title">寻猫试玩</h2>
+        <p className="admin-note">按实际操作日期统计，每个时段的每一步按玩家去重。保存分享卡、复制链接和发起分享都计入「保存或分享」。</p>
+        <table className="admin-cat-funnel" aria-label="寻猫试玩人数">
+          <thead><tr><th scope="col">步骤</th><th scope="col">今日</th><th scope="col">近 7 日</th></tr></thead>
+          <tbody>{catGamePhases.map(({ key, label }) => <tr key={key}>
+            <th scope="row">{label}</th>
+            <td>{number.format(catGame.today[key])}</td>
+            <td>{number.format(catGame.last7Days[key])}</td>
+          </tr>)}</tbody>
+        </table>
+      </section>}
 
       <section className="admin-section" aria-labelledby="admin-feedback-title">
         <div className="admin-section-heading">
