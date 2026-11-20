@@ -12,6 +12,7 @@ import type { PondSpecies } from "./pondGame";
 import type { AbbotSnapshot } from "./abbotQuest";
 import type { AbbotAccessoryId, AbbotOutfit } from "../abbot-accessories.mjs";
 import { createRemoteMotion } from "./three/remoteMotion";
+import { CAT_HIDEOUTS, CAT_SEARCH_RADIUS, TEMPLE_CAT_PLACES, type CatHideout } from "./templeCat";
 import TempleLoading from "./TempleLoading";
 type TempleFloor = 1 | 2 | 3;
 
@@ -54,6 +55,10 @@ type WorldProps = {
   selfName?: string;
   paused?: boolean;
   onLoadingChange?: (loading: boolean) => void;
+  onReadyChange?: (ready: boolean) => void;
+  catHunt?: { id: number; checked: readonly CatHideout[]; inspection: number; found: CatHideout | null } | null;
+  onCatNearbyChange?: (id: number, nearby: CatHideout | null) => void;
+  onCatInspect?: (id: number, place: CatHideout) => void;
   participants: Participant[];
   onSeatSelect: (index: number) => void;
   onLeaveSeat: () => void;
@@ -122,7 +127,8 @@ export default function TempleWorld(props: WorldProps) {
   const [error, setError] = useState(false);
   useEffect(() => {
     props.onLoadingChange?.(!ready && !error);
-  }, [ready, error, props.onLoadingChange]);
+    props.onReadyChange?.(ready && !error);
+  }, [ready, error, props.onLoadingChange, props.onReadyChange]);
   const [retry, setRetry] = useState(0);
   const [places, setPlaces] = useState<Landmark[]>([]);
   const [placeMenu, setPlaceMenu] = useState(false);
@@ -138,7 +144,7 @@ export default function TempleWorld(props: WorldProps) {
 
     void (async () => {
       try {
-        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot }, { createCinematicCamera }, { RoomEnvironment }] = await Promise.all([
+        const [T, { createMonk }, { createTempleEnvironment }, { createIncenseOffering }, { createMysteriousAbbot }, { createCinematicCamera }, { RoomEnvironment }, { createTempleCatWorldModel }] = await Promise.all([
           import("three"),
           import("./three/monk"),
           import("./three/environment"),
@@ -146,6 +152,7 @@ export default function TempleWorld(props: WorldProps) {
           import("./three/mysteriousAbbot"),
           import("./three/cinematicCamera"),
           import("three/addons/environments/RoomEnvironment.js"),
+          import("./three/templeCatWorldModel"),
         ]);
         const host = hostRef.current;
         const labels = labelsRef.current;
@@ -210,6 +217,7 @@ export default function TempleWorld(props: WorldProps) {
         const hotspotButtons: HTMLButtonElement[] = [];
         const ownedGeometries: THREE.BufferGeometry[] = [];
         const ownedMaterials: THREE.Material[] = [];
+        let catModel: ReturnType<typeof createTempleCatWorldModel> | undefined;
         const selfLabel = document.createElement("div");
         selfLabel.style.cssText = "position:absolute;top:0;left:0;padding:4px 8px;border-radius:8px;background:rgba(244,234,213,.94);border:1px solid #b4925b66;color:#263f39;font:600 12px/16px system-ui;white-space:nowrap;max-width:min(45vw,240px);overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px #263f391f;will-change:transform";
         const selfNameLabel = document.createElement("span");
@@ -235,6 +243,7 @@ export default function TempleWorld(props: WorldProps) {
           remote.forEach(({ monk, label }) => { monk.dispose(); label.remove(); });
           local?.dispose();
           abbot?.dispose();
+          catModel?.dispose();
           offerings.forEach(offering => offering.dispose());
           environment?.dispose();
           ownedGeometries.forEach(geometry => geometry.dispose());
@@ -284,7 +293,7 @@ export default function TempleWorld(props: WorldProps) {
             event.preventDefault();
             event.stopPropagation();
             const state = latest.current;
-            if (state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
+            if (state.catHunt || state.auto || state.meditating || Math.hypot(actor.group.position.x - point.x, actor.group.position.z - point.z) > 5) return;
             if (point.kind === "martial" && (approachingMartial || sceneAction?.kind === "martial")) return;
             if ((point.kind === "fish" || point.kind === "pondFeed" || point.kind === "release") && (approachingFish || sceneAction?.kind === "fish" || sceneAction?.kind === "pondFeed" || sceneAction?.kind === "release")) return;
             if (performance.now() < nextActivation) return;
@@ -335,7 +344,7 @@ export default function TempleWorld(props: WorldProps) {
           event.preventDefault();
           event.stopPropagation();
           const state = latest.current;
-          if (nearestCushionIndex < 0 || state.seat !== null || state.auto || state.meditating) return;
+          if (state.catHunt || nearestCushionIndex < 0 || state.seat !== null || state.auto || state.meditating) return;
           state.onSeatSelect(nearestCushionIndex);
         };
         cushionButton.addEventListener("click", sitOnNearbyCushion);
@@ -399,6 +408,21 @@ export default function TempleWorld(props: WorldProps) {
         destination.rotation.x = -Math.PI / 2;
         destination.visible = false;
         scene.add(destination);
+
+        const catMarkGeometry = new T.RingGeometry(.37, .45, 32);
+        const catMarkMaterial = new T.MeshBasicMaterial({ color: 0xf0b763, transparent: true, opacity: .9, depthWrite: false });
+        ownedGeometries.push(catMarkGeometry);
+        ownedMaterials.push(catMarkMaterial);
+        const catMark = new T.Mesh(catMarkGeometry, catMarkMaterial);
+        catMark.rotation.x = -Math.PI / 2;
+        catMark.visible = false;
+        scene.add(catMark);
+        const catCamera = new T.Vector3();
+        const catTarget = new T.Vector3();
+        const catFocus = [new T.Vector3(), new T.Vector3(), new T.Vector3()];
+        let catRound = 0;
+        let catInspection = 0;
+        let lastCatNearby: CatHideout | null = null;
 
         const raycaster = new T.Raycaster();
         const occlusionRay = new T.Raycaster();
@@ -593,7 +617,7 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function walkTo(x: number, z: number) {
-          if (latest.current.auto || latest.current.meditating || abbotScene) return;
+          if (latest.current.catHunt?.found || latest.current.auto || latest.current.meditating || abbotScene) return;
           cancelMartial();
           cancelFish();
           cancelSkyLantern();
@@ -658,6 +682,7 @@ export default function TempleWorld(props: WorldProps) {
         }
 
         function pointerDown(event: PointerEvent) {
+          if (latest.current.catHunt?.found) return;
           if (event.pointerType === "touch") {
             touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
             if (touchPoints.size === 2) {
@@ -681,7 +706,7 @@ export default function TempleWorld(props: WorldProps) {
           pointerState.self = latest.current.cameraMode !== "first" && raycaster.intersectObject(actor.group, true).length > 0;
           pointerState.orbit = latest.current.cameraMode === "map" || event.pointerType === "mouse" || event.clientX - bounds.left > bounds.width * 0.32;
           renderer.domElement.setPointerCapture(event.pointerId);
-          if (pointerState.self && !latest.current.auto && !latest.current.meditating) {
+          if (pointerState.self && !latest.current.catHunt && !latest.current.auto && !latest.current.meditating) {
             holdTimer = setTimeout(() => {
               if (pointerState.dragged || pointerState.id === -1) return;
               pointerState.held = true;
@@ -738,7 +763,7 @@ export default function TempleWorld(props: WorldProps) {
           if (!pointerState.dragged && !pointerState.held && !pointerState.self && !latest.current.auto && !latest.current.meditating) {
             updatePointer(event);
             const cushion = raycaster.intersectObjects(cushionTargets, false)[0];
-            if (cushion) latest.current.onSeatSelect(cushion.object.userData.seat as number);
+            if (cushion && !latest.current.catHunt) latest.current.onSeatSelect(cushion.object.userData.seat as number);
             else if (raycaster.ray.intersectPlane(groundPlane, groundPoint)) {
               approachingIncense = false;
               incensePrayerUntil = 0;
@@ -916,6 +941,26 @@ export default function TempleWorld(props: WorldProps) {
             lessonActive = Boolean(getTempleSchedule(Date.now()).lesson);
           }
           const position = actor.group.position;
+          const catHunt = state.catHunt;
+          const catFound = catHunt?.found ? TEMPLE_CAT_PLACES[catHunt.found] : null;
+          if ((catHunt?.id ?? 0) !== catRound) {
+            catRound = catHunt?.id ?? 0;
+            catInspection = 0;
+            lastCatNearby = null;
+            if (catRound) {
+              cancelMartial(); cancelFish(); cancelSkyLantern(); cancelInteraction();
+              incensePrayerUntil = 0; approachingIncense = false;
+              lampPrayerUntil = 0; approachingLamp = false;
+              route = [];
+              destination.visible = false;
+              userMoved = true;
+              releaseControls();
+            }
+          }
+          if (!catFound && catModel?.root.visible) {
+            catModel.hide();
+            mapFocus.set(position.x, position.y + .65, position.z - 1.2);
+          }
           const wardrobe = state.abbot?.wardrobe;
           if (wardrobe?.equippedBySlot) actor.setAccessories(wardrobe.equippedBySlot);
           else actor.setAccessory(wardrobe?.equipped ?? null);
@@ -1098,7 +1143,7 @@ export default function TempleWorld(props: WorldProps) {
             route = [];
           }
 
-          const dialogOpen = Boolean(abbotScene || document.querySelector("[role='dialog']"));
+          const dialogOpen = Boolean(catFound || abbotScene || document.querySelector("[role='dialog']"));
           if (dialogOpen) keys.clear();
           let inputX = dialogOpen ? 0 : joystick.current.x;
           let inputY = dialogOpen ? 0 : joystick.current.y;
@@ -1158,6 +1203,34 @@ export default function TempleWorld(props: WorldProps) {
             if (Math.hypot(position.x - previousX, position.z - previousZ) < 0.001 && route.length) { route = []; destination.visible = false; }
           }
           const walking = Math.hypot(position.x - previousX, position.z - previousZ) > 0.001;
+          const catNearby = catHunt && !dialogOpen && !state.auto && !state.meditating
+            ? CAT_HIDEOUTS.find(id => {
+                if (catHunt.checked.includes(id)) return false;
+                const spot = TEMPLE_CAT_PLACES[id];
+                return Math.hypot(position.x - spot.x, position.z - spot.z) <= CAT_SEARCH_RADIUS
+                  && clearLine(position.x, position.z, spot.x, spot.z);
+              }) ?? null
+            : null;
+          if (catHunt && catNearby !== lastCatNearby) {
+            lastCatNearby = catNearby;
+            state.onCatNearbyChange?.(catRound, catNearby);
+          }
+          if (catHunt && catHunt.inspection !== catInspection) {
+            catInspection = catHunt.inspection;
+            // Recheck at the moment of interaction, even if a queued tap began in range.
+            if (catNearby) {
+              route = [];
+              destination.visible = false;
+              releaseControls();
+              state.onCatInspect?.(catRound, catNearby);
+            }
+          }
+          catMark.visible = catNearby !== null;
+          if (catNearby) {
+            const spot = TEMPLE_CAT_PLACES[catNearby];
+            catMark.position.set(spot.x, world.floorHeightAt(spot.x, spot.z) + .065, spot.z);
+            catMark.scale.setScalar(1 + Math.sin(time * 3) * .09);
+          }
           const cushion = state.seat === null ? null : world.cushions[state.seat];
           const seated = Boolean(cushion && !walking && Math.hypot(position.x - cushion.x, position.z - cushion.z) < 0.18);
           if (seated !== actualSeated) {
@@ -1332,6 +1405,11 @@ export default function TempleWorld(props: WorldProps) {
           const cinematicView = Boolean(martialView || fishView || practiceView || skyLanternView || conversationView || interactionView || incensePrayer || lampPrayer);
           const martialProgress = sceneAction?.kind === "martial" ? clamp((time - sceneAction.start) / MARTIAL_DURATION, 0, 1) : 0;
           if (cinematicView) { firstPerson = false; mapMode = false; }
+          if (catFound) {
+            firstPerson = false;
+            mapMode = false;
+            actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(catFound.x - position.x, catFound.z - position.z)) * Math.min(1, dt * 7);
+          }
           if (firstPersonBow) firstPerson = false;
           if (conversationPartner) actor.group.rotation.y += angleDelta(actor.group.rotation.y, Math.atan2(conversationPartner.x - position.x, conversationPartner.z - position.z)) * Math.min(1, dt * 7);
           const schedulePose = lessonActive && state.action === "idle" ? seated ? "chantSit" : "chant" : state.action;
@@ -1364,17 +1442,39 @@ export default function TempleWorld(props: WorldProps) {
           const indoors = Boolean(activeRoom);
           const floorHeight = world.floorHeightAt(position.x, position.z);
           if (mapMode) mapFocus.y = floorHeight + 0.65;
-          const nextCameraMode = cinematicView || firstPersonBow ? "third" : state.cameraMode ?? "third";
+          const nextCameraMode = catFound || cinematicView || firstPersonBow ? "third" : state.cameraMode ?? "third";
           const cameraChanged = nextCameraMode !== cameraMode || ritualView !== ritualCameraActive;
           ritualCameraActive = ritualView;
-          const fieldOfView = firstPerson ? clamp(64 * Math.sqrt(zoomScale), 34, 92) : mapMode || martialView ? 48 : 42;
+          const fieldOfView = catFound ? 48 : firstPerson ? clamp(64 * Math.sqrt(zoomScale), 34, 92) : mapMode || martialView ? 48 : 42;
           if (cameraChanged || camera.fov !== fieldOfView) {
             cameraMode = nextCameraMode;
             camera.fov = fieldOfView;
             camera.near = firstPerson ? 0.06 : 0.1;
             camera.updateProjectionMatrix();
           }
-          if (mapMode) {
+          if (catFound) {
+            if (!catModel) {
+              catModel = createTempleCatWorldModel();
+              scene.add(catModel.root);
+            }
+            if (!catModel.root.visible) {
+              const y = world.floorHeightAt(catFound.x, catFound.z);
+              const awayX = position.x - catFound.x;
+              const awayZ = position.z - catFound.z;
+              const angle = (Math.hypot(awayX, awayZ) > .25 ? Math.atan2(awayX, awayZ) : .6) + 1.08;
+              const distance = Math.max(4.1, 1.05 / (Math.tan(Math.PI * 48 / 360) * camera.aspect));
+              catTarget.set(catFound.x + awayX * .25, y + .53, catFound.z + awayZ * .25);
+              cameraGoal.set(catTarget.x + Math.sin(angle) * distance, y + 2.65, catTarget.z + Math.cos(angle) * distance);
+              catFocus[0].set(catFound.x, y + .63, catFound.z);
+              catFocus[1].set(catFound.x, y + .24, catFound.z);
+              catFocus[2].set(position.x, floorHeight + 1.1, position.z);
+              catCamera.copy(cinematicCamera.resolve(cameraGoal, catTarget, catFocus));
+              catModel.show(catFound.x, y + .045, catFound.z, Math.atan2(catCamera.x - catFound.x, catCamera.z - catFound.z));
+            }
+            catModel.update(dt);
+            camera.position.copy(catCamera);
+            cameraTarget.copy(catTarget);
+          } else if (mapMode) {
             if (cameraChanged) mapFocus.set(position.x, floorHeight + 0.65, position.z);
             if (mapFollowing && walking) {
               mapFocus.x += (position.x - mapFocus.x) * Math.min(1, dt * 4);
@@ -1499,10 +1599,10 @@ export default function TempleWorld(props: WorldProps) {
           if (firstPerson) obscuredRoofs.clear();
           else if (time - lastOcclusionCheck > 0.08) {
             obscuredRoofs.clear();
-            const roofTargets = cinematicView ? cinematicFocus : [position];
+            const roofTargets = catFound ? catFocus : cinematicView ? cinematicFocus : [position];
             roofTargets.forEach(target => {
               occlusionDirection.copy(target);
-              if (!cinematicView) occlusionDirection.y += .85;
+              if (!catFound && !cinematicView) occlusionDirection.y += .85;
               occlusionDirection.sub(camera.position);
               occlusionRay.far = occlusionDirection.length() - .2;
               occlusionRay.ray.set(camera.position, occlusionDirection.normalize());
@@ -1540,10 +1640,10 @@ export default function TempleWorld(props: WorldProps) {
           }
           interactivePoints.forEach(point => {
             const nearby = Math.hypot(position.x - point.x, position.z - point.z) <= 5;
-            positionHotspot(point.button, point.x, point.y, point.z, nearby && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
+            positionHotspot(point.button, point.x, point.y, point.z, nearby && !catHunt && Boolean(state.onContextAction) && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
           });
           const availableCushion = world.cushions[nearestCushionIndex];
-          positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
+          positionHotspot(cushionButton, availableCushion?.x ?? 0, 0.55, availableCushion?.z ?? 0, nearestCushionIndex >= 0 && !catHunt && !state.auto && !state.meditating && !dialogOpen && !martialView && !fishView && !practiceView && !skyLanternView && !interactionView);
           if (firstPerson || martialView || fishView || practiceView || skyLanternView || interactionView || conversationView) selfLabel.style.display = "none";
           else positionLabel(selfLabel, actor.group, walking ? 1.72 : seated ? 1.4 : 1.72);
           const playerName = state.participants.find(person => person.id === state.selfId)?.name || state.selfName || "你的小和尚";

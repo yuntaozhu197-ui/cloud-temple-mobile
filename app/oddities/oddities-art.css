@@ -1,0 +1,245 @@
+.oddities-art-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #d8cba4;
+}
+
+.oddities-art-backdrop > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.oddities-art-drift,
+.oddities-art-pond-ripple {
+  position: absolute;
+  pointer-events: none;
+}
+
+.oddities-art-drift {
+  width: clamp(6px, 1.15vw, 13px);
+  height: clamp(3px, .55vw, 6px);
+  border-radius: 90% 0 90% 0;
+  opacity: 0;
+  box-shadow: inset 0 -1px 1px #65492d55;
+  animation: oddities-art-drift-fall 8.8s linear infinite;
+}
+
+.oddities-art-drift-leaf {
+  top: 17%;
+  left: 17%;
+  background: #adb374;
+}
+
+.oddities-art-drift-leaf.oddities-art-drift-delay {
+  left: 28%;
+  background: #ceaa6c;
+  animation-delay: -4.5s;
+}
+
+.oddities-art-drift-flower {
+  top: 43%;
+  left: 87%;
+  background: #e8a491;
+  animation-duration: 6.8s;
+  animation-delay: -2s;
+}
+
+.oddities-art-drift-flower.oddities-art-drift-delay {
+  left: 79%;
+  background: #f2c6a1;
+  animation-delay: -5.2s;
+}
+
+.oddities-art-pond-ripple {
+  top: 78%;
+  left: 64%;
+  width: 11%;
+  height: 5%;
+  border: 1px solid #fff0bf;
+  border-radius: 50%;
+  opacity: 0;
+  animation: oddities-art-ripple 4.2s ease-out infinite;
+}
+
+.oddities-art-pond-ripple-delay {
+  left: 51%;
+  top: 74%;
+  animation-delay: -2.1s;
+}
+
+.oddities-art-merchant,
+.oddities-art-artifact {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 6 / 5;
+  pointer-events: none;
+}
+
+.oddities-art-merchant canvas,
+.oddities-art-bird,
+.oddities-art-artifact canvas {
+  position: absolute;
+  display: block;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.oddities-art-tail {
+  transform-origin: 38% 80%;
+  animation: oddities-art-tail 3.8s ease-in-out infinite;
+}
+
+.oddities-art-merchant-active .oddities-art-tail {
+  animation: oddities-art-tail-wag .72s ease-in-out 2;
+}
+
+.oddities-art-eyes-open { animation: oddities-art-eye-open 4s step-end infinite; }
+.oddities-art-eyes-closed { opacity: 0; animation: oddities-art-eye-shut 4s step-end infinite; }
+.oddities-art-merchant-active .oddities-art-eyes-open { animation-duration: .9s; animation-iteration-count: 2; }
+.oddities-art-merchant-active .oddities-art-eyes-closed { animation-duration: .9s; animation-iteration-count: 2; }
+
+.oddities-art-fish {
+  transform-origin: 50% 55%;
+  animation: oddities-art-swim 3.8s ease-in-out infinite;
+}
+
+.oddities-art-merchant-active .oddities-art-fish {
+  animation: oddities-art-fish-leap .9s cubic-bezier(.24,.72,.45,1) both;
+}
+
+.oddities-art-koi-ripple {
+  position: absolute;
+  top: 69%;
+  left: 28%;
+  width: 44%;
+  height: 9%;
+  border-radius: 50%;
+  border: 1.5px solid #e9f1c9;
+  opacity: 0;
+  animation: oddities-art-ripple 3.4s ease-out infinite;
+}
+
+.oddities-art-koi-ripple-delay { animation-delay: -1.65s; }
+.oddities-art-merchant-active .oddities-art-koi-ripple { animation-duration: .75s; animation-iteration-count: 2; }
+.oddities-art-merchant-active .oddities-art-koi-ripple-delay { animation-delay: .24s; }
+
+.oddities-art-bubble {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 24%;
+  width: 4.8%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid #fff0c6;
+  box-shadow: inset 1px 0 #fff6d9aa;
+}
+
+.oddities-art-merchant-active .oddities-art-bubble {
+  display: block;
+  animation: oddities-art-bubble-up .8s ease-out both;
+}
+
+.oddities-art-merchant-active .oddities-art-bubble-delay { left: 18%; width: 3.6%; animation-delay: .23s; }
+
+.oddities-art-bird { transform-origin: 49% 73%; animation: oddities-art-bird-idle 4.4s ease-in-out infinite; }
+.oddities-art-wing { transform-origin: 51% 54%; }
+.oddities-art-merchant-active .oddities-art-bird { animation: oddities-art-bird-hop .60s cubic-bezier(.3,.7,.55,1) 2; }
+.oddities-art-merchant-active .oddities-art-wing { animation: oddities-art-wing-flap .23s ease-in-out 5; }
+
+.oddities-art-bird-petal {
+  display: none;
+  position: absolute;
+  top: 40%;
+  left: 20%;
+  width: 6%;
+  aspect-ratio: 1.75;
+  border-radius: 80% 5% 80% 10%;
+  background: #e6a38d;
+  box-shadow: inset 0 -1px #aa5a55;
+}
+
+.oddities-art-merchant-active .oddities-art-bird-petal { display: block; animation: oddities-art-petal-fall 1.05s ease-in-out both; }
+.oddities-art-merchant-active .oddities-art-bird-petal-delay { left: 69%; background: #f3d19b; animation-delay: .21s; }
+
+@keyframes oddities-art-drift-fall {
+  0% { opacity: 0; transform: translate(-12px, -5px) rotate(-20deg); }
+  12%, 72% { opacity: .86; }
+  48% { transform: translate(13px, 28px) rotate(54deg); }
+  100% { opacity: 0; transform: translate(-7px, 64px) rotate(135deg); }
+}
+
+@keyframes oddities-art-ripple {
+  from { transform: scale(.4); opacity: .58; }
+  to { transform: scale(1.25); opacity: 0; }
+}
+
+@keyframes oddities-art-tail {
+  0%, 100% { transform: rotate(-1deg); }
+  48% { transform: rotate(5deg); }
+}
+
+@keyframes oddities-art-tail-wag {
+  0%, 100% { transform: rotate(0); }
+  36% { transform: rotate(14deg); }
+  71% { transform: rotate(-6deg); }
+}
+
+@keyframes oddities-art-eye-open { 0%, 95%, 100% { opacity: 1; } 91% { opacity: 0; } }
+@keyframes oddities-art-eye-shut { 0%, 95%, 100% { opacity: 0; } 91% { opacity: 1; } }
+
+@keyframes oddities-art-swim {
+  0%, 100% { transform: translate(-2%, 2%) rotate(-1deg); }
+  50% { transform: translate(2%, -1%) rotate(3.5deg); }
+}
+
+@keyframes oddities-art-fish-leap {
+  0%, 100% { transform: translateY(0); }
+  35% { transform: translate(-5%, -23%) rotate(13deg); }
+  68% { transform: translate(3%, -15%) rotate(-9deg); }
+}
+
+@keyframes oddities-art-bubble-up {
+  0% { transform: translate(0, 9px) scale(.51); opacity: 0; }
+  38% { opacity: .9; }
+  100% { transform: translate(-8px, -19px) scale(1.3); opacity: 0; }
+}
+
+@keyframes oddities-art-bird-idle {
+  0%, 100% { transform: rotate(0); }
+  30% { transform: rotate(3deg); }
+  37%, 68% { transform: rotate(0); }
+  76% { transform: rotate(-3deg) translateY(-1%); }
+}
+
+@keyframes oddities-art-bird-hop {
+  0%, 100% { transform: translateY(0) scale(1); }
+  18% { transform: translateY(1%) scale(1.035, .96); }
+  53% { transform: translate(3%, -18%) rotate(8deg); }
+}
+
+@keyframes oddities-art-wing-flap {
+  0%, 100% { transform: rotate(0); }
+  51% { transform: rotate(-34deg) scale(1.1, .94); }
+}
+
+@keyframes oddities-art-petal-fall {
+  0% { transform: translateY(-3px) rotate(-42deg); opacity: 0; }
+  24%, 57% { opacity: .97; }
+  100% { transform: translate(13px, 37px) rotate(123deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oddities-art-backdrop *,
+  .oddities-art-merchant *,
+  .oddities-art-merchant-active * { animation: none; }
+  .oddities-art-eyes-closed,
+  .oddities-art-merchant-active .oddities-art-bubble,
+  .oddities-art-merchant-active .oddities-art-bird-petal { display: none; }
+}

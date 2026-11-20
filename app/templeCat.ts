@@ -1,7 +1,32 @@
 export const TEMPLE_CAT_TITLE = "寺猫偷走了住持的金铃";
-export const CAT_HIDEOUTS = ["bamboo", "eaves", "stones"] as const;
+export const CAT_HIDEOUTS = ["bamboo", "eaves", "stones", "pond", "library", "martial"] as const;
 export type CatHideout = typeof CAT_HIDEOUTS[number];
 export type TempleCatEvent = "start" | "complete" | "share";
+
+export const CAT_SEARCH_RADIUS = 2.2;
+
+export const TEMPLE_CAT_PLACES = {
+  bamboo: { x: -8.5, z: 0.9, label: "竹林小径", clue: "风一停，细长的叶子还在摇。", direction: "从庭院往西，找竹林朝庭院的一侧。" },
+  eaves: { x: 18, z: 2.5, label: "钟亭檐下", clue: "明明没人敲钟，屋檐下却响了一声铃。", direction: "往庭院东面走，看看钟亭临花园的一侧。" },
+  stones: { x: -43, z: 21, label: "塔林石径", clue: "石塔一座挨一座，地上落了几片松针。", direction: "去寺院西南的少林塔林，沿石径走到塔前空地。" },
+  pond: { x: -31.4, z: 12.8, label: "放生池西岸", clue: "一串脚印沾了水，旁边的鱼群刚刚散开。", direction: "去放生池，沿岸走到远离庭院的西侧。" },
+  library: { x: 12.5, z: -29.3, label: "藏经阁东侧小径", clue: "经书的纸香从大殿后方飘来。", direction: "绕到大雄宝殿后面，找藏经阁东侧的小径。" },
+  martial: { x: 33, z: 15, label: "习武广场东角", clue: "没人练拳的时候，这里能听见木桩沙沙响。", direction: "去习武广场，走到东侧靠外的空地。" },
+} satisfies Record<CatHideout, { x: number; z: number; label: string; clue: string; direction: string }>;
+
+const CAT_TRAIL: Record<CatHideout, CatHideout> = {
+  bamboo: "pond",
+  eaves: "bamboo",
+  stones: "pond",
+  pond: "bamboo",
+  library: "eaves",
+  martial: "eaves",
+};
+
+export function templeCatRoute(day: string) {
+  const cat = templeCatHideout(day);
+  return { tracks: CAT_TRAIL[cat], cat };
+}
 
 const DAY_MS = 86_400_000;
 const BEIJING_OFFSET = 8 * 3_600_000;
@@ -26,8 +51,8 @@ export function templeCatHideout(day: string): CatHideout {
   let corner = 0;
   for (let index = CAT_EPOCH; index <= number; index++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-    // One or two steps around the courtyard, so consecutive days differ.
-    corner = (corner + 1 + (seed >>> 31)) % CAT_HIDEOUTS.length;
+    // Advance to a different district each day.
+    corner = (corner + 1 + (seed >>> 24) % (CAT_HIDEOUTS.length - 1)) % CAT_HIDEOUTS.length;
   }
   return CAT_HIDEOUTS[corner];
 }
