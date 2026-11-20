@@ -77,6 +77,29 @@
   text-wrap: balance;
 }
 
+.temple-cat-modal-portrait {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2.2;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #bd9b6a;
+  border-radius: 14px;
+  background: radial-gradient(ellipse at 48% 40%, #f8edcf, #e4cba0);
+  color: #9a6041;
+  pointer-events: none;
+}
+
+.temple-cat-modal-portrait > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+}
+.temple-cat-modal-portrait > canvas[data-portrait-ready] { visibility: visible; }
+
 .temple-cat-close {
   display: grid;
   flex: 0 0 44px;
@@ -162,6 +185,29 @@
   background: #fff9e9;
   color: var(--cat-ink);
   font: inherit;
+}
+
+.temple-game { --cat-portrait-width: clamp(102px, 30vw, 152px); }
+
+.temple-cat-portrait {
+  position: absolute;
+  z-index: 5;
+  left: var(--hud-left, 12px);
+  bottom: calc(var(--hud-bottom, 14px) + 94px);
+  width: var(--cat-portrait-width, 116px);
+  aspect-ratio: 1.19;
+  box-shadow: inset 0 0 0 1px #775738, inset 0 0 0 4px #eee0ba, 0 7px 20px #29433947;
+  pointer-events: none;
+}
+
+.temple-cat-portrait:is([data-phase="intro"], [data-phase="found"]) {
+  top: 50%;
+  left: 50%;
+  bottom: auto;
+  width: min(360px, calc(100% - 36px));
+  aspect-ratio: 2.2;
+  transform: translate(-50%, -50%);
+  visibility: hidden;
 }
 
 .temple-cat-hud {
@@ -273,6 +319,7 @@
   .temple-cat-hud[data-guide-near] .temple-cat-hud-panel {
     top: auto;
     bottom: calc(var(--hud-bottom, 14px) + 97px);
+    width: min(300px, calc(100% - var(--hud-left, 12px) - var(--hud-right, 12px) - var(--cat-portrait-width, 116px) - 10px));
   }
   .temple-cat-hud[data-guide-near] .temple-cat-world-action {
     bottom: calc(var(--hud-bottom, 14px) + 8px);
@@ -280,6 +327,18 @@
 }
 
 @media (max-height: 460px) and (orientation: landscape) {
+  .temple-cat-panel {
+    width: min(100%, 580px);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    align-items: start;
+    padding: clamp(10px, 2.5vw, 20px);
+  }
+  .temple-cat-panel > .temple-cat-header { grid-column: 1 / -1; }
+  .temple-cat-modal-portrait { align-self: center; aspect-ratio: 1.45; }
+  .temple-cat-portrait:is([data-phase="search"], [data-phase="reveal"]) {
+    left: calc(var(--hud-left, 12px) + 92px);
+    bottom: var(--hud-bottom, 14px);
+  }
   .temple-cat-hud-panel { top: calc(var(--hud-top, 12px) + 108px); }
   .temple-cat-world-action { bottom: calc(var(--hud-bottom, 14px) + 10px); }
   .temple-cat-hud[data-phase="search"] {

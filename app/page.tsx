@@ -69,7 +69,8 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const cat = useTempleCatHunt(account.id);
  const catRound = cat.round;
  const catModal = catRound?.phase === "intro" || catRound?.phase === "found";
- const catWorldActive = catRound?.phase === "search" || catRound?.phase === "reveal";
+ const catWorldActive = catRound && catRound.phase !== "intro";
+ const catPortraitCanvas = useRef<HTMLCanvasElement>(null);
  const [odditiesOpen, setOdditiesOpen] = useState(false);
  const menuButton = useRef<HTMLButtonElement>(null);
  const closeOddities = useCallback(() => {
@@ -113,6 +114,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const audioRef=useRef<ReturnType<typeof createTempleAudio>|null>(null),toastTimer=useRef<ReturnType<typeof setTimeout>|null>(null),actionTimer=useRef<ReturnType<typeof setTimeout>|null>(null),positionRef=useRef<{x:number;z:number;heading:number;floor:1|2|3}>({x:0,z:9,heading:0,floor:1}),positionSent=useRef(0);
  const [place,setPlace]=useState("静心庭院");
  const [cameraMode, setCameraMode] = useState<"first" | "third" | "map">("map");
+ const cycleCamera = () => {
+  setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map");
+  setMenuOpen(false);
+ };
  const [menuOpen, setMenuOpen] = useState(false);
  const [isSeated, setIsSeated] = useState(false);
  const seatedRef = useRef(false);
@@ -447,10 +452,12 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {worldLoading && <TempleLoading stage="world" />}
     <div className="courtyard world-courtyard">
      <TempleWorld
-      paused={odditiesOpen || catRound?.phase === "found"}
+      paused={odditiesOpen}
       onLoadingChange={setWorldLoading}
       onReadyChange={setWorldReady}
-      catHunt={catWorldActive ? { id: catRound.id, checked: catRound.checked, inspection: catRound.inspection, found: catRound.phase === "reveal" ? cat.target : null, guide: cat.guide } : null}
+      catPhase={catRound?.phase}
+      catPortraitCanvas={catPortraitCanvas}
+      catHunt={catWorldActive ? { id: catRound.id, checked: catRound.checked, inspection: catRound.inspection, found: catRound.phase === "search" ? null : cat.target, guide: cat.guide } : null}
       onCatNearbyChange={cat.setNearby}
       onCatInspect={cat.inspect}
       onCatGuideStatus={cat.setGuideStatus}
@@ -525,7 +532,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {menuOpen && <button className="menu-dismiss" aria-label="收起更多选项" onClick={() => setMenuOpen(false)} />}
     <nav id="game-menu" className={`game-menu ${menuOpen ? "is-open" : ""}`} hidden={!menuOpen} aria-label="更多选项">
      <strong className="player-menu-name" title={selfName}>{selfName}</strong>
-     <button onClick={() => { setCameraMode(mode => mode === "map" ? "third" : mode === "third" ? "first" : "map"); setMenuOpen(false); }}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
+     <button onClick={cycleCamera}><Camera size={18} />{cameraMode === "map" ? "切第三人称" : cameraMode === "third" ? "切第一人称" : "拖动地图"}</button>
      <button onClick={() => { setMenuOpen(false); setSoundSettingsOpen(true); }}>{gameVolume > 0 || templeVolume > 0 ? <Volume2 size={18} /> : <VolumeX size={18} />}声音设置</button>
      <SocialTemple compact incenseRequest={incenseRequest} incenseShrine={incenseShrine} selfId={account.id} onInteraction={unlockAudio} onIncense={shrine => { setIncenseShrine(shrine); setIncensePulse(count => count + 1); }} onNotice={notify} />
      <button onClick={() => { setMenuOpen(false); setLampOpen(true); }}><Sparkles size={18} />我的长明灯</button>
@@ -578,6 +585,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {catRound && <Suspense fallback={createPortal(<div className="temple-cat-pending" role="status">准备寻猫挑战…</div>, document.body)}>
      <TempleCatGame key={catRound.day} day={catRound.day} playerId={account.id} phase={catRound.phase} goal={catRound.goal}
       elapsedSeconds={catRound.seconds} worldReady={worldReady} hint={cat.hint} hintLevel={catRound.hintLevel} guideStatus={catRound.guideStatus} feedback={catRound.feedback}
+      portraitCanvasRef={catPortraitCanvas} onCycleView={cycleCamera}
       nearbyLabel={catRound.nearby ? TEMPLE_CAT_PLACES[catRound.nearby].label : null}
       onStart={() => { if (worldReady) { if (seatRef.current !== null) leaveSeat(); cat.start(); } }}
       onClose={cat.close} onHint={cat.showHint} onGuide={cat.requestGuide} onInspect={cat.requestInspect} onShowResult={cat.showResult} onEvent={onCatEvent} />

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, BellRing, Download, Footprints, Lightbulb, Link2, Navigation, PawPrint, RotateCcw, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, Camera, Download, Footprints, Lightbulb, Link2, Navigation, PawPrint, RotateCcw, Search, X } from "lucide-react";
 import { makeCatShareUrl, TEMPLE_CAT_TITLE, type TempleCatEvent } from "./templeCat";
 import { downloadTempleCatCard } from "./templeCatCard";
 import "./temple-cat.css";
@@ -15,6 +15,7 @@ type Props = {
   hint: string;
   hintLevel: number;
   guideStatus: "idle" | "walking" | "near";
+  portraitCanvasRef: RefObject<HTMLCanvasElement | null>;
   feedback: string;
   nearbyLabel: string | null;
   onStart: () => void;
@@ -23,6 +24,7 @@ type Props = {
   onGuide: () => void;
   onInspect: () => void;
   onShowResult: () => void;
+  onCycleView: () => void;
   onEvent: (event: TempleCatEvent) => void;
 };
 
@@ -40,7 +42,8 @@ function formatTime(seconds: number) {
 }
 
 export default function TempleCatGame(props: Props) {
-  const { day, playerId, phase, elapsedSeconds, worldReady, goal, hint, hintLevel, guideStatus, feedback, nearbyLabel, onStart, onClose, onHint, onGuide, onInspect, onShowResult, onEvent } = props;
+  const { day, playerId, phase, elapsedSeconds, worldReady, goal, hint, hintLevel, guideStatus, portraitCanvasRef, feedback, nearbyLabel,
+    onStart, onClose, onHint, onGuide, onInspect, onShowResult, onCycleView, onEvent } = props;
   const stampKey = `cloud-temple-cat-trail-stamp:${playerId}:${day}`;
   const [bestTime, setBestTime] = useState(() => storedTime(stampKey));
   const [legacyStamp] = useState(() => storedTime(`cloud-temple-cat-stamp:${playerId}:${day}`) !== null);
@@ -130,7 +133,15 @@ export default function TempleCatGame(props: Props) {
     setShareBusy(true);
     setShowLink(false);
     try {
-      await downloadTempleCatCard({ day, seconds: elapsedSeconds });
+      let preview: string | undefined;
+      const canvas = portraitCanvasRef.current;
+      if (canvas?.hasAttribute("data-portrait-ready")) {
+        try {
+          const snapshot = canvas.toDataURL("image/png");
+          if (snapshot.startsWith("data:image/png")) preview = snapshot;
+        } catch { /* The card has its own artwork if a preview is unavailable. */ }
+      }
+      await downloadTempleCatCard({ day, seconds: elapsedSeconds, preview });
       setShareStatus("分享卡已生成，可发给朋友。");
       onEvent("share");
     } catch { setShareStatus("分享卡暂未保存，请再试一次。"); }
@@ -162,6 +173,9 @@ export default function TempleCatGame(props: Props) {
           {!revealed && guideStatus === "walking" && <span className="temple-cat-guiding" role="status">
             <Footprints size={15} aria-hidden="true" />正在前往附近
           </span>}
+          {revealed && <button type="button" className="temple-cat-secondary" onClick={onCycleView}>
+            <Camera size={16} aria-hidden="true" />切换视角
+          </button>}
           <button type="button" className="temple-cat-close" aria-label="退出寻猫" onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </header>
         {revealed
@@ -195,6 +209,11 @@ export default function TempleCatGame(props: Props) {
         </div>
         <button ref={closeButton} className="temple-cat-close" type="button" aria-label="关闭寻猫小游戏" onClick={onClose}><X size={22} aria-hidden="true" /></button>
       </header>
+
+      <div className="temple-cat-modal-portrait" role="img" aria-label="寺猫和金铃的三维近景">
+        <PawPrint size={30} strokeWidth={1.6} aria-hidden="true" />
+        <canvas ref={portraitCanvasRef} aria-hidden="true" />
+      </div>
 
       <div className="temple-cat-controls">
         {phase === "intro" ? <>
