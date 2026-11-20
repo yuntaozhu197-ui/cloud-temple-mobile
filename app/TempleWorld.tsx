@@ -34,6 +34,7 @@ type Participant = {
 
 type Position = { x: number; z: number; heading: number; floor: 1 };
 type Landmark = { name: string; x: number; z: number };
+type CatGuideStatus = "idle" | "walking" | "near";
 type ContextAction = "incense" | "incenseGuanyin" | "incenseWenshu" | "incenseCaishen" | "longLamp" | "skyLantern" | "drum" | "towerBell" | "flower" | "ritual" | "bell" | "fish" | "pondFeed" | "mural" | "lamp" | "sutra" | "breathe" | "release" | "martial" | "pagoda";
 type WorldContext = { nearCushion: boolean; nearAltar: boolean; nearFlowers: boolean; nearRitual: boolean };
 type WorldProps = {
@@ -56,9 +57,10 @@ type WorldProps = {
   paused?: boolean;
   onLoadingChange?: (loading: boolean) => void;
   onReadyChange?: (ready: boolean) => void;
-  catHunt?: { id: number; checked: readonly CatHideout[]; inspection: number; found: CatHideout | null } | null;
+  catHunt?: { id: number; checked: readonly CatHideout[]; inspection: number; found: CatHideout | null; guide?: { target: CatHideout; request: number } } | null;
   onCatNearbyChange?: (id: number, nearby: CatHideout | null) => void;
   onCatInspect?: (id: number, place: CatHideout) => void;
+  onCatGuideStatus?: (id: number, request: number, status: CatGuideStatus) => void;
   participants: Participant[];
   onSeatSelect: (index: number) => void;
   onLeaveSeat: () => void;
@@ -104,6 +106,8 @@ type MonkInstance = {
 const remoteColors = [0x96a78d, 0xb39274, 0x8ba7a0, 0xbd9c83, 0xaca17d];
 // Keep a monk-radius clearance inside every wall, including the open mountain gate.
 const TEMPLE_BOUNDS = { minX: -51.5, maxX: 51.5, minZ: -39.5, maxZ: 39.5 };
+const CAT_GUIDE_REVEAL_RADIUS = 8;
+const CAT_GUIDE_STEPS = 5;
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const angleDelta = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
 const FISH_ACTIONS = {
@@ -122,6 +126,7 @@ export default function TempleWorld(props: WorldProps) {
   const joystickPointer = useRef<number | null>(null);
   const travel = useRef<(landmark: Landmark) => void>(() => {});
   const zoomView = useRef<(amount: number) => void>(() => {});
+  const consumedCatGuide = useRef<string | null>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
@@ -417,6 +422,32 @@ export default function TempleWorld(props: WorldProps) {
         catMark.rotation.x = -Math.PI / 2;
         catMark.visible = false;
         scene.add(catMark);
+        function pawGeometry(expansion = 0) {
+          const pads = [[0, -.072, .13, .104], [-.143, .048, .053, .067], [-.058, .144, .058, .069], [.058, .144, .058, .069], [.143, .048, .053, .067]];
+          const shapes = pads.map(([x, y, rx, ry]) => {
+            const shape = new T.Shape();
+            shape.absellipse(x, y, rx + expansion, ry + expansion, 0, Math.PI * 2, false, 0);
+            return shape;
+          });
+          const geometry = new T.ShapeGeometry(shapes, 10).rotateX(-Math.PI / 2);
+          ownedGeometries.push(geometry);
+          return geometry;
+        }
+
+        function pawTrail(outline: boolean) {
+          const material = new T.MeshBasicMaterial({ color: outline ? 0x61442e : 0xffcf77, toneMapped: false });
+          ownedMaterials.push(material);
+          const trail = new T.InstancedMesh(pawGeometry(outline ? .023 : 0), material, CAT_GUIDE_STEPS);
+          trail.visible = false;
+          trail.frustumCulled = false;
+          scene.add(trail);
+          cleanupListeners.push(() => trail.dispose());
+          return trail;
+        }
+        const catPawOutline = pawTrail(true);
+        const catPaws = pawTrail(false);
+        const pawTransform = new T.Object3D();
+        let trailTarget: CatHideout | null = null;
         const catCamera = new T.Vector3();
         const catTarget = new T.Vector3();
         const catFocus = [new T.Vector3(), new T.Vector3(), new T.Vector3()];
@@ -436,6 +467,9 @@ export default function TempleWorld(props: WorldProps) {
         const projected = new T.Vector3();
         const keys = new Set<string>();
         let route: { x: number; z: number }[] = [];
+        let guideOwnedRoute: typeof route | null = null;
+        let catGuideKey: string | null = null;
+        let lastCatGuideStatus: CatGuideStatus | null = null;
         let lastSeat: number | null | undefined;
         let releasedSeat = false;
         let userMoved = false;
@@ -512,6 +546,44 @@ export default function TempleWorld(props: WorldProps) {
             if (blocked(ax + (bx - ax) * progress, az + (bz - az) * progress)) return false;
           }
           return true;
+        }
+
+        function stopCatGuide() {
+          // Dropping a hint must leave a subsequent map tap or joystick move alone.
+          if (guideOwnedRoute && route === guideOwnedRoute) {
+            route = [];
+            destination.visible = false;
+          }
+          guideOwnedRoute = null;
+        }
+
+        function showCatTrail(target: CatHideout | null) {
+          catPaws.visible = catPawOutline.visible = target !== null;
+          if (!target || target === trailTarget) return;
+          trailTarget = target;
+          const spot = TEMPLE_CAT_PLACES[target];
+          const dx = spot.x - spot.guide.x;
+          const dz = spot.z - spot.guide.z;
+          const length = Math.hypot(dx, dz);
+          for (let step = 0; step < CAT_GUIDE_STEPS; step++) {
+            const progress = (step + 1) / CAT_GUIDE_STEPS;
+            const offset = progress === 1 ? 0 : step % 2 === 0 ? -.18 : .18;
+            const centerX = spot.guide.x + dx * progress;
+            const centerZ = spot.guide.z + dz * progress;
+            let x = centerX + dz / length * offset;
+            let z = centerZ - dx / length * offset;
+            if (blocked(x, z)) { x = centerX; z = centerZ; }
+            const y = world.floorHeightAt(x, z) + .075;
+            pawTransform.position.set(x, y, z);
+            pawTransform.rotation.y = Math.atan2(-dx, -dz);
+            pawTransform.scale.setScalar(.9 + progress * .34);
+            pawTransform.updateMatrix();
+            catPawOutline.setMatrixAt(step, pawTransform.matrix);
+            pawTransform.position.y += .008;
+            pawTransform.updateMatrix();
+            catPaws.setMatrixAt(step, pawTransform.matrix);
+          }
+          catPawOutline.instanceMatrix.needsUpdate = catPaws.instanceMatrix.needsUpdate = true;
         }
 
         function pathTo(requestedX: number, requestedZ: number) {
@@ -934,6 +1006,10 @@ export default function TempleWorld(props: WorldProps) {
           const state = latest.current;
           if (state.paused) {
             if (keys.size || joystick.current.x || joystick.current.y || pointerState.id >= 0) releaseControls();
+            if (guideOwnedRoute) {
+              stopCatGuide();
+              showCatTrail(null);
+            }
             return;
           }
           if (now - lastScheduleCheck >= 1000) {
@@ -1151,10 +1227,32 @@ export default function TempleWorld(props: WorldProps) {
           if (keys.has("KeyD") || keys.has("ArrowRight")) inputX += 1;
           if (keys.has("KeyW") || keys.has("ArrowUp")) inputY -= 1;
           if (keys.has("KeyS") || keys.has("ArrowDown")) inputY += 1;
+          const strength = Math.min(1, Math.hypot(inputX, inputY));
+          const controlsBlocked = state.auto || state.meditating || dialogOpen;
+          const catGuide = catHunt?.guide && !catHunt.found && !catHunt.checked.includes(catHunt.guide.target) ? catHunt.guide : null;
+          const guideSpot = catGuide ? TEMPLE_CAT_PLACES[catGuide.target] : null;
+          const guideKey = catGuide ? `${catRound}:${catGuide.target}:${catGuide.request}` : null;
+          if (guideKey !== catGuideKey) {
+            stopCatGuide();
+            catGuideKey = guideKey;
+            lastCatGuideStatus = null;
+          }
+          if (controlsBlocked) stopCatGuide();
+          if (catGuide && guideSpot && guideKey && catGuide.request > 0 && consumedCatGuide.current !== guideKey) {
+            consumedCatGuide.current = guideKey;
+            const alreadyNear = Math.hypot(position.x - guideSpot.x, position.z - guideSpot.z) <= CAT_GUIDE_REVEAL_RADIUS
+              && clearLine(position.x, position.z, guideSpot.x, guideSpot.z);
+            if (!controlsBlocked && strength <= .1 && !alreadyNear) {
+              walkTo(guideSpot.guide.x, guideSpot.guide.z);
+              guideOwnedRoute = route;
+              const end = route.at(-1);
+              if (!end || Math.hypot(end.x - guideSpot.x, end.z - guideSpot.z) <= CAT_SEARCH_RADIUS
+                || !clearLine(end.x, end.z, guideSpot.x, guideSpot.z)) stopCatGuide();
+            }
+          }
           let dx = 0;
           let dz = 0;
-          if (!state.auto && !state.meditating && !dialogOpen) {
-            const strength = Math.min(1, Math.hypot(inputX, inputY));
+          if (!controlsBlocked) {
             if (strength > 0.1) {
               cancelMartial();
               cancelFish();
@@ -1223,6 +1321,18 @@ export default function TempleWorld(props: WorldProps) {
               destination.visible = false;
               releaseControls();
               state.onCatInspect?.(catRound, catNearby);
+            }
+          }
+          if (guideOwnedRoute && (route !== guideOwnedRoute || !route.length)) stopCatGuide();
+          const guideNear = !controlsBlocked && guideSpot !== null
+            && Math.hypot(position.x - guideSpot.x, position.z - guideSpot.z) <= CAT_GUIDE_REVEAL_RADIUS
+            && clearLine(position.x, position.z, guideSpot.x, guideSpot.z);
+          showCatTrail(catGuide && guideNear ? catGuide.target : null);
+          if (catGuide) {
+            const status = guideOwnedRoute ? "walking" : guideNear ? "near" : "idle";
+            if (lastCatGuideStatus !== status) {
+              lastCatGuideStatus = status;
+              state.onCatGuideStatus?.(catRound, catGuide.request, status);
             }
           }
           catMark.visible = catNearby !== null;

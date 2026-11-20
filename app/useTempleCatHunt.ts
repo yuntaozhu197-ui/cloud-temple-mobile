@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { createTempleCatReporter, sharedTempleCatDay, templeCatDay, templeCatRoute, TEMPLE_CAT_PLACES, type CatHideout } from "./templeCat";
 
 export type CatHuntPhase = "intro" | "search" | "reveal" | "found";
+type CatGuideStatus = "idle" | "walking" | "near";
+const hintFields = ["clue", "direction", "detail"] as const;
 type Goal = "tracks" | "cat";
 type Round = {
   day: string;
@@ -10,6 +12,8 @@ type Round = {
   goal: Goal;
   startedAt: number;
   hintLevel: number;
+  guideRequest: number;
+  guideStatus: CatGuideStatus;
   feedback: string;
   checked: readonly CatHideout[];
   nearby: CatHideout | null;
@@ -18,7 +22,7 @@ type Round = {
 };
 
 function newRound(day: string): Round {
-  return { day, phase: "intro", id: 0, goal: "tracks", startedAt: 0, hintLevel: 0, feedback: "", checked: [], nearby: null, seconds: null, inspection: 0 };
+  return { day, phase: "intro", id: 0, goal: "tracks", startedAt: 0, hintLevel: 1, guideRequest: 0, guideStatus: "idle", feedback: "", checked: [], nearby: null, seconds: null, inspection: 0 };
 }
 
 export function useTempleCatHunt(playerId: string) {
@@ -46,8 +50,24 @@ export function useTempleCatHunt(playerId: string) {
 
   function showHint() {
     const active = current.current;
-    if (active?.phase === "search") update({ ...active, hintLevel: Math.min(2, active.hintLevel + 1) });
+    if (active?.phase === "search" && active.hintLevel < hintFields.length) {
+      update({ ...active, hintLevel: active.hintLevel + 1 });
+    }
   }
+
+  function requestGuide() {
+    const active = current.current;
+    if (active?.phase === "search" && active.hintLevel === hintFields.length && active.guideStatus === "idle") {
+      update({ ...active, guideRequest: active.guideRequest + 1, guideStatus: "walking" });
+    }
+  }
+
+  const setGuideStatus = useCallback((id: number, request: number, guideStatus: CatGuideStatus) => {
+    const active = current.current;
+    if (active?.phase === "search" && active.id === id && active.guideRequest === request && active.guideStatus !== guideStatus) {
+      update({ ...active, guideStatus });
+    }
+  }, [update]);
 
   function requestInspect() {
     const active = current.current;
@@ -68,7 +88,7 @@ export function useTempleCatHunt(playerId: string) {
       return;
     }
     if (active.goal === "tracks") {
-      update({ ...active, goal: "cat", checked: [place], nearby: null, hintLevel: 1, feedback: "找到猫爪印了。循着新线索去找寺猫。" });
+      update({ ...active, goal: "cat", checked: [place], nearby: null, hintLevel: 1, guideRequest: 0, guideStatus: "idle", feedback: "找到猫爪印了。循着新线索去找寺猫。" });
       return;
     }
     const seconds = Math.max(1, Math.min(86_400, Math.round((performance.now() - active.startedAt) / 1000)));
@@ -82,6 +102,9 @@ export function useTempleCatHunt(playerId: string) {
   }
 
   const target = round && templeCatRoute(round.day)[round.goal];
-  const hint = target && round.hintLevel ? TEMPLE_CAT_PLACES[target][round.hintLevel === 1 ? "clue" : "direction"] : "";
-  return { round, target, hint, open, close, start, showHint, requestInspect, setNearby, inspect, showResult, report };
+  const hint = round && target ? TEMPLE_CAT_PLACES[target][hintFields[round.hintLevel - 1]] : "";
+  const guide = round?.phase === "search" && target && round.hintLevel === hintFields.length
+    ? { target, request: round.guideRequest }
+    : undefined;
+  return { round, target, hint, guide, open, close, start, showHint, requestGuide, setGuideStatus, requestInspect, setNearby, inspect, showResult, report };
 }

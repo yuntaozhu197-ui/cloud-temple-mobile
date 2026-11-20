@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, BellRing, Download, Footprints, Lightbulb, Link2, PawPrint, RotateCcw, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, Download, Footprints, Lightbulb, Link2, Navigation, PawPrint, RotateCcw, Search, X } from "lucide-react";
 import { makeCatShareUrl, TEMPLE_CAT_TITLE, type TempleCatEvent } from "./templeCat";
 import { downloadTempleCatCard } from "./templeCatCard";
 import "./temple-cat.css";
@@ -13,11 +13,14 @@ type Props = {
   worldReady: boolean;
   goal: "tracks" | "cat";
   hint: string;
+  hintLevel: number;
+  guideStatus: "idle" | "walking" | "near";
   feedback: string;
   nearbyLabel: string | null;
   onStart: () => void;
   onClose: () => void;
   onHint: () => void;
+  onGuide: () => void;
   onInspect: () => void;
   onShowResult: () => void;
   onEvent: (event: TempleCatEvent) => void;
@@ -37,7 +40,7 @@ function formatTime(seconds: number) {
 }
 
 export default function TempleCatGame(props: Props) {
-  const { day, playerId, phase, elapsedSeconds, worldReady, goal, hint, feedback, nearbyLabel, onStart, onClose, onHint, onInspect, onShowResult, onEvent } = props;
+  const { day, playerId, phase, elapsedSeconds, worldReady, goal, hint, hintLevel, guideStatus, feedback, nearbyLabel, onStart, onClose, onHint, onGuide, onInspect, onShowResult, onEvent } = props;
   const stampKey = `cloud-temple-cat-trail-stamp:${playerId}:${day}`;
   const [bestTime, setBestTime] = useState(() => storedTime(stampKey));
   const [legacyStamp] = useState(() => storedTime(`cloud-temple-cat-stamp:${playerId}:${day}`) !== null);
@@ -136,22 +139,36 @@ export default function TempleCatGame(props: Props) {
 
   if (phase === "search" || phase === "reveal") {
     const revealed = phase === "reveal";
-    return <aside className="temple-cat-hud" aria-labelledby="temple-cat-hud-title">
+    const canGuide = hintLevel >= 3;
+    let guideNote = "";
+    if (guideStatus === "walking") guideNote = "到附近就会停下，再循脚印走近。";
+    if (guideStatus === "near") guideNote = nearbyLabel ? "走近了，可以查看这里。" : "轻点地上的金色脚印，走近后再查看。";
+
+    return <aside className="temple-cat-hud" data-phase={phase} data-guide-near={!revealed && guideStatus === "near" ? "" : undefined} aria-labelledby="temple-cat-hud-title">
       <div className="temple-cat-hud-panel">
         <header>
           <h2 id="temple-cat-hud-title" ref={heading} tabIndex={-1}>
             <PawPrint size={17} aria-hidden="true" />{revealed ? "金铃找回来了" : goal === "tracks" ? "1/2 找脚印" : "2/2 找寺猫"}
           </h2>
-          {!revealed && <button type="button" className="temple-cat-secondary" onClick={onHint}>
-            <Lightbulb size={15} aria-hidden="true" />看线索
+          {!revealed && (!canGuide || guideStatus === "idle") && <button
+            type="button"
+            className={canGuide ? "temple-cat-primary temple-cat-guide-button" : "temple-cat-secondary"}
+            onClick={canGuide ? onGuide : onHint}
+          >
+            {canGuide ? <><Navigation size={15} aria-hidden="true" />带我走到附近</> : <>
+              <Lightbulb size={15} aria-hidden="true" />{hintLevel < 2 ? "看方向" : "看附近地标"}
+            </>}
           </button>}
+          {!revealed && guideStatus === "walking" && <span className="temple-cat-guiding" role="status">
+            <Footprints size={15} aria-hidden="true" />正在前往附近
+          </span>}
           <button type="button" className="temple-cat-close" aria-label="退出寻猫" onClick={onClose}><X size={20} aria-hidden="true" /></button>
         </header>
         {revealed
           ? <p role="status">猫带着金铃现身了。</p>
           : <div className="temple-cat-hud-notes" aria-live="polite">
-              <p>{hint || (nearbyLabel ? "走近了，可以查看这里。" : "在寺院里走走，靠近可疑的角落。")}</p>
-              {feedback && <p className="temple-cat-feedback">{feedback}</p>}
+              {guideStatus !== "near" && <p>{hint || "在寺院里走走，靠近可疑的角落。"}</p>}
+              {(guideNote || feedback) && <p className={guideNote ? "temple-cat-guide-note" : "temple-cat-feedback"}>{guideNote || feedback}</p>}
             </div>}
       </div>
       {(revealed || nearbyLabel) && <div className="temple-cat-world-action">
@@ -185,7 +202,7 @@ export default function TempleCatGame(props: Props) {
             <div className="temple-cat-stamp" aria-hidden="true"><PawPrint size={25} strokeWidth={2.1} /></div>
             <div>
               <p className="temple-cat-instruction">先在寺院里找到脚印，再循着新线索去找猫。</p>
-              <p className="temple-cat-detail">拖动摇杆或轻点地面。走近后就能查看。</p>
+              <p className="temple-cat-detail">拖动摇杆或轻点地面。需要时可以查看方向和附近地标。</p>
             </div>
           </div>
           <button className="temple-cat-primary" type="button" onClick={startRound} disabled={!worldReady}>

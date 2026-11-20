@@ -69,6 +69,7 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
  const cat = useTempleCatHunt(account.id);
  const catRound = cat.round;
  const catModal = catRound?.phase === "intro" || catRound?.phase === "found";
+ const catWorldActive = catRound?.phase === "search" || catRound?.phase === "reveal";
  const [odditiesOpen, setOdditiesOpen] = useState(false);
  const menuButton = useRef<HTMLButtonElement>(null);
  const closeOddities = useCallback(() => {
@@ -449,9 +450,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
       paused={odditiesOpen || catRound?.phase === "found"}
       onLoadingChange={setWorldLoading}
       onReadyChange={setWorldReady}
-      catHunt={catRound?.phase === "search" ? { id: catRound.id, checked: catRound.checked, inspection: catRound.inspection, found: null } : catRound?.phase === "reveal" && cat.target ? { id: catRound.id, checked: catRound.checked, inspection: catRound.inspection, found: cat.target } : null}
+      catHunt={catWorldActive ? { id: catRound.id, checked: catRound.checked, inspection: catRound.inspection, found: catRound.phase === "reveal" ? cat.target : null, guide: cat.guide } : null}
       onCatNearbyChange={cat.setNearby}
       onCatInspect={cat.inspect}
+      onCatGuideStatus={cat.setGuideStatus}
       cameraMode={cameraMode}
       flowerPulse={flowerPulse}
       ritualPulse={ritualPulse}
@@ -575,10 +577,10 @@ function TempleGame({ account, onSignedOut }: { account: AccountUser; onSignedOu
     {meditating && <div className="game-meditation-status" role="timer"><Wind size={18} /><strong>{clock(remaining)}</strong><span>{room?.meditatingCount ?? 1}人共修</span></div>}
     {catRound && <Suspense fallback={createPortal(<div className="temple-cat-pending" role="status">准备寻猫挑战…</div>, document.body)}>
      <TempleCatGame key={catRound.day} day={catRound.day} playerId={account.id} phase={catRound.phase} goal={catRound.goal}
-      elapsedSeconds={catRound.seconds} worldReady={worldReady} hint={cat.hint} feedback={catRound.feedback}
+      elapsedSeconds={catRound.seconds} worldReady={worldReady} hint={cat.hint} hintLevel={catRound.hintLevel} guideStatus={catRound.guideStatus} feedback={catRound.feedback}
       nearbyLabel={catRound.nearby ? TEMPLE_CAT_PLACES[catRound.nearby].label : null}
       onStart={() => { if (worldReady) { if (seatRef.current !== null) leaveSeat(); cat.start(); } }}
-      onClose={cat.close} onHint={cat.showHint} onInspect={cat.requestInspect} onShowResult={cat.showResult} onEvent={onCatEvent} />
+      onClose={cat.close} onHint={cat.showHint} onGuide={cat.requestGuide} onInspect={cat.requestInspect} onShowResult={cat.showResult} onEvent={onCatEvent} />
     </Suspense>}
    </main>
 
